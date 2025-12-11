@@ -1,435 +1,259 @@
 # Tigement Backend API
 
-PHP REST API for the Tigement table and task management system.
+Node.js/Express REST API with TypeScript for the Tigement task management system.
 
 ## 🛠️ Tech Stack
 
-- **PHP 7.4+** - Server-side programming language
-- **MySQL 5.7+** - Relational database
-- **PDO** - PHP Data Objects for database access
-- **REST API** - Simple and clean API architecture
+- **Node.js 18+** - JavaScript runtime
+- **Express** - Web framework
+- **TypeScript** - Type-safe backend code
+- **PostgreSQL** - Relational database
+- **JWT** - Authentication tokens
+- **Passport** - OAuth authentication
+- **Bcrypt** - Password hashing
+- **Nodemailer** - Email sending
 
 ## 📋 Features
 
-- RESTful API endpoints for table management
-- Database abstraction layer with PDO
-- JSON request/response format
-- CORS support for frontend integration
-- Error handling and validation
-- Database connection testing endpoint
+- RESTful API endpoints for workspace management
+- User authentication with JWT tokens
+- OAuth integration (GitHub, Google, Apple, Facebook, Twitter)
+- Two-factor authentication (2FA) support
+- Premium subscription management
+- Multiple payment gateways (BTCPay Server, Stripe, PayPal)
+- Email notifications
+- iCal calendar feed generation
+- CalDAV support
+- Admin panel and analytics
+- Bug reporting system
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
-- PHP 7.4 or higher
-- MySQL 5.7+ or MariaDB 10.2+
-- Web server (Apache, Nginx) or PHP built-in server
+- Node.js 18 or higher
+- PostgreSQL 14 or higher
+- npm or yarn
 
 ### Installation
 
-1. **Configure Database Connection**
+1. **Install Dependencies**
+
+   ```bash
+   npm install
+   ```
+
+2. **Configure Environment**
 
    Copy the example configuration:
    ```bash
-   cp config.example.php config.php
+   cp .env.example .env
    ```
 
-   Edit `config.php` with your credentials:
-   ```php
-   <?php
-   define('DB_HOST', 'localhost');
-   define('DB_NAME', 'tigement');
-   define('DB_USER', 'your_username');
-   define('DB_PASS', 'your_password');
+   Edit `.env` with your settings:
+   ```env
+   DATABASE_URL=postgresql://user:password@localhost:5432/tigement
+   JWT_SECRET=your-super-secret-jwt-key
+   JWT_REFRESH_SECRET=your-super-secret-refresh-key
+   SESSION_SECRET=your-session-secret
+   PORT=3000
+   FRONTEND_URL=http://localhost:8081
    ```
 
-   **Using Environment Variables** (recommended):
-   ```php
-   <?php
-   define('DB_HOST', getenv('MYSQL_HOST'));
-   define('DB_NAME', getenv('MYSQL_DATABASE'));
-   define('DB_USER', getenv('MYSQL_USER'));
-   define('DB_PASS', getenv('MYSQL_PASSWORD'));
-   ```
-
-2. **Create Database Schema**
-
-   ```sql
-   CREATE DATABASE tigement CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-   USE tigement;
-
-   CREATE TABLE tables (
-       id INT AUTO_INCREMENT PRIMARY KEY,
-       name VARCHAR(255) NOT NULL,
-       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-       INDEX idx_created_at (created_at)
-   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-   ```
-
-3. **Start the Server**
-
-   Using PHP built-in server:
-   ```bash
-   php -S localhost:8000
-   ```
-
-   Or configure your web server to point to the backend directory.
-
-4. **Test the Connection**
+3. **Run Database Migrations**
 
    ```bash
-   curl http://localhost:8000/api/test-db
+   npm run migrate
    ```
 
-   Expected response:
-   ```json
-   {
-     "success": true,
-     "data": {
-       "server_time": "2024-01-01 12:00:00"
-     }
-   }
+   This creates all necessary database tables and indexes.
+
+4. **Start Development Server**
+
+   ```bash
+   npm run dev
+   ```
+
+5. **Test the API**
+
+   ```bash
+   curl http://localhost:3000/api/health
    ```
 
 ## 📁 File Structure
 
 ```
 backend/
-├── index.php           # API entry point and routing
-├── Database.php        # Database connection class
-├── config.php          # Database configuration (create from config.example.php)
-└── config.example.php  # Configuration template
+├── src/
+│   ├── server.ts         # Express app setup
+│   ├── db/
+│   │   ├── index.ts      # Database connection pool
+│   │   ├── migrate.ts    # Migration runner
+│   │   └── migrations/   # SQL migration files
+│   ├── routes/           # API route handlers
+│   │   ├── auth.ts       # Authentication
+│   │   ├── workspace.ts  # Workspace management
+│   │   ├── calendar.ts   # Calendar/iCal
+│   │   ├── payment.ts    # Payment processing
+│   │   └── ...
+│   ├── middleware/       # Express middleware
+│   │   ├── auth.ts       # JWT authentication
+│   │   └── admin.ts      # Admin authorization
+│   └── services/         # Business logic
+│       ├── btcpay.ts     # BTCPay Server integration
+│       ├── stripe.ts     # Stripe integration
+│       ├── paypal.ts     # PayPal integration
+│       ├── email.ts      # Email sending
+│       └── oauth.ts      # OAuth providers
+├── package.json
+└── tsconfig.json
 ```
 
 ## 🔌 API Endpoints
 
-### Test Database Connection
+### Authentication
 
-```http
-GET /api/test-db
-```
+- `POST /api/auth/register` - Register new user
+- `POST /api/auth/login` - Login with email/password
+- `POST /api/auth/refresh` - Refresh JWT token
+- `POST /api/auth/logout` - Logout
 
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "server_time": "2024-01-01 12:00:00"
-  }
-}
-```
+### Workspace
 
-### List All Tables
+- `GET /api/workspace` - Get encrypted workspace data
+- `POST /api/workspace` - Save encrypted workspace data
 
-```http
-GET /api/tables
-```
+### Calendar (Premium)
 
-**Response:**
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": 1,
-      "name": "Table 1",
-      "created_at": "2024-01-01 12:00:00",
-      "updated_at": "2024-01-01 12:00:00"
-    }
-  ]
-}
-```
+- `POST /api/calendar/token` - Generate iCal subscription token
+- `GET /api/calendar/:token/feed.ics` - iCal feed
 
-### Create New Table
+### Payments
 
-```http
-POST /api/tables
-Content-Type: application/json
+- `GET /api/payment/settings` - Get payment configuration
+- `POST /api/payment/btcpay/create-invoice` - Create BTCPay invoice
+- `POST /api/payment/stripe/create-checkout` - Create Stripe checkout
+- `POST /api/payment/paypal/create-order` - Create PayPal order
 
-{
-  "name": "New Table"
-}
-```
+### Admin
 
-**Response:**
-```json
-{
-  "success": true,
-  "id": 2
-}
-```
+- `GET /api/admin/users` - List all users (admin only)
+- `GET /api/admin/stats` - Get system statistics (admin only)
 
-### Error Response
+## 🗄️ Database Schema
 
-All errors return a JSON response:
+The database uses PostgreSQL with 25+ migration files creating:
 
-```json
-{
-  "success": false,
-  "error": "Error message here"
-}
-```
+- **users** - User accounts and authentication
+- **subscriptions** - Premium subscription tracking
+- **workspaces** - Encrypted workspace data storage
+- **refresh_tokens** - JWT refresh token management
+- **ical_tokens** - Calendar subscription tokens
+- **diary_entries** - Daily journal entries
+- **notebooks** - User notebooks
+- **calendar_events** - Unencrypted calendar data for iCal
+- **btcpay_invoices** - BTCPay Server payment tracking
+- **payment_methods** - Enabled payment gateways
+- **coupons** - Discount codes and referrals
+- **trusted_devices** - 2FA trusted device tracking
+- **backup_codes** - 2FA backup codes
+- **And more...**
 
-## 🏗️ Architecture
-
-### Database Class
-
-The `Database.php` file provides a PDO wrapper for database operations:
-
-```php
-$db = new Database();
-
-// Execute query
-$results = $db->query("SELECT * FROM tables");
-
-// Prepared statements
-$stmt = $db->prepare("INSERT INTO tables (name) VALUES (?)");
-$stmt->execute([$name]);
-
-// Get last insert ID
-$id = $db->lastInsertId();
-```
-
-### API Router
-
-The `index.php` file handles:
-- Request routing using regex patterns
-- HTTP method handling (GET, POST, etc.)
-- CORS preflight requests
-- JSON encoding/decoding
-- Error handling and HTTP status codes
-
-## 🔒 Security Considerations
+## 🔒 Security Best Practices
 
 ### Production Deployment
 
-1. **Never commit config.php** - Keep credentials secure
-2. **Use HTTPS** - Encrypt data in transit
-3. **Validate Input** - Always sanitize user input
-4. **Use Prepared Statements** - Prevent SQL injection (already implemented)
-5. **Set Proper CORS Headers** - Restrict allowed origins
-6. **Rate Limiting** - Implement request throttling
-7. **Authentication** - Add API authentication (JWT, OAuth)
+1. **Use strong secrets** - Generate with `openssl rand -base64 32`
+2. **Enable HTTPS** - Use reverse proxy (Nginx, Caddy)
+3. **Set NODE_ENV=production** - Disables debug features
+4. **Use environment variables** - Never commit secrets
+5. **Configure CORS properly** - Restrict allowed origins
+6. **Rate limiting** - Add rate limiting middleware
+7. **Keep dependencies updated** - Regular `npm audit` and updates
 
-### Recommended .htaccess
+### Environment Variables
 
-For Apache, create a `.htaccess` file:
+**Required:**
+- `DATABASE_URL` - PostgreSQL connection string
+- `JWT_SECRET` - Secret for access tokens
+- `JWT_REFRESH_SECRET` - Secret for refresh tokens
+- `SESSION_SECRET` - Secret for OAuth sessions
 
-```apache
-# Disable directory listing
-Options -Indexes
-
-# Protect config file
-<Files "config.php">
-    Require all denied
-</Files>
-
-# Enable CORS (adjust as needed)
-Header set Access-Control-Allow-Origin "*"
-Header set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
-Header set Access-Control-Allow-Headers "Content-Type, Authorization"
-
-# Rewrite rules for clean URLs (optional)
-RewriteEngine On
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule ^api/(.*)$ index.php [QSA,L]
-```
-
-## 🔧 Configuration Options
-
-### Database Connection
-
-The Database class uses PDO with these settings:
-- **Error Mode**: Exception mode for better error handling
-- **Fetch Mode**: Associative arrays by default
-- **Character Set**: UTF-8 (utf8mb4)
-- **Persistent Connections**: Can be enabled for performance
-
-### PHP Configuration
-
-Recommended `php.ini` settings:
-
-```ini
-; Error handling
-display_errors = Off
-log_errors = On
-error_log = /path/to/php-error.log
-
-; Security
-expose_php = Off
-allow_url_fopen = Off
-allow_url_include = Off
-
-; Performance
-opcache.enable = 1
-opcache.memory_consumption = 128
-```
+**Optional but Recommended:**
+- `ADMIN_EMAILS` - Comma-separated admin email list
+- `FRONTEND_URL` - Your frontend URL for redirects
+- `SMTP_*` - Email configuration for password reset
 
 ## 🧪 Testing
 
 ### Manual Testing with cURL
 
 ```bash
-# Test database connection
-curl http://localhost:8000/api/test-db
-
-# Get all tables
-curl http://localhost:8000/api/tables
-
-# Create a table
-curl -X POST http://localhost:8000/api/tables \
+# Register
+curl -X POST http://localhost:3000/api/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"name":"My Table"}'
-```
+  -d '{"email":"test@example.com","password":"password123"}'
 
-### Testing with Postman
+# Login
+curl -X POST http://localhost:3000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"password123"}'
 
-Import these endpoints into Postman:
-
-1. GET `http://localhost:8000/api/test-db`
-2. GET `http://localhost:8000/api/tables`
-3. POST `http://localhost:8000/api/tables` with JSON body
-
-## 📊 Database Schema
-
-### Tables Table
-
-```sql
-CREATE TABLE tables (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_created_at (created_at)
-);
-```
-
-### Future Extensions
-
-Consider adding these tables for full functionality:
-
-```sql
--- Users table
-CREATE TABLE users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(50) UNIQUE NOT NULL,
-    email VARCHAR(255) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Tasks table
-CREATE TABLE tasks (
-    id VARCHAR(36) PRIMARY KEY,
-    table_id INT,
-    name VARCHAR(255) NOT NULL,
-    start_time DATETIME,
-    end_time DATETIME,
-    duration INT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (table_id) REFERENCES tables(id) ON DELETE CASCADE
-);
-```
-
-## 🐛 Troubleshooting
-
-### Database Connection Failed
-
-1. Check MySQL is running: `mysql -u root -p`
-2. Verify credentials in `config.php`
-3. Ensure database exists: `SHOW DATABASES;`
-4. Check MySQL user permissions: `SHOW GRANTS FOR 'username'@'localhost';`
-
-### 500 Internal Server Error
-
-1. Check PHP error logs
-2. Verify file permissions
-3. Ensure all required PHP extensions are installed: `php -m`
-
-### CORS Issues
-
-Add proper CORS headers in `index.php`:
-
-```php
-header('Access-Control-Allow-Origin: http://localhost:5173');
-header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization');
+# Get workspace (requires token)
+curl http://localhost:3000/api/workspace \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
 ## 🚀 Deployment
 
-### Apache
+### Docker
 
-1. Configure virtual host
-2. Enable mod_rewrite
-3. Set document root to backend directory
-4. Configure .htaccess for routing
+See root `Dockerfile` for production container setup.
 
-### Nginx
+### Manual Deployment
 
-Example configuration:
+1. Build TypeScript:
+   ```bash
+   npm run build
+   ```
+
+2. Start production server:
+   ```bash
+   npm start
+   ```
+
+### With Reverse Proxy (Nginx)
 
 ```nginx
 server {
-    listen 80;
+    listen 443 ssl http2;
     server_name api.yourdomain.com;
-    root /path/to/backend;
-    index index.php;
 
-    location /api/ {
-        try_files $uri $uri/ /index.php?$query_string;
-    }
-
-    location ~ \.php$ {
-        fastcgi_pass unix:/var/run/php/php7.4-fpm.sock;
-        fastcgi_index index.php;
-        include fastcgi_params;
-        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
 }
-```
-
-### Docker
-
-Example Dockerfile:
-
-```dockerfile
-FROM php:7.4-apache
-
-# Install MySQL PDO extension
-RUN docker-php-ext-install pdo pdo_mysql
-
-# Copy application files
-COPY . /var/www/html/
-
-# Enable Apache mod_rewrite
-RUN a2enmod rewrite
-
-EXPOSE 80
 ```
 
 ## 🤝 Contributing
 
 When contributing to the backend:
 
-1. Follow PSR-12 coding standards
-2. Use prepared statements for all database queries
-3. Validate all user input
-4. Return consistent JSON responses
-5. Add error handling for all operations
+1. Follow TypeScript best practices
+2. Use async/await for all database operations
+3. Always use parameterized queries (prevent SQL injection)
+4. Add proper error handling
+5. Return consistent JSON responses
 6. Document new API endpoints
 
 ## 📄 License
 
 MIT License - see the root LICENSE file for details.
-
-## 📚 Resources
-
-- [PHP Manual](https://www.php.net/manual/)
-- [PDO Documentation](https://www.php.net/manual/en/book.pdo.php)
-- [MySQL Documentation](https://dev.mysql.com/doc/)
-- [REST API Best Practices](https://restfulapi.net/)
 

@@ -1,0 +1,19 @@
+{
+  "name": "Tigement - Task Management",
+  "short_name": "Tigement",
+  "description": "Task management and productivity app",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#4a6c7a",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
+

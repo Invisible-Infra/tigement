@@ -1,61 +1,42 @@
 # Tigement Frontend
 
-Vue 3 + TypeScript frontend application for Tigement table and task management system.
+React + TypeScript frontend application for Tigement task and workspace management system.
 
 ## 🛠️ Tech Stack
 
-- **Vue 3** - Progressive JavaScript framework with Composition API
+- **React 18** - UI library with hooks
 - **TypeScript** - Type-safe development
 - **Vite** - Next generation frontend tooling
-- **Vue Router** - Official router for Vue.js
-- **Pinia** - Intuitive state management
-- **Vitest** - Blazing fast unit test framework
-- **ESLint** - Code quality and consistency
-- **Prettier** - Code formatting
+- **Tailwind CSS** - Utility-first CSS framework
+- **React Context** - State management for auth and theme
 
 ## 📋 Features
 
 ### Components
 
-- **Table Management** (`components/table/`)
-  - TableList.vue - Display and manage multiple tables
-  - TableComponent.vue - Individual table component with drag-and-drop
+- **Workspace Management** - Drag-and-drop tables with multi-space support
+- **Task Tracking** - Time-based task management with duration calculation
+- **Notebooks** - Markdown editor with formatting toolbar
+- **Diary** - Daily journal entries with calendar view
+- **Authentication** - Login, register, OAuth integration
+- **Profile Management** - User settings, 2FA setup, encryption key management
+- **Premium Features** - Payment integration, advanced statistics
 
-- **Task Management** (`components/task/`)
-  - TaskList.vue - Task list container
-  - TaskItem.vue - Individual task with time tracking
+### End-to-End Encryption
 
-- **Authentication** (`components/auth/`)
-  - LoginForm.vue - User login
-  - RegisterForm.vue - User registration
+All workspace data is encrypted client-side before sending to the server:
+- Encryption key derived from user password or custom key
+- AES-GCM encryption algorithm
+- Server never sees unencrypted data
 
 ### Utilities
 
-- **auth.ts** - Authentication helpers
-- **csvUtils.ts** - CSV import/export functionality
-- **storageUtils.ts** - LocalStorage management
-- **timeUtils.ts** - Time formatting and calculation
-
-### Type Definitions
-
-```typescript
-// Task interface
-interface Task {
-  id: string
-  name: string
-  startTime: string
-  endTime: string
-  duration: string
-}
-
-// Table interface
-interface Table {
-  id: number
-  name: string
-  position: { x: number; y: number }
-  zIndex: number
-}
-```
+- **encryption.ts** - Client-side encryption/decryption
+- **encryptionKey.ts** - Encryption key management
+- **csvUtils.ts** - CSV export functionality
+- **dateFormat.ts** - Date formatting utilities
+- **syncManager.ts** - Background sync with conflict resolution
+- **backup.ts** - Local backup creation and restoration
 
 ## 🚀 Quick Start
 
@@ -73,7 +54,7 @@ Start the development server with hot-reload:
 npm run dev
 ```
 
-The application will be available at `http://localhost:5173/`
+The application will be available at `http://localhost:8081/`
 
 ### Build for Production
 
@@ -89,56 +70,14 @@ Preview the production build:
 npm run preview
 ```
 
-## 🧪 Testing
-
-### Run Unit Tests
-
-```bash
-npm run test
-```
-
-### Run Tests with UI
-
-```bash
-npm run test:ui
-```
-
-### Generate Coverage Report
-
-```bash
-npm run coverage
-```
-
 ## 🔧 Configuration
-
-### TypeScript Configuration
-
-The project uses multiple TypeScript configurations:
-
-- `tsconfig.json` - Base configuration
-- `tsconfig.app.json` - Application-specific config
-- `tsconfig.node.json` - Node.js (Vite) config
-- `tsconfig.vitest.json` - Vitest testing config
-
-### Vite Configuration
-
-Edit `vite.config.ts` to customize:
-
-- Base path
-- Build output directory
-- Plugin configuration
-- Development server settings
-
-### Router Configuration
-
-The router is configured with base path `/frontend/` in `src/router/index.ts`. Update this if deploying to a different path.
 
 ### Environment Variables
 
-Create a `.env` file in the frontend directory for environment-specific configuration:
+Create a `.env` file:
 
 ```env
-VITE_API_URL=http://localhost:8000/api
+VITE_API_URL=http://localhost:3000
 ```
 
 Access in your code:
@@ -146,99 +85,92 @@ Access in your code:
 const apiUrl = import.meta.env.VITE_API_URL
 ```
 
+### Vite Configuration
+
+Edit `vite.config.ts` to customize:
+- Development server settings
+- Proxy configuration
+- Build options
+- Plugin configuration
+
 ## 📁 Project Structure
 
 ```
 src/
-├── assets/           # Static assets (CSS, images)
-├── components/       # Vue components
+├── components/       # React components
 │   ├── auth/        # Authentication components
-│   ├── table/       # Table management components
-│   ├── task/        # Task management components
-│   └── icons/       # Icon components
-├── router/          # Vue Router configuration
-├── stores/          # Pinia stores
-├── types/           # TypeScript type definitions
+│   ├── admin/       # Admin panel components
+│   └── premium/     # Premium feature components
+├── contexts/        # React contexts
+│   ├── AuthContext.tsx   # Authentication state
+│   └── ThemeContext.tsx  # Theme management
 ├── utils/           # Utility functions
-├── views/           # Page-level components
-├── App.vue          # Root component
-└── main.ts          # Application entry point
+│   ├── encryption.ts     # E2E encryption
+│   ├── encryptionKey.ts  # Key management
+│   ├── syncManager.ts    # Background sync
+│   └── api.ts           # API client
+├── App.tsx          # Root component
+└── main.tsx         # Application entry point
 ```
 
 ## 🎨 Styling
 
-The application uses a custom CSS setup with:
+The application uses Tailwind CSS with custom themes:
+- Light theme
+- Dark theme
+- Custom color schemes
+- Responsive design
 
-- `assets/base.css` - CSS variables and base styles
-- `assets/main.css` - Main application styles
-- `style.css` - Additional styles
+Themes are managed via `ThemeContext` and stored in localStorage.
 
 ## 🔌 API Integration
 
-The frontend expects the backend API to be available. Configure the API URL in your environment or update the API calls in the components.
+The frontend communicates with the backend via REST API. All requests include JWT authentication tokens when user is logged in.
 
-Default API endpoints:
-- `GET /api/tables` - Fetch tables
-- `POST /api/tables` - Create table
+API client is centralized in `utils/api.ts`:
+
+```typescript
+import { api } from './utils/api'
+
+// Login
+await api.post('/auth/login', { email, password })
+
+// Get workspace
+const data = await api.get('/workspace')
+
+// Save workspace (encrypted)
+await api.post('/workspace', { encrypted_data })
+```
 
 ## 🛡️ Authentication
 
-The application supports two modes:
+The application supports multiple authentication methods:
 
-1. **Server Authentication** - Uses backend API for user management
-2. **Local Storage Mode** - Works offline using browser's localStorage
+1. **Email/Password** - Traditional authentication with bcrypt
+2. **OAuth Providers** - GitHub, Google, Apple, Facebook, Twitter
+3. **2FA** - TOTP-based two-factor authentication
+4. **Trusted Devices** - Reduce 2FA prompts for known devices
 
-Set `useLocal` in localStorage to enable local-only mode:
-```javascript
-localStorage.setItem('useLocal', 'true')
-```
+## 🔄 Sync Strategy
 
-## 📝 Code Quality
+The app implements intelligent background sync:
+- Auto-save on changes (debounced)
+- Conflict detection and resolution
+- Offline support with local storage
+- Merge capabilities for conflicting changes
 
-### Linting
-
-Check and fix code issues:
-
-```bash
-npm run lint
-```
-
-### Formatting
-
-Format code with Prettier:
-
-```bash
-npm run format
-```
-
-## 🔄 Development Workflow
+## 📝 Development Workflow
 
 1. Start the development server: `npm run dev`
 2. Make your changes
-3. Run tests: `npm run test`
-4. Check linting: `npm run lint`
-5. Build for production: `npm run build`
-
-## 📦 Dependencies
-
-### Production Dependencies
-- `vue` - Vue.js framework
-- `vue-router` - Routing
-- `pinia` - State management
-- `uuid` - UUID generation
-
-### Development Dependencies
-- `@vitejs/plugin-vue` - Vite Vue plugin
-- `typescript` - TypeScript compiler
-- `vitest` - Testing framework
-- `eslint` - Linting
-- `prettier` - Code formatting
+3. Test in browser
+4. Build for production: `npm run build`
 
 ## 🐛 Troubleshooting
 
 ### Port Already in Use
 
-If port 5173 is busy, Vite will automatically try the next available port. You can also specify a custom port:
+Vite will automatically try the next available port. You can also specify a custom port:
 
 ```bash
 npm run dev -- --port 3000
@@ -254,31 +186,22 @@ npm install
 npm run build
 ```
 
-### Type Errors
-
-Run type checking:
-
-```bash
-npm run type-check
-```
-
 ## 📚 Learn More
 
-- [Vue 3 Documentation](https://vuejs.org/)
+- [React Documentation](https://react.dev/)
 - [Vite Documentation](https://vitejs.dev/)
 - [TypeScript Documentation](https://www.typescriptlang.org/)
-- [Vitest Documentation](https://vitest.dev/)
-- [Pinia Documentation](https://pinia.vuejs.org/)
+- [Tailwind CSS Documentation](https://tailwindcss.com/)
 
 ## 🤝 Contributing
 
 When contributing to the frontend:
 
 1. Follow the existing code style
-2. Write unit tests for new features
-3. Update TypeScript types as needed
-4. Run linting and tests before submitting
-5. Keep components small and focused
+2. Use TypeScript for all new files
+3. Keep components small and focused
+4. Add proper error handling
+5. Test thoroughly before submitting
 
 ## 📄 License
 

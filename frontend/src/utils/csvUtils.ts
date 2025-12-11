@@ -1,172 +1,145 @@
-import type { Task } from '@/types'
-import Papa from 'papaparse'
-
-function escapeCSVField(field: string): string {
-  if (!field) return ''
-  // First escape any quotes by doubling them
-  return field.replace(/"/g, '""')
+interface Task {
+  id: string
+  title: string
+  duration: number
+  selected: boolean
 }
 
-export function tasksToCSV(tasks: Task[]): string {
-  // Prepare data in PapaParse format with pre-escaped fields
-  const data = {
-    fields: ['Start Time', 'End Time', 'Task Name', 'Duration'],
-    data: tasks.map(task => [
-      task.startTime,
-      task.endTime,
-      escapeCSVField(task.name),  // Pre-escape the task name
-      task.duration
-    ])
-  }
-
-  // Use PapaParse's unparse with proper config
-  return Papa.unparse(data, {
-    quotes: true,      // Quote all fields
-    quoteChar: '"',    // Use double quotes
-    delimiter: ',',    // Use comma as delimiter
-    header: true,      // Include header row
-    newline: '\n'      // Use \n for newlines
-  })
+interface Table {
+  id: string
+  type: 'day' | 'todo'
+  title: string
+  date?: string
+  startTime?: string
+  tasks: Task[]
+  position: { x: number; y: number }
 }
 
-export function downloadCSV(content: string, filename: string): void {
-  const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' })
-  const link = document.createElement('a')
+export function exportToCSV(tables: Table[]): string {
+  const rows: string[][] = []
   
-  // Create download link
-  link.href = URL.createObjectURL(blob)
+  // Header
+  rows.push(['Table ID', 'Table Title', 'Table Type', 'Date', 'Start Time', 'Task ID', 'Task Title', 'Duration (min)'])
+  
+  // Data rows
+  tables.forEach(table => {
+    if (table.tasks.length === 0) {
+      rows.push([
+        table.id,
+        table.title,
+        table.type,
+        table.date || '',
+        table.startTime || '',
+        '',
+        '',
+        ''
+      ])
+    } else {
+      table.tasks.forEach(task => {
+        rows.push([
+          table.id,
+          table.title,
+          table.type,
+          table.date || '',
+          table.startTime || '',
+          task.id,
+          task.title,
+          task.duration.toString()
+        ])
+      })
+    }
+  })
+  
+  // Convert to CSV string
+  return rows.map(row => 
+    row.map(cell => {
+      // Escape quotes and wrap in quotes if contains comma/quote/newline
+      const escaped = cell.replace(/"/g, '""')
+      return /[",\n]/.test(escaped) ? `"${escaped}"` : escaped
+    }).join(',')
+  ).join('\n')
+}
+
+export function downloadCSV(csv: string, filename: string = 'tigement-export.csv') {
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const link = document.createElement('a')
+  const url = URL.createObjectURL(blob)
+  
+  link.setAttribute('href', url)
   link.setAttribute('download', filename)
+  link.style.visibility = 'hidden'
+  
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
 }
 
-interface TableExport {
-  name: string;
-  tasks: Task[];
+export function importFromCSV(csv: string): Table[] {
+  const lines = csv.split('\n').filter(line => line.trim())
+  if (lines.length < 2) return []
+  
+  // Skip header
+  const dataLines = lines.slice(1)
+  
+  const tablesMap = new Map<string, Table>()
+  
+  dataLines.forEach(line => {
+    const cells = parseCSVLine(line)
+    if (cells.length < 8) return
+    
+    const [tableId, tableTitle, tableType, date, startTime, taskId, taskTitle, duration] = cells
+    
+    if (!tablesMap.has(tableId)) {
+      tablesMap.set(tableId, {
+        id: tableId,
+        type: (tableType as 'day' | 'todo') || 'todo',
+        title: tableTitle,
+        date: date || undefined,
+        startTime: startTime || '08:00',
+        tasks: [],
+        position: { x: 20, y: 20 }
+      })
+    }
+    
+    if (taskId && taskTitle) {
+      const table = tablesMap.get(tableId)!
+      table.tasks.push({
+        id: taskId,
+        title: taskTitle,
+        duration: duration ? parseInt(duration) : 30,
+        selected: false
+      })
+    }
+  })
+  
+  return Array.from(tablesMap.values())
 }
 
-export function tablesToCSV(tables: TableExport[]): string {
-  const csvParts: string[] = [];
+function parseCSVLine(line: string): string[] {
+  const cells: string[] = []
+  let current = ''
+  let inQuotes = false
   
-  tables.forEach((table, index) => {
-    // Add table name as a header
-    csvParts.push(`Table: ${escapeCSVField(table.name)}`);
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i]
+    const nextChar = line[i + 1]
     
-    // Add tasks
-    const tasksCsv = tasksToCSV(table.tasks);
-    csvParts.push(tasksCsv);
-    
-    // Add separator between tables (except for last table)
-    if (index < tables.length - 1) {
-      csvParts.push('\n---\n');
+    if (char === '"' && inQuotes && nextChar === '"') {
+      // Escaped quote
+      current += '"'
+      i++ // Skip next quote
+    } else if (char === '"') {
+      // Toggle quotes
+      inQuotes = !inQuotes
+    } else if (char === ',' && !inQuotes) {
+      // End of cell
+      cells.push(current)
+      current = ''
+    } else {
+      current += char
     }
-  });
-  
-  return csvParts.join('\n');
-}
-
-export function parseCSV(csv: string): Task[] {
-  try {
-    const lines = csv.trim().split('\n');
-    if (lines.length < 2) {
-      throw new Error('CSV must contain a header row and at least one task');
-    }
-
-    const tasks: Task[] = [];
-    const headerRow = lines[0].toLowerCase();
-    if (!headerRow.includes('start time') || !headerRow.includes('end time') || 
-        !headerRow.includes('task name') || !headerRow.includes('duration')) {
-      throw new Error('CSV header must contain Start Time, End Time, Task Name, and Duration columns');
-    }
-
-    // Skip header row
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue; // Skip empty lines
-
-      // Split by comma but handle quoted fields properly
-      const fields = line.match(/(?:^|,)("(?:[^"]|"")*"|[^,]*)/g)
-        ?.map(field => field.replace(/^,?"?|"?$/g, '').replace(/""/g, '"')) || [];
-
-      if (fields.length < 4) {
-        throw new Error(`Invalid number of fields at line ${i + 1}`);
-      }
-
-      const [startTime, endTime, name, duration] = fields;
-
-      // Validate time formats
-      if (!/^\d{2}:\d{2}$/.test(startTime) || !/^\d{2}:\d{2}$/.test(endTime) || 
-          !/^\d{2}:\d{2}$/.test(duration)) {
-        throw new Error(`Invalid time format at line ${i + 1}`);
-      }
-
-      tasks.push({
-        id: crypto.randomUUID(),
-        name,
-        startTime,
-        endTime,
-        duration
-      });
-    }
-
-    return tasks;
-  } catch (error) {
-    console.error('Task Parse Error:', error);
-    throw error;
   }
-}
-
-export function parseCSVToTables(csv: string): TableExport[] {
-  const tables: TableExport[] = [];
   
-  try {
-    // Split by table separator and handle empty sections
-    const sections = csv.split('\n---\n').filter(section => section.trim());
-    
-    if (sections.length === 0) {
-      throw new Error('No valid table data found in CSV');
-    }
-
-    sections.forEach((section, index) => {
-      const lines = section.trim().split('\n');
-      
-      if (lines.length === 0) {
-        throw new Error(`Empty section found at table ${index + 1}`);
-      }
-
-      // Parse table name
-      const tableNameLine = lines[0].trim();
-      if (!tableNameLine.startsWith('Table:')) {
-        console.error('Invalid line:', tableNameLine);
-        throw new Error(`Invalid table header format at table ${index + 1}`);
-      }
-
-      const tableName = tableNameLine.substring(6).trim();
-      
-      // Get tasks CSV content (include the header row)
-      const tasksCSV = lines.slice(1).join('\n');
-      if (!tasksCSV.trim()) {
-        throw new Error(`No task data found for table "${tableName}"`);
-      }
-
-      try {
-        const tasks = parseCSV(tasksCSV);
-        tables.push({
-          name: tableName,
-          tasks
-        });
-      } catch (err) {
-        const error = err as Error
-        throw new Error(`Error parsing tasks for table "${tableName}": ${error.message}`);
-      }
-    });
-
-    return tables;
-
-  } catch (error) {
-    console.error('CSV Parse Error:', error);
-    console.error('CSV Content:', csv);
-    throw error;
-  }
-} 
+  cells.push(current) // Last cell
+  return cells
+}

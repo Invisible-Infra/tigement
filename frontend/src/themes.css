@@ -1,0 +1,456 @@
+/* ============================================
+   TIGEMENT THEMES
+   ============================================ */
+
+/* Base theme variables */
+:root {
+  --color-primary: #4fc3f7;
+  --color-primary-hover: #3ba3d7;
+  --color-primary-dark: #4a6c7a;
+  --color-background: #ffffff;
+  --color-surface: #f5f5f5;
+  --color-text: #000000;
+  --color-text-secondary: #666666;
+  --color-border: #e0e0e0;
+  --color-error: #ef5350;
+  --color-success: #66bb6a;
+  --color-warning: #ffa726;
+}
+
+/* ============================================
+   LIGHT THEME (Default - Modern)
+   ============================================ */
+.theme-light {
+  --color-primary: #4fc3f7;
+  --color-primary-hover: #3ba3d7;
+  --color-primary-dark: #4a6c7a;
+  --color-background: #ffffff;
+  --color-surface: #f9f9f9;
+  --color-surface-elevated: #ffffff;
+  --color-text: #1a1a1a;
+  --color-text-secondary: #666666;
+  --color-text-muted: #999999;
+  --color-border: #e5e5e5;
+  --color-border-light: #f0f0f0;
+  --color-error: #ef5350;
+  --color-success: #66bb6a;
+  --color-warning: #ffa726;
+  --color-info: #42a5f5;
+  
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+}
+
+/* ============================================
+   CLASSIC THEME (Based on tigement.cz)
+   ============================================ */
+.theme-classic {
+  --color-primary: #4fc3f7;
+  --color-primary-hover: #3ba3d7;
+  --color-primary-dark: #4a6c7a;
+  --color-background: #b0b0b0;
+  --color-surface: #a0a0a0;
+  --color-surface-elevated: #c0c0c0;
+  --color-text: #000000;
+  --color-text-secondary: #333333;
+  --color-text-muted: #666666;
+  --color-border: #808080;
+  --color-border-light: #909090;
+  --color-error: #ff0000;
+  --color-success: #00ff00;
+  --color-warning: #ffff00;
+  --color-info: #00ffff;
+  
+  /* Classic styling */
+  --shadow-sm: 1px 1px 0 #000000;
+  --shadow-md: 2px 2px 0 #000000;
+  --shadow-lg: 3px 3px 0 #000000;
+}
+
+.theme-classic body {
+  font-family: "Courier New", monospace;
+}
+
+/* Classic beveled borders */
+.theme-classic .table-container,
+.theme-classic .modal {
+  border: 2px outset #999999;
+  box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.theme-classic button {
+  border: 2px outset #cccccc;
+  border-radius: 0;
+  box-shadow: 1px 1px 0 #000000;
+}
+
+.theme-classic button:active {
+  border-style: inset;
+}
+
+.theme-classic input,
+.theme-classic select,
+.theme-classic textarea {
+  border: 2px inset #cccccc;
+  border-radius: 0;
+  background: #ffffff;
+}
+
+/* Table headers - ensure proper contrast */
+.theme-classic .table-header {
+  background-color: #5a7c8a !important;
+  color: #ffffff !important;
+}
+
+/* Table title input - dark text for Classic theme */
+.theme-classic .table-title-input {
+  color: #000000 !important;
+}
+
+/* ============================================
+   DARK THEME (Modern Dark)
+   ============================================ */
+.theme-dark {
+  --color-primary: #4fc3f7;
+  --color-primary-hover: #6dd3ff;
+  --color-primary-dark: #2a5a6a;
+  --color-background: #1a1a1a;
+  --color-surface: #2a2a2a;
+  --color-surface-elevated: #353535;
+  --color-text: #e0e0e0;
+  --color-text-secondary: #a0a0a0;
+  --color-text-muted: #707070;
+  --color-border: #404040;
+  --color-border-light: #353535;
+  --color-error: #ff6b6b;
+  --color-success: #51cf66;
+  --color-warning: #ffd43b;
+  --color-info: #4dabf7;
+  
+  /* Shadows for dark theme */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.5);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.7);
+}
+
+.theme-dark body {
+  background-color: var(--color-background);
+  color: var(--color-text);
+}
+
+/* ============================================
+   TERMINAL THEME (ASCII/Hacker style)
+   ============================================ */
+.theme-terminal {
+  --color-primary: #00ff00;
+  --color-primary-hover: #00cc00;
+  --color-primary-dark: #00ff00;
+  --color-background: #000000;
+  --color-surface: #000000;
+  --color-surface-elevated: #000000;
+  --color-text: #00ff00;
+  --color-text-secondary: #00ff00;
+  --color-text-muted: #00aa00;
+  --color-border: #00ff00;
+  --color-border-light: #00ff00;
+  --color-error: #ff0000;
+  --color-success: #00ff00;
+  --color-warning: #ffff00;
+  --color-info: #00ffff;
+  
+  /* No shadows in terminal */
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+}
+
+.theme-terminal * {
+  font-family: "Courier New", "Consolas", monospace !important;
+  font-weight: normal !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+.theme-terminal body {
+  background-color: #000000;
+  color: #00ff00;
+}
+
+/* Remove ALL rounded corners */
+.theme-terminal button,
+.theme-terminal input,
+.theme-terminal select,
+.theme-terminal textarea,
+.theme-terminal .rounded,
+.theme-terminal .rounded-lg,
+.theme-terminal .rounded-md,
+.theme-terminal .rounded-sm,
+.theme-terminal .rounded-t-lg,
+.theme-terminal .rounded-b-lg {
+  border-radius: 0 !important;
+}
+
+/* ASCII-style borders - simple single line */
+.theme-terminal .table-container,
+.theme-terminal .modal,
+.theme-terminal button,
+.theme-terminal input,
+.theme-terminal select,
+.theme-terminal textarea {
+  border: 1px solid #00ff00 !important;
+  background-color: #000000 !important;
+  color: #00ff00 !important;
+}
+
+/* Table styling - add green borders */
+.theme-terminal > div > div,
+.theme-terminal [class*="bg-"],
+.theme-terminal [class*="table"] {
+  border: 1px solid #00ff00 !important;
+  background-color: #000000 !important;
+}
+
+/* Headers should be black with green text, not blue */
+.theme-terminal .bg-\[\#4a6c7a\],
+.theme-terminal .bg-\[\#5a7c8a\],
+.theme-terminal [style*="background"],
+.theme-terminal header,
+.theme-terminal nav {
+  background-color: #000000 !important;
+  color: #00ff00 !important;
+  border-bottom: 1px solid #00ff00 !important;
+}
+
+.theme-terminal .bg-\[\#5a7c8a\] * {
+  color: #00ff00 !important;
+}
+
+/* Override any blue/cyan colors to green */
+.theme-terminal .bg-\[\#4fc3f7\],
+.theme-terminal .text-\[\#4fc3f7\],
+.theme-terminal [class*="cyan"],
+.theme-terminal [class*="blue"] {
+  background-color: #000000 !important;
+  color: #00ff00 !important;
+  border-color: #00ff00 !important;
+}
+
+/* Buttons */
+.theme-terminal button {
+  border: 1px solid #00ff00 !important;
+  background-color: #000000 !important;
+  color: #00ff00 !important;
+}
+
+.theme-terminal button:hover {
+  background-color: #003300 !important;
+  border: 1px solid #00ff00 !important;
+}
+
+.theme-terminal button:disabled {
+  opacity: 0.5;
+  border: 1px solid #006600 !important;
+  color: #006600 !important;
+}
+
+/* Inputs */
+.theme-terminal input,
+.theme-terminal select,
+.theme-terminal textarea {
+  background-color: #000000 !important;
+  color: #00ff00 !important;
+  border: 1px solid #00ff00 !important;
+}
+
+.theme-terminal input::placeholder {
+  color: #006600 !important;
+}
+
+.theme-terminal input:focus,
+.theme-terminal select:focus,
+.theme-terminal textarea:focus {
+  outline: none !important;
+  border: 1px solid #00ff00 !important;
+  ring: none !important;
+}
+
+/* Simple approach: Strip emoji visually using a custom font stack */
+/* Monospace fonts typically don't render emoji well, showing boxes or nothing */
+.theme-terminal * {
+  font-family: "Courier New", "Consolas", "Monaco", monospace !important;
+}
+
+/* Make emoji characters invisible by setting their color to black (same as background) */
+/* This uses a hack: emoji are usually rendered by system fonts, we force monospace which often can't render them */
+.theme-terminal button {
+  color: #00ff00 !important;
+  /* Emoji won't render properly in Courier New, they'll show as empty boxes or nothing */
+}
+
+/* Hide ALL SVGs */
+.theme-terminal svg {
+  display: none !important;
+  visibility: hidden !important;
+}
+
+/* Make checkboxes ASCII-style */
+.theme-terminal input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 1px solid #00ff00 !important;
+  background-color: #000000 !important;
+}
+
+.theme-terminal input[type="checkbox"]:checked {
+  background-color: #000000 !important;
+  position: relative;
+}
+
+.theme-terminal input[type="checkbox"]:checked::after {
+  content: 'X';
+  position: absolute;
+  top: -2px;
+  left: 2px;
+  color: #00ff00;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+/* Remove gradients and fancy effects */
+.theme-terminal .bg-gradient-to-r,
+.theme-terminal .shadow,
+.theme-terminal .shadow-sm,
+.theme-terminal .shadow-md,
+.theme-terminal .shadow-lg,
+.theme-terminal .shadow-xl {
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+/* Terminal cursor effect */
+.theme-terminal .cursor-blink::after {
+  content: '_';
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+/* ============================================
+   APPLY THEME VARIABLES TO COMPONENTS
+   ============================================ */
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-text);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.bg-primary {
+  background-color: var(--color-primary) !important;
+}
+
+.bg-primary-dark {
+  background-color: var(--color-primary-dark) !important;
+}
+
+.bg-surface {
+  background-color: var(--color-surface) !important;
+}
+
+.text-primary {
+  color: var(--color-primary) !important;
+}
+
+.text-secondary {
+  color: var(--color-text-secondary) !important;
+}
+
+.border-color {
+  border-color: var(--color-border) !important;
+}
+
+/* Override some Tailwind classes with theme variables */
+.theme-dark .bg-white,
+.theme-terminal .bg-white {
+  background-color: var(--color-surface) !important;
+}
+
+.theme-dark .text-gray-700,
+.theme-dark .text-gray-600,
+.theme-dark .text-gray-500,
+.theme-terminal .text-gray-700,
+.theme-terminal .text-gray-600,
+.theme-terminal .text-gray-500 {
+  color: var(--color-text) !important;
+}
+
+.theme-dark .text-gray-800,
+.theme-dark .text-gray-900,
+.theme-terminal .text-gray-800,
+.theme-terminal .text-gray-900 {
+  color: var(--color-text) !important;
+}
+
+.theme-dark .border-gray-300,
+.theme-dark .border-gray-200,
+.theme-terminal .border-gray-300,
+.theme-terminal .border-gray-200 {
+  border-color: var(--color-border) !important;
+}
+
+.theme-dark .bg-gray-50,
+.theme-terminal .bg-gray-50 {
+  background-color: var(--color-surface) !important;
+}
+
+.theme-dark .hover\:bg-gray-50:hover,
+.theme-terminal .hover\:bg-gray-50:hover {
+  background-color: var(--color-surface-elevated) !important;
+}
+
+.theme-dark .bg-gray-100,
+.theme-terminal .bg-gray-100 {
+  background-color: var(--color-surface-elevated) !important;
+}
+
+.theme-dark .bg-gray-200 {
+  background-color: var(--color-surface-elevated) !important;
+}
+
+/* Dark theme specific fixes for forms */
+.theme-dark input,
+.theme-dark select,
+.theme-dark textarea {
+  background-color: var(--color-surface-elevated);
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+
+.theme-dark input::placeholder {
+  color: var(--color-text-muted);
+}
+
+/* Ensure text in hovered rows has proper contrast */
+.theme-dark .group:hover .text-gray-600,
+.theme-dark .group:hover .text-gray-700,
+.theme-classic .group:hover .text-gray-600,
+.theme-classic .group:hover .text-gray-700,
+.theme-terminal .group:hover .text-gray-600,
+.theme-terminal .group:hover .text-gray-700 {
+  color: var(--color-text) !important;
+}
+
+.theme-dark .group:hover .group-hover\:text-gray-900,
+.theme-classic .group:hover .group-hover\:text-gray-900,
+.theme-terminal .group:hover .group-hover\:text-gray-900 {
+  color: var(--color-text) !important;
+}
+

@@ -1,0 +1,207 @@
+/* Notebook markdown preview styling */
+.notebook-preview {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+  line-height: 1.6;
+  color: #1f2937;
+}
+
+.notebook-preview h1 {
+  font-size: 2em;
+  font-weight: 700;
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+  border-bottom: 2px solid #e5e7eb;
+  padding-bottom: 0.3em;
+  color: #111827;
+}
+
+.notebook-preview h2 {
+  font-size: 1.5em;
+  font-weight: 600;
+  margin-top: 0.8em;
+  margin-bottom: 0.4em;
+  color: #111827;
+}
+
+.notebook-preview h3 {
+  font-size: 1.25em;
+  font-weight: 600;
+  margin-top: 0.6em;
+  margin-bottom: 0.3em;
+  color: #111827;
+}
+
+.notebook-preview h4 {
+  font-size: 1.1em;
+  font-weight: 600;
+  margin-top: 0.5em;
+  margin-bottom: 0.2em;
+  color: #374151;
+}
+
+.notebook-preview h5,
+.notebook-preview h6 {
+  font-size: 1em;
+  font-weight: 600;
+  margin-top: 0.4em;
+  margin-bottom: 0.2em;
+  color: #374151;
+}
+
+.notebook-preview p {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+}
+
+.notebook-preview a {
+  color: #3b82f6;
+  text-decoration: underline;
+}
+
+.notebook-preview a:hover {
+  color: #2563eb;
+}
+
+.notebook-preview strong {
+  font-weight: 700;
+  color: #111827;
+}
+
+.notebook-preview em {
+  font-style: italic;
+}
+
+.notebook-preview code {
+  background-color: #f3f4f6;
+  padding: 0.2em 0.4em;
+  border-radius: 3px;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.9em;
+  color: #dc2626;
+}
+
+.notebook-preview pre {
+  background-color: #1e1e1e;
+  padding: 1em;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 1em 0;
+}
+
+.notebook-preview pre code {
+  background-color: transparent;
+  padding: 0;
+  color: #d4d4d4;
+  font-size: 0.875em;
+}
+
+.notebook-preview ul,
+.notebook-preview ol {
+  margin-left: 1.5em;
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+}
+
+.notebook-preview ul {
+  list-style-type: disc;
+}
+
+.notebook-preview ol {
+  list-style-type: decimal;
+}
+
+.notebook-preview li {
+  margin-top: 0.25em;
+  margin-bottom: 0.25em;
+}
+
+.notebook-preview blockquote {
+  border-left: 4px solid #d1d5db;
+  padding-left: 1em;
+  margin: 1em 0;
+  color: #6b7280;
+  font-style: italic;
+}
+
+.notebook-preview table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  border: 1px solid #d1d5db;
+}
+
+.notebook-preview table thead {
+  background-color: #f3f4f6;
+}
+
+.notebook-preview table th,
+.notebook-preview table td {
+  border: 1px solid #d1d5db;
+  padding: 0.5em 0.75em;
+  text-align: left;
+}
+
+.notebook-preview table th {
+  font-weight: 600;
+  color: #111827;
+}
+
+.notebook-preview hr {
+  border: none;
+  border-top: 2px solid #e5e7eb;
+  margin: 2em 0;
+}
+
+.notebook-preview img {
+  max-width: 100%;
+  height: auto;
+  margin: 1em 0;
+}
+
+.notebook-preview del {
+  text-decoration: line-through;
+  color: #6b7280;
+}
+
+/* Task lists (GitHub-flavored markdown) */
+.notebook-preview input[type="checkbox"] {
+  margin-right: 0.5em;
+}
+
+/* Dark mode support (optional - can be enabled based on theme) */
+.theme-dark .notebook-preview {
+  color: #e5e7eb;
+}
+
+.theme-dark .notebook-preview h1,
+.theme-dark .notebook-preview h2,
+.theme-dark .notebook-preview h3,
+.theme-dark .notebook-preview h4,
+.theme-dark .notebook-preview h5,
+.theme-dark .notebook-preview h6 {
+  color: #f9fafb;
+}
+
+.theme-dark .notebook-preview code {
+  background-color: #374151;
+  color: #fca5a5;
+}
+
+.theme-dark .notebook-preview table {
+  border-color: #4b5563;
+}
+
+.theme-dark .notebook-preview table th,
+.theme-dark .notebook-preview table td {
+  border-color: #4b5563;
+}
+
+.theme-dark .notebook-preview table thead {
+  background-color: #374151;
+}
+
+.theme-dark .notebook-preview blockquote {
+  border-left-color: #4b5563;
+  color: #9ca3af;
+}
+
