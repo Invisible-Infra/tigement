@@ -1,15 +1,15 @@
 # Tigement
 
-A modern table and task management application with end-to-end encryption, built with React and Node.js.
+A modern time management and task management application with end-to-end encryption.
 
 ## 📋 Overview
 
-Tigement is a privacy-focused, open-source application for managing tasks, tables, notebooks, and diary entries. It features a React TypeScript frontend with a Node.js/Express REST API backend, designed with security and ease of use in mind.
+Tigement is a privacy-focused, open-source application for managing tasks, time tables, notebooks, and diary entries, designed with security and ease of use in mind.
 
 ## ✨ Features
 
 - **Task Management**: Create and organize tasks with time tracking
-- **Table Management**: Drag-and-drop table organization with spaces
+- **Time Table Management**: Drag-and-drop table organization with spaces
 - **Notebooks**: Markdown-based note-taking with rich formatting
 - **Diary**: Daily journal entries with calendar integration
 - **End-to-End Encryption**: Client-side encryption for complete privacy
