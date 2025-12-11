@@ -2,6 +2,8 @@
 
 A modern time management and task management application with end-to-end encryption.
 
+www.tigement.com
+
 ## 📋 Overview
 
 Tigement is a privacy-focused, open-source application for managing tasks, time tables, notebooks, and diary entries, designed with security and ease of use in mind.
