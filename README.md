@@ -232,15 +232,6 @@ Contributions are welcome! Please feel free to submit a Pull Request. For major 
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## ⚠️ Note
-
-This repository contains only the frontend and backend source code. It does not include:
-- Docker configuration files
-- Environment-specific configurations (.env files)
-- Deployment scripts
-- Production credentials
-- Database backups
-
 For deployment, you'll need to set up your own infrastructure and configuration based on your requirements.
 
 ## 🔗 Links
