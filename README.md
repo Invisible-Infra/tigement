@@ -2,7 +2,7 @@
 
 A modern time management and task management application with end-to-end encryption.
 
-www.tigement.com
+https://www.tigement.com
 
 ## 📋 Overview
 
