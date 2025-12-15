@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faBookOpen } from '@fortawesome/free-solid-svg-icons'
 
@@ -67,6 +67,7 @@ interface TableComponentProps {
   setBulkGroupSelectorTable: (id: string | null) => void
   hoveredTask: string | null
   setHoveredTask: (id: string | null) => void
+  highlightedTask: string | null
   
   // Drag and drop state
   draggedTask: { tableId: string; taskId: string; index: number } | null
@@ -91,14 +92,14 @@ interface TableComponentProps {
   moveTaskDown: (tableId: string, index: number) => void
   handleHandleTouchStart: (e: React.TouchEvent, tableId: string, taskId: string, index: number) => void
   handleHandleTouchEnd: () => void
-  handleDragStart: (tableId: string, taskId: string, index: number) => void
+  handleDragStart: (tableId: string, taskId: string, index: number, event?: React.DragEvent) => void
   handleDragEnd: () => void
   handleTouchMove: (e: React.TouchEvent) => void
   handleTouchEnd: (e: React.TouchEvent) => void
   updateTask: (tableId: string, taskId: string, field: string, value: any) => void
   startMoveLongPress: (e: React.TouchEvent, tableId: string, index: number) => void
   cancelMoveLongPress: () => void
-  openTaskNotebook: (tableId: string, taskId: string) => void
+  openTaskNotebook: (tableId: string, taskId: string, buttonElement?: HTMLElement) => void
   addTask: (tableId: string, index?: number) => void
   duplicateTask: (tableId: string, taskId: string, index: number) => void
   deleteTask: (tableId: string, taskId: string) => void
@@ -151,6 +152,7 @@ export function TableComponent({
   setBulkGroupSelectorTable,
   hoveredTask,
   setHoveredTask,
+  highlightedTask,
   draggedTask,
   dropTarget,
   draggedTable,
@@ -200,6 +202,8 @@ export function TableComponent({
   getThemeColor,
   tables
 }: TableComponentProps) {
+  const [spaceDropdownOpen, setSpaceDropdownOpen] = useState(false)
+  
   return (
     <div
       id={`table-${table.id}`}
@@ -272,20 +276,71 @@ export function TableComponent({
           
           {/* Space assignment dropdown - only in spaces view for TODO tables */}
           {table.type === 'todo' && spaces && handleAssignTableToSpace && (
-            <select
-              value={table.spaceId || 'all'}
-              onChange={(e) => handleAssignTableToSpace(table.id, e.target.value === 'all' ? null : e.target.value)}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white/20 text-white border border-white/30 rounded px-2 py-1 text-sm cursor-pointer hover:bg-white/30"
-              title="Assign to space"
-            >
-              <option value="all" style={{ color: '#000' }}>All Spaces</option>
-              {spaces.map((space) => (
-                <option key={space.id} value={space.id} style={{ color: '#000' }}>
-                  {space.icon || ''} {space.name}
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setSpaceDropdownOpen(!spaceDropdownOpen)
+                }}
+                className="bg-white/20 text-white border border-white/30 rounded px-2 py-1 text-sm cursor-pointer hover:bg-white/30 flex items-center gap-1"
+                title="Assign to space"
+              >
+                {(() => {
+                  const currentSpace = table.spaceId ? spaces.find(s => s.id === table.spaceId) : null
+                  if (currentSpace) {
+                    return (
+                      <>
+                        {currentSpace.icon && iconMap[currentSpace.icon] && (
+                          <FontAwesomeIcon icon={iconMap[currentSpace.icon]} className="text-xs" />
+                        )}
+                        <span>{currentSpace.name}</span>
+                      </>
+                    )
+                  }
+                  return <span>All Spaces</span>
+                })()}
+              </button>
+              
+              {spaceDropdownOpen && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-10" 
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setSpaceDropdownOpen(false)
+                    }}
+                  />
+                  <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded shadow-lg z-20 min-w-[150px]">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleAssignTableToSpace(table.id, null)
+                        setSpaceDropdownOpen(false)
+                      }}
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-gray-700"
+                    >
+                      All Spaces
+                    </button>
+                    {spaces.map((space) => (
+                      <button
+                        key={space.id}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleAssignTableToSpace(table.id, space.id)
+                          setSpaceDropdownOpen(false)
+                        }}
+                        className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-gray-700"
+                      >
+                        {space.icon && iconMap[space.icon] && (
+                          <FontAwesomeIcon icon={iconMap[space.icon]} className="text-xs" />
+                        )}
+                        <span>{space.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
           )}
           
           <div className="relative">
@@ -407,7 +462,7 @@ export function TableComponent({
                 data-table-id={table.id}
                 data-task-index={index}
                 style={isMobile && touchDragStart?.taskId === task.id ? { touchAction: 'none' } : undefined}
-                className={`group flex items-center ${isMobile ? 'gap-1 px-1 min-w-0' : 'gap-2 px-2'} py-1 border-b border-gray-200 hover:bg-gray-50 transition-all ${task.selected ? 'bg-blue-50' : ''} ${isDragging ? 'opacity-50' : ''} ${isPast ? 'bg-gray-100' : timeMatchStatus === 'match' ? 'bg-green-200 text-green-900' : timeMatchStatus === 'mismatch' ? 'bg-red-200 text-red-900' : ''} ${isCurrent ? 'font-bold' : ''}`}
+                className={`group flex items-center ${isMobile ? 'gap-1 px-1 min-w-0' : 'gap-2 px-2'} py-1 border-b hover:bg-gray-50 transition-all ${task.selected ? 'bg-blue-50' : ''} ${isDragging ? 'opacity-60 border-2 border-dashed !border-[#4fc3f7]' : 'border-gray-200'} ${isPast ? 'bg-gray-100' : timeMatchStatus === 'match' ? 'bg-green-200 text-green-900' : timeMatchStatus === 'mismatch' ? 'bg-red-200 text-red-900' : ''} ${isCurrent ? 'font-bold' : ''} ${highlightedTask === task.id ? 'task-highlight-pulse' : ''}`}
               >
               {/* Checkbox */}
               <input
@@ -434,7 +489,7 @@ export function TableComponent({
                 /* Desktop: Drag handle */
                 <div 
                   draggable={true}
-                  onDragStart={() => handleDragStart(table.id, task.id, index)}
+                  onDragStart={(e) => handleDragStart(table.id, task.id, index, e)}
                   onDragEnd={handleDragEnd}
                   className="flex items-center justify-center px-1 cursor-grab active:cursor-grabbing flex-shrink-0"
                   title="Drag to reorder"
@@ -645,7 +700,7 @@ export function TableComponent({
 
               {/* Notebook Icon */}
               <button
-                onClick={() => openTaskNotebook(table.id, task.id)}
+                onClick={(e) => openTaskNotebook(table.id, task.id, e.currentTarget)}
                 className="flex-shrink-0 px-1 hover:opacity-70 transition"
                 title={task.notebook ? "View notes" : "Add notes"}
               >

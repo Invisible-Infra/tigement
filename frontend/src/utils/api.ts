@@ -33,11 +33,16 @@ export interface WorkspaceData {
 class ApiClient {
   private accessToken: string | null = null
   private refreshToken: string | null = null
+  private onAuthFailureCallback: (() => void) | null = null
 
   constructor() {
     // Load tokens from localStorage
     this.accessToken = localStorage.getItem('accessToken')
     this.refreshToken = localStorage.getItem('refreshToken')
+  }
+
+  setAuthFailureHandler(callback: () => void) {
+    this.onAuthFailureCallback = callback
   }
 
   setTokens(accessToken: string, refreshToken: string) {
@@ -86,7 +91,21 @@ class ApiClient {
           throw new Error(`HTTP error! status: ${retryResponse.status}`)
         }
         return retryResponse.json()
+      } else {
+        // Refresh failed - user is truly logged out
+        console.error('🚨 Auth refresh failed - user is logged out')
+        if (this.onAuthFailureCallback) {
+          this.onAuthFailureCallback()
+        }
+        throw new Error('Authentication failed. Please log in again.')
       }
+    } else if (response.status === 401) {
+      // No refresh token or first 401 without retry
+      console.error('🚨 401 Unauthorized - session expired')
+      if (this.onAuthFailureCallback) {
+        this.onAuthFailureCallback()
+      }
+      throw new Error('Session expired. Please log in again.')
     }
 
     if (!response.ok) {
@@ -185,6 +204,29 @@ class ApiClient {
 
   async getWorkspaceVersion(): Promise<{ version: number; updatedAt: string | null }> {
     return this.request('/workspace/version')
+  }
+
+  // Migration endpoints
+  async getMigrationStatus(): Promise<{ 
+    needsMigration: boolean
+    plaintextCounts: { notebooks: number; diaries: number; archives: number }
+    hasWorkspace: boolean 
+  }> {
+    return this.request('/migration/status')
+  }
+
+  async fetchPlaintextData(): Promise<{
+    notebooks: Record<string, string>
+    diaries: Record<string, string>
+    archives: any[]
+  }> {
+    return this.request('/migration/fetch-plaintext')
+  }
+
+  async deletePlaintextData(): Promise<{ success: boolean }> {
+    return this.request('/migration/delete-plaintext', {
+      method: 'POST'
+    })
   }
 
   // Admin endpoints
@@ -492,6 +534,14 @@ class ApiClient {
     return this.request('/auth/oauth/passphrase', {
       method: 'POST',
       body: JSON.stringify({ oauthToken, passphrase, isNew }),
+    })
+  }
+
+  // Reset OAuth passphrase (deletes encrypted data)
+  async resetOAuthPassphrase(oauthToken: string): Promise<{ success: boolean }> {
+    return this.request('/auth/oauth/reset-passphrase', {
+      method: 'POST',
+      body: JSON.stringify({ oauthToken }),
     })
   }
 

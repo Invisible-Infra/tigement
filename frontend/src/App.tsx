@@ -5,6 +5,8 @@ import { loadTables, loadNotebooks, saveTables, saveNotebooks, hasShownAnonMerge
 import { detectNonEmptyLocalData, planMerge, applyMerge, type MergeWorkspace } from './utils/mergeLocalData'
 import { syncManager } from './utils/syncManager'
 import { MergeLocalDataDialog } from './components/MergeLocalDataDialog'
+import { MigrationDialog } from './components/MigrationDialog'
+import { exportBackup, downloadBackup } from './utils/backup'
 import { api } from './utils/api'
 import { decryptWorkspace } from './utils/encryption'
 import { encryptionKeyManager } from './utils/encryptionKey'
@@ -41,6 +43,8 @@ function AppContent() {
   const mergeDialogShownRef = useRef(false)
   const [version, setVersion] = useState<string>('alpha')
   const [oauthPassphraseDialog, setOauthPassphraseDialog] = useState<{ token: string; isNew: boolean } | null>(null)
+  const [showMigrationDialog, setShowMigrationDialog] = useState(false)
+  const [migrationStatus, setMigrationStatus] = useState<any>(null)
 
   // Calculate days until premium expires
   const getDaysUntilExpiry = (expiresAt?: string): number | null => {
@@ -67,6 +71,34 @@ function AppContent() {
       setResetToken(token)
     }
   }, [])
+
+  // Check migration status on mount when user is authenticated
+  useEffect(() => {
+    const checkMigration = async () => {
+      console.log('🔍 Migration check: isAuthenticated=', isAuthenticated, 'user=', user)
+      if (!isAuthenticated || !user) {
+        console.log('⏭️ Skipping migration check - not authenticated')
+        return
+      }
+      
+      try {
+        console.log('🔍 Checking migration status...')
+        const response = await api.getMigrationStatus()
+        console.log('📋 Migration status response:', response)
+        if (response.needsMigration) {
+          console.log('📦 User has plaintext data that needs migration:', response.plaintextCounts)
+          setMigrationStatus(response)
+          setShowMigrationDialog(true)
+        } else {
+          console.log('✅ No migration needed - user data is up to date')
+        }
+      } catch (error) {
+        console.error('❌ Failed to check migration status:', error)
+      }
+    }
+    
+    checkMigration()
+  }, [isAuthenticated, user])
 
   // If we have a reset token, show the reset password form
   if (resetToken) {
@@ -220,30 +252,124 @@ function AppContent() {
     try { clearStashedAnonData('pre_login') } catch {}
   }
 
-  // Allow triggering merge prompt later from Workspace menu
-  useEffect(() => {
-    const handler = () => {
-      // reset flag and re-run detection
-      try { localStorage.removeItem('tigement_anon_merge_prompt_shown') } catch {}
-      const anonTables = loadTables()
-      const anonNotebooks = loadNotebooks()
-      const detected = detectNonEmptyLocalData(anonTables, anonNotebooks)
-      const hasItems =
-        detected.nonEmptyTables.length > 0 ||
-        !!detected.nonEmptyNotebooks.workspace ||
-        Object.keys(detected.nonEmptyNotebooks.tasks || {}).length > 0
-      if (!hasItems) return
-      const current: MergeWorkspace = {
-        tables: loadTables() || [],
-        notebooks: loadNotebooks() || { workspace: '', tasks: {} }
+  const handleDownloadBackup = async () => {
+    try {
+      // First fetch plaintext data from backend if migration is needed
+      if (migrationStatus?.needsMigration) {
+        console.log('📥 Fetching plaintext data for backup...')
+        const plaintextData = await api.fetchPlaintextData()
+        
+        // Temporarily save to localStorage so exportBackup() includes it
+        if (Object.keys(plaintextData.notebooks).length > 0) {
+          const notebooksStructure: { workspace: string; tasks: Record<string, string> } = {
+            workspace: '',
+            tasks: {}
+          }
+          for (const [key, content] of Object.entries(plaintextData.notebooks)) {
+            if (key === 'workspace') {
+              notebooksStructure.workspace = content
+            } else if (key.startsWith('task-')) {
+              notebooksStructure.tasks[key.replace('task-', '')] = content
+            }
+          }
+          localStorage.setItem('tigement_notebooks', JSON.stringify(notebooksStructure))
+        }
+        if (Object.keys(plaintextData.diaries).length > 0) {
+          localStorage.setItem('tigement_diary_entries', JSON.stringify(plaintextData.diaries))
+        }
+        if (plaintextData.archives.length > 0) {
+          localStorage.setItem('tigement_archived_tables', JSON.stringify(plaintextData.archives))
+        }
+        console.log('✅ Plaintext data loaded into localStorage for backup')
       }
-      setServerSnapshot(current)
-      setDetectedLocal(detected)
-      setShowMergeDialog(true)
+      
+      const backupJson = exportBackup()
+      downloadBackup(backupJson)
+      console.log('✅ Backup downloaded successfully')
+    } catch (error) {
+      console.error('Failed to download backup:', error)
+      throw error
     }
-    window.addEventListener('tigement:request-merge' as any, handler as any)
-    return () => window.removeEventListener('tigement:request-merge' as any, handler as any)
-  }, [])
+  }
+
+  const handleMigrationComplete = async () => {
+    try {
+      console.log('🔄 Starting migration process...')
+      console.log('⏰ Migration started at:', new Date().toISOString())
+      
+      // 1. Fetch plaintext data from backend
+      console.log('📥 Step 1/4: Fetching plaintext data from server...')
+      const plaintextData = await api.fetchPlaintextData()
+      console.log('✅ Step 1 complete - Fetched plaintext data:', {
+        notebooks: Object.keys(plaintextData.notebooks).length,
+        diaries: Object.keys(plaintextData.diaries).length,
+        archives: plaintextData.archives.length
+      })
+      console.log('📄 Plaintext data details:', plaintextData)
+
+      // 2. Save to localStorage (transform notebooks structure)
+      console.log('💾 Step 2/4: Saving to localStorage...')
+      if (Object.keys(plaintextData.notebooks).length > 0) {
+        // Transform flat structure to nested structure
+        const notebooksStructure: { workspace: string; tasks: Record<string, string> } = {
+          workspace: '',
+          tasks: {}
+        }
+        
+        for (const [key, content] of Object.entries(plaintextData.notebooks)) {
+          if (key === 'workspace') {
+            notebooksStructure.workspace = content
+          } else if (key.startsWith('task-')) {
+            const taskId = key.replace('task-', '')
+            notebooksStructure.tasks[taskId] = content
+          }
+        }
+        
+        localStorage.setItem('tigement_notebooks', JSON.stringify(notebooksStructure))
+        console.log('📓 Saved notebooks:', { 
+          hasWorkspace: !!notebooksStructure.workspace,
+          taskCount: Object.keys(notebooksStructure.tasks).length 
+        })
+      }
+      if (Object.keys(plaintextData.diaries).length > 0) {
+        localStorage.setItem('tigement_diary_entries', JSON.stringify(plaintextData.diaries))
+        console.log('📔 Saved', Object.keys(plaintextData.diaries).length, 'diary entries')
+      }
+      if (plaintextData.archives.length > 0) {
+        localStorage.setItem('tigement_archived_tables', JSON.stringify(plaintextData.archives))
+        console.log('🗄️ Saved', plaintextData.archives.length, 'archived tables')
+      }
+      console.log('✅ Step 2 complete - Data saved to localStorage')
+
+      // 3. Trigger encrypted sync
+      console.log('🔐 Step 3/4: Triggering encrypted workspace sync...')
+      syncManager.markLocalModified()
+      const pushResult = await syncManager.forcePush()
+      console.log('✅ Step 3 complete - Data encrypted and synced to server:', pushResult)
+
+      // 4. Delete plaintext from backend
+      console.log('🗑️ Step 4/4: Deleting plaintext data from server...')
+      const deleteResult = await api.deletePlaintextData()
+      console.log('✅ Step 4 complete - Plaintext data deleted from server:', deleteResult)
+
+      console.log('🎉 Migration complete!')
+      console.log('⏰ Migration finished at:', new Date().toISOString())
+      setShowMigrationDialog(false)
+      
+      // Small delay to ensure backend has processed the delete
+      console.log('⏳ Waiting 1 second before reload to ensure backend processed delete...')
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      
+      // Reload to ensure fresh state
+      console.log('🔄 Reloading page...')
+      window.location.reload()
+    } catch (error) {
+      console.error('❌ Migration failed at step:', error)
+      console.error('❌ Error details:', error)
+      alert(`Migration failed: ${error instanceof Error ? error.message : 'Unknown error'}. Check console for details.`)
+    }
+  }
+
   return (
     <div className="h-screen overflow-hidden bg-gray-50 flex flex-col">
       <nav className="flex-shrink-0 bg-[#4a6c7a] text-white p-4 md:pr-4 pr-16">
@@ -428,6 +554,18 @@ function AppContent() {
         onMerge={handleMergeConfirm}
         onSkip={handleMergeSkip}
       />
+
+      {/* Migration Dialog for encrypting plaintext data */}
+      {showMigrationDialog && (
+        <MigrationDialog
+          open={showMigrationDialog}
+          onDownloadBackup={handleDownloadBackup}
+          onSkipBackup={() => {
+            console.log('⚠️ User skipped backup before migration')
+          }}
+          onComplete={handleMigrationComplete}
+        />
+      )}
 
       {/* OAuth Encryption Passphrase Dialog */}
       {oauthPassphraseDialog && (

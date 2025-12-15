@@ -96,7 +96,38 @@ export function saveNotebooks(notebooks: { workspace: string; tasks: Record<stri
 export function loadNotebooks(): { workspace: string; tasks: Record<string, string> } | null {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.NOTEBOOKS)
-    return data ? JSON.parse(data) : null
+    if (!data) return null
+    
+    const parsed = JSON.parse(data)
+    
+    // Ensure correct structure (handle old flat format)
+    if (parsed && typeof parsed === 'object') {
+      // If it's the old flat format {'workspace': '', 'task-123': ''}
+      // Convert to new format {workspace: '', tasks: {'123': ''}}
+      if (!('workspace' in parsed) && !('tasks' in parsed)) {
+        const newFormat: { workspace: string; tasks: Record<string, string> } = {
+          workspace: '',
+          tasks: {}
+        }
+        for (const [key, value] of Object.entries(parsed)) {
+          if (key === 'workspace') {
+            newFormat.workspace = value as string
+          } else if (key.startsWith('task-')) {
+            newFormat.tasks[key.replace('task-', '')] = value as string
+          }
+        }
+        return newFormat
+      }
+      
+      // Ensure tasks property exists
+      if (!parsed.tasks) {
+        parsed.tasks = {}
+      }
+      
+      return parsed
+    }
+    
+    return null
   } catch (error) {
     console.error('Failed to load notebooks:', error)
     return null

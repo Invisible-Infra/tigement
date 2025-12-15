@@ -14,13 +14,16 @@ import { FeatureRequestDialog } from './FeatureRequestDialog'
 import { SplitView } from './SplitView'
 import { SpaceTabs } from './SpaceTabs'
 import { TableComponent } from './TableComponent'
+import { BottomNav } from './BottomNav'
 import { exportToCSV, downloadCSV, importFromCSV } from '../utils/csvUtils'
 import { saveTables, loadTables, saveSettings, loadSettings, saveTaskGroups, loadTaskGroups, saveNotebooks, loadNotebooks, saveArchivedTables, loadArchivedTables, saveDiaryEntries, loadDiaryEntries } from '../utils/storage'
 import { normalizeDate } from '../utils/dateFormat'
 import { useAuth } from '../contexts/AuthContext'
 import { syncManager } from '../utils/syncManager'
+import { downloadICS } from '../utils/icsExport'
 import { useTheme } from '../contexts/ThemeContext'
 import { api } from '../utils/api'
+import { flashFavicon } from '../utils/faviconNotification'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { 
   faBriefcase, 
@@ -364,10 +367,12 @@ interface WorkspaceProps {
 }
 
 export function Workspace({ onShowPremium }: WorkspaceProps) {
-  const { user, syncNow, loading, decryptionFailure } = useAuth()
+  const { user, syncNow, loading, decryptionFailure, authError, clearAuthError } = useAuth()
   const { theme } = useTheme()
   const [syncing, setSyncing] = useState(false)
+  const [syncSuccess, setSyncSuccess] = useState(false)
   const [hasLoadedUser, setHasLoadedUser] = useState(false)
+  const [lastSyncInfo, setLastSyncInfo] = useState<{ time: Date | null; direction: 'uploaded' | 'downloaded' | null }>({ time: null, direction: null })
   
   // Get text color based on theme for time fields
   const getTimeTextColor = (timeMatchStatus?: 'match' | 'mismatch' | null) => {
@@ -412,6 +417,17 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
   const [dropTarget, setDropTarget] = useState<{ tableId: string; index: number } | null>(null)
   const [draggedTable, setDraggedTable] = useState<{ id: string; offsetX: number; offsetY: number } | null>(null)
   const [touchDragStart, setTouchDragStart] = useState<{ y: number; taskId: string; tableId: string; index: number } | null>(null)
+  const [draggedPinnedItem, setDraggedPinnedItem] = useState<{ itemId: string; index: number } | null>(null)
+  const [pinnedDropTarget, setPinnedDropTarget] = useState<number | null>(null)
+  const [dragGhost, setDragGhost] = useState<{ x: number; y: number; taskName: string } | null>(null)
+  
+  // Global sound notification state
+  const [audioContext, setAudioContext] = useState<AudioContext | null>(null)
+  const [lastNotifiedTaskId, setLastNotifiedTaskId] = useState<string | null>(null)
+  const [soundNotificationsEnabled, setSoundNotificationsEnabled] = useState(() => {
+    const saved = localStorage.getItem('tigement_sound_notifications_enabled')
+    return saved !== null ? JSON.parse(saved) : true // Default: enabled
+  })
   const [touchDragCurrent, setTouchDragCurrent] = useState<number | null>(null)
   const [hoveredTask, setHoveredTask] = useState<string | null>(null)
   const handleLongPressTimer = useRef<number | null>(null)
@@ -462,6 +478,14 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
       return next
     })
   }
+
+  const togglePin = (itemId: string) => {
+    setPinnedItems(prev => 
+      prev.includes(itemId)
+        ? prev.filter(id => id !== itemId)
+        : [...prev, itemId]
+    )
+  }
   
   const [taskGroups, setTaskGroups] = useState<TaskGroup[]>(() => {
     const saved = loadTaskGroups()
@@ -473,6 +497,11 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
   const [newGroupName, setNewGroupName] = useState('')
   const [newGroupIcon, setNewGroupIcon] = useState('briefcase')
   const [newGroupColor, setNewGroupColor] = useState('#dbeafe')
+  const [showSpaceEditor, setShowSpaceEditor] = useState(false)
+  const [editingSpace, setEditingSpace] = useState<Space | null>(null)
+  const [newSpaceName, setNewSpaceName] = useState('')
+  const [newSpaceIcon, setNewSpaceIcon] = useState('briefcase')
+  const [newSpaceColor, setNewSpaceColor] = useState('#3b82f6')
   const [bulkActionsOpen, setBulkActionsOpen] = useState<string | null>(null)
   const [bulkGroupSelectorTable, setBulkGroupSelectorTable] = useState<string | null>(null)
   const [archivedTables, setArchivedTables] = useState<ArchivedTable[]>([])
@@ -490,7 +519,13 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
   const [diaryEntries, setDiaryEntries] = useState<Record<string, string>>({})
   const [diaryEntriesList, setDiaryEntriesList] = useState<Array<{ date: string; preview: string }>>([])
   const [showDiaryList, setShowDiaryList] = useState(false)
+  const [highlightedTask, setHighlightedTask] = useState<string | null>(null)
   const [diaryListPosition, setDiaryListPosition] = useState({ x: 100, y: 100 })
+  const [notebookAnimation, setNotebookAnimation] = useState<{ from: { x: number; y: number }; to: { x: number; y: number }; taskId: string } | null>(null)
+  const [pinnedItems, setPinnedItems] = useState<string[]>(() => {
+    const saved = localStorage.getItem('tigement_pinned_items')
+    return saved ? JSON.parse(saved) : ['sync-now', 'settings', 'undo', 'redo']
+  })
   const [openDiaryEntry, setOpenDiaryEntry] = useState<{ date: string; position: { x: number; y: number } } | null>(null)
   const [durationPickerTask, setDurationPickerTask] = useState<{ tableId: string; taskId: string } | null>(null)
   const [timePickerTable, setTimePickerTable] = useState<string | null>(null)
@@ -512,6 +547,154 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
 
     return () => clearInterval(timer)
   }, [])
+
+  // Sync pinnedItems to localStorage
+  useEffect(() => {
+    localStorage.setItem('tigement_pinned_items', JSON.stringify(pinnedItems))
+  }, [pinnedItems])
+
+  // Track mouse movement during drag to update ghost position
+  useEffect(() => {
+    if (!dragGhost) return
+    
+    const handleDragOver = (e: DragEvent) => {
+      // dragover fires continuously during drag, unlike drag event
+      if (e.clientX !== 0 && e.clientY !== 0) {
+        setDragGhost(prev => prev ? { ...prev, x: e.clientX, y: e.clientY } : null)
+      }
+    }
+    
+    const handleMouseMove = (e: MouseEvent) => {
+      // Fallback for when dragover doesn't fire (e.g., over certain elements)
+      if (e.clientX !== 0 && e.clientY !== 0) {
+        setDragGhost(prev => prev ? { ...prev, x: e.clientX, y: e.clientY } : null)
+      }
+    }
+    
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Cancel drag on Escape key
+      if (e.key === 'Escape') {
+        console.log('Escape pressed, clearing drag ghost')
+        setDragGhost(null)
+        setDraggedTask(null)
+        setDropTarget(null)
+      }
+    }
+    
+    // Use both dragover and mousemove for smooth tracking everywhere
+    document.addEventListener('dragover', handleDragOver, true) // Use capture phase
+    document.addEventListener('mousemove', handleMouseMove, true)
+    document.addEventListener('keydown', handleKeyDown)
+    
+    return () => {
+      document.removeEventListener('dragover', handleDragOver, true)
+      document.removeEventListener('mousemove', handleMouseMove, true)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [dragGhost])
+
+  // Initialize AudioContext on first user interaction
+  useEffect(() => {
+    const initAudioContext = () => {
+      if (!audioContext && soundNotificationsEnabled) {
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
+        if (AudioContextClass) {
+          const ctx = new AudioContextClass()
+          setAudioContext(ctx)
+          console.log('✅ Global AudioContext initialized')
+        }
+      }
+    }
+    
+    // Initialize on first click
+    const handleFirstClick = () => {
+      initAudioContext()
+      document.removeEventListener('click', handleFirstClick)
+    }
+    
+    document.addEventListener('click', handleFirstClick)
+    return () => document.removeEventListener('click', handleFirstClick)
+  }, [audioContext, soundNotificationsEnabled])
+
+  // Global sound notifications for task endings
+  useEffect(() => {
+    // Skip global notifications if Timer is open (Timer handles its own)
+    if (!soundNotificationsEnabled || showTimer) return
+    
+    // Find all day tables and check for tasks ending now
+    const dayTables = tables.filter(t => t.type === 'day')
+    const now = currentTime
+    
+    for (const table of dayTables) {
+      const tableTimes = calculateTimes(table)
+      table.tasks.forEach((task, index) => {
+        const taskTimes = tableTimes[index]
+        if (!taskTimes) return
+        
+        // Parse end time
+        const [endHours, endMinutes] = taskTimes.end.split(':').map(Number)
+        const taskEndDate = new Date(normalizeDate(table.date))
+        taskEndDate.setHours(endHours, endMinutes, 0, 0)
+        
+        // Check if task just ended (within last second)
+        const timeDiff = now.getTime() - taskEndDate.getTime()
+        if (timeDiff >= 0 && timeDiff < 1000 && lastNotifiedTaskId !== task.id) {
+          console.log('⏰ Task ended globally:', task.title)
+          setLastNotifiedTaskId(task.id)
+          
+          // Play sound
+          playNotificationSound()
+          
+          // Flash favicon
+          flashFavicon(5)
+          
+          // Reset after 5 seconds to allow re-notification if page was just loaded
+          setTimeout(() => setLastNotifiedTaskId(null), 5000)
+        }
+      })
+    }
+  }, [tables, currentTime, soundNotificationsEnabled, lastNotifiedTaskId, showTimer])
+
+  const playNotificationSound = async () => {
+    try {
+      if (!audioContext) {
+        console.warn('⚠️ AudioContext not initialized')
+        return
+      }
+
+      if (audioContext.state === 'suspended') {
+        await audioContext.resume()
+      }
+      
+      // Play three beeps
+      const beep = (delay: number) => {
+        const oscillator = audioContext.createOscillator()
+        const gainNode = audioContext.createGain()
+
+        oscillator.connect(gainNode)
+        gainNode.connect(audioContext.destination)
+
+        oscillator.frequency.value = 800
+        oscillator.type = 'sine'
+
+        const startTime = audioContext.currentTime + delay
+        gainNode.gain.setValueAtTime(0, startTime)
+        gainNode.gain.linearRampToValueAtTime(0.3, startTime + 0.01)
+        gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + 0.2)
+
+        oscillator.start(startTime)
+        oscillator.stop(startTime + 0.2)
+      }
+
+      beep(0)
+      beep(0.25)
+      beep(0.5)
+      
+      console.log('🔔 Sound played globally')
+    } catch (error) {
+      console.error('❌ Failed to play sound:', error)
+    }
+  }
 
   // Track when user data has been loaded initially
   useEffect(() => {
@@ -658,6 +841,30 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
       }
     }
   }, [currentTableIndex, isMobile])
+
+  // Listen for sync updates from background sync
+  useEffect(() => {
+    const handleSyncUpdate = (event: CustomEvent) => {
+      const { tables: newTables, settings: newSettings, taskGroups: newTaskGroups } = event.detail
+      
+      // Only update if not currently editing to avoid conflicts
+      const isEditing = document.activeElement?.tagName === 'INPUT' || 
+                       document.activeElement?.tagName === 'TEXTAREA'
+      
+      if (isEditing) {
+        console.log('⏸️ User is editing, deferring sync update...')
+        return
+      }
+      
+      console.log('✅ Applying sync update to workspace')
+      setTables(newTables || [])
+      setSettings(prev => ({ ...prev, ...newSettings }))
+      setTaskGroups(newTaskGroups || defaultTaskGroups)
+    }
+    
+    window.addEventListener('tigement:sync-update', handleSyncUpdate as any)
+    return () => window.removeEventListener('tigement:sync-update', handleSyncUpdate as any)
+  }, [])
 
   // Keep currentTableIndex in bounds when tables change (only adjust if out of bounds)
   useEffect(() => {
@@ -891,8 +1098,25 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     return `${hours.toString().padStart(2, '0')}:${minutes}`
   }
 
-  const formatDate = (dateStr: string): string => {
-    const date = new Date(dateStr + 'T00:00:00')
+  const formatDate = (dateStr: string | null | undefined): string => {
+    if (!dateStr) return 'Unknown Date'
+    
+    try {
+      // Handle ISO timestamps by extracting just the date part
+      const dateOnly = dateStr.split('T')[0]
+      
+      // Validate date format (YYYY-MM-DD)
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) {
+        return 'Invalid Date'
+      }
+      
+      const date = new Date(dateOnly + 'T00:00:00')
+      
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        return 'Invalid Date'
+      }
+      
     const day = date.getDate().toString().padStart(2, '0')
     const month = (date.getMonth() + 1).toString().padStart(2, '0')
     const year = date.getFullYear()
@@ -906,6 +1130,10 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
         return `${year}-${month}-${day}`
       default:
         return `${day}. ${month}. ${year}`
+      }
+    } catch (error) {
+      console.error('Date formatting error:', error, 'Input:', dateStr)
+      return 'Invalid Date'
     }
   }
 
@@ -1040,22 +1268,8 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
   }, [tables])
 
   // Sync calendar for premium users (debounced, separate effect)
-  useEffect(() => {
-    if (user?.plan === 'premium') {
-      const dayTables = tables.filter(t => t.type === 'day')
-      if (dayTables.length > 0) {
-        // Debounce calendar sync to avoid duplicates
-        const timer = setTimeout(() => {
-          console.log('📅 Syncing calendar events...')
-          api.syncCalendar(dayTables).catch(err => {
-            console.error('Calendar sync failed:', err)
-          })
-        }, 1000) // Wait 1 second after last change
-        
-        return () => clearTimeout(timer)
-      }
-    }
-  }, [tables, user?.plan])
+  // iCal sync removed - now using client-side .ics export
+  // Users can export calendar via Data menu > Export Calendar (.ics)
 
   // Auto-save settings to localStorage
   useEffect(() => {
@@ -1240,6 +1454,13 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     
     setTables([...tables, newTable])
     focusTable(newTable.id) // Focus newly created table
+    
+    // On mobile, switch to the new table immediately
+    if (isMobile) {
+      const newIndex = tables.length // Index of the newly added table
+      setCurrentTableIndex(newIndex)
+      console.log(`📱 Switched to new table at index ${newIndex}`)
+    }
   }
 
   const deleteTable = (tableId: string) => {
@@ -1442,14 +1663,38 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     focusTable(tableId) // Focus table when task is moved
   }
 
-  const handleDragStart = (tableId: string, taskId: string, index: number) => {
+  const handleDragStart = (tableId: string, taskId: string, index: number, event?: React.DragEvent) => {
     setDraggedTask({ tableId, taskId, index })
+    
+    // Find the task to get its name for the ghost preview
+    const table = tables.find(t => t.id === tableId)
+    const task = table?.tasks.find(t => t.id === taskId)
+    if (task && event) {
+      setDragGhost({ x: event.clientX, y: event.clientY, taskName: task.title || 'Unnamed task' })
+      
+      // Hide default drag image
+      if (event.dataTransfer) {
+        const img = new Image()
+        img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+        event.dataTransfer.setDragImage(img, 0, 0)
+      }
+      
+      // Safety timeout: clear ghost after 10 seconds if drag end doesn't fire
+      setTimeout(() => {
+        if (dragGhost) {
+          console.log('Safety timeout: clearing stuck drag ghost')
+          setDragGhost(null)
+        }
+      }, 10000)
+    }
   }
 
   const handleDragEnd = () => {
     // Always reset drag state when drag ends (successful drop or cancelled)
+    console.log('Drag ended, clearing ghost')
     setDraggedTask(null)
     setDropTarget(null)
+    setDragGhost(null)
   }
 
   // Begin drag only from handle (icons) - mobile
@@ -1721,41 +1966,21 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     saveArchivedTables(archives)
     setArchivedTables(archives)
     
-    // Sync to backend if logged in
+    // Trigger workspace sync (archived tables now included in encrypted workspace blob)
     if (user) {
-      try {
-        const result = await api.archiveTable(table)
-        // Update local archive with backend ID
-        const updatedArchives = archives.map(a => 
-          a.id === archivedTable.id ? { ...a, id: result.id } : a
-        )
-        saveArchivedTables(updatedArchives)
-        setArchivedTables(updatedArchives)
-      } catch (error) {
-        console.error('Failed to sync archived table:', error)
-      }
+      syncManager.markLocalModified()
+      console.log('🗄️ Table archived - will sync via encrypted workspace')
     }
   }
 
   const restoreTable = async (archivedTable: ArchivedTable) => {
-    let tableData: Table
-    
-    // If we have table_data locally, use it
-    if (archivedTable.table_data) {
-      tableData = archivedTable.table_data
-    } 
-    // If it's a backend archive without table_data, fetch it
-    else if (user && typeof archivedTable.id === 'number') {
-      try {
-        tableData = await api.restoreArchivedTable(archivedTable.id)
-      } catch (error) {
-        console.error('Failed to restore archived table from backend:', error)
-        return
-      }
-    } else {
+    // All archived tables now have table_data locally (stored in encrypted workspace blob)
+    if (!archivedTable.table_data) {
       console.error('Cannot restore: no table data available')
       return
     }
+    
+    const tableData: Table = archivedTable.table_data
     
     // Remove from archived
     const archives = archivedTables.filter(a => a.id !== archivedTable.id)
@@ -1766,13 +1991,10 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     setTables([...tables, tableData])
     focusTable(tableData.id) // Focus restored table
     
-    // Delete from backend if logged in and has numeric ID
-    if (user && typeof archivedTable.id === 'number') {
-      try {
-        await api.deleteArchivedTable(archivedTable.id)
-      } catch (error) {
-        console.error('Failed to delete archived table from backend:', error)
-      }
+    // Trigger workspace sync (archived tables now included in encrypted workspace blob)
+    if (user) {
+      syncManager.markLocalModified()
+      console.log('🗄️ Table restored - will sync via encrypted workspace')
     }
   }
 
@@ -1788,16 +2010,30 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     }])
   }
 
-  const openTaskNotebook = (tableId: string, taskId: string) => {
+  const openTaskNotebook = (tableId: string, taskId: string, buttonElement?: HTMLElement) => {
     // Check if already open
     if (openNotebooks.some(nb => nb.taskId === taskId)) return
+    
+    const position = { x: 150 + openNotebooks.length * 50, y: 150 + openNotebooks.length * 50 }
+    
+    // Create fly-from-button animation if button element provided
+    if (buttonElement) {
+      const rect = buttonElement.getBoundingClientRect()
+      setNotebookAnimation({
+        from: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
+        to: position,
+        taskId
+      })
+      // Clear animation after it completes
+      setTimeout(() => setNotebookAnimation(null), 500)
+    }
     
     setOpenNotebooks([...openNotebooks, {
       id: `task-${taskId}`,
       type: 'task',
       taskId,
       tableId,
-      position: { x: 150 + openNotebooks.length * 50, y: 150 + openNotebooks.length * 50 }
+      position
     }])
   }
 
@@ -1861,13 +2097,10 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
       }
     })
     
-    // Sync to backend if logged in
+    // Trigger workspace sync (diaries now included in encrypted workspace blob)
     if (user) {
-      try {
-        await api.saveDiaryEntry(date, content)
-      } catch (error) {
-        console.error('Failed to sync diary entry:', error)
-      }
+      syncManager.markLocalModified()
+      console.log('📔 Diary entry saved - will sync via encrypted workspace')
     }
   }
 
@@ -1887,13 +2120,10 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
       // Update list
       setDiaryEntriesList(prev => prev.filter(e => e.date !== oldDate))
       
-      // Delete from backend if logged in
+      // Trigger workspace sync (diaries now included in encrypted workspace blob)
       if (user) {
-        try {
-          await api.deleteDiaryEntry(oldDate)
-        } catch (error) {
-          console.error('Failed to delete old diary entry:', error)
-        }
+        syncManager.markLocalModified()
+        console.log('📔 Diary entry date changed - will sync via encrypted workspace')
       }
       
       // Update open entry
@@ -1916,13 +2146,10 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     // Update list
     setDiaryEntriesList(prev => prev.filter(e => e.date !== date))
     
-    // Delete from backend if logged in
+    // Trigger workspace sync (diaries now included in encrypted workspace blob)
     if (user) {
-      try {
-        await api.deleteDiaryEntry(date)
-      } catch (error) {
-        console.error('Failed to delete diary entry:', error)
-      }
+      syncManager.markLocalModified()
+      console.log('📔 Diary entry deleted - will sync via encrypted workspace')
     }
     
     // Close entry and return to list
@@ -1938,13 +2165,10 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     notebooks.workspace = content
     saveNotebooks(notebooks)
     
-    // Sync to backend if logged in
+    // Trigger workspace sync (notebooks now included in encrypted workspace blob)
     if (user) {
-      try {
-        await api.saveWorkspaceNotebook(content)
-      } catch (error) {
-        console.error('Failed to sync workspace notebook:', error)
-      }
+      syncManager.markLocalModified()
+      console.log('📓 Workspace notebook saved - will sync via encrypted workspace')
     }
   }
 
@@ -1962,13 +2186,10 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     notebooks.tasks[taskId] = content
     saveNotebooks(notebooks)
     
-    // Sync to backend if logged in
+    // Trigger workspace sync (notebooks now included in encrypted workspace blob)
     if (user) {
-      try {
-        await api.saveTaskNotebook(taskId, content)
-      } catch (error) {
-        console.error('Failed to sync task notebook:', error)
-      }
+      syncManager.markLocalModified()
+      console.log('📓 Task notebook saved - will sync via encrypted workspace')
     }
   }
 
@@ -1978,14 +2199,16 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     if (notebooks) {
       setWorkspaceNotebook(notebooks.workspace || '')
       
-      // Update tasks with notebook content
-      setTables(tables.map(table => ({
-        ...table,
-        tasks: table.tasks.map(task => ({
-          ...task,
-          notebook: notebooks.tasks[task.id] || task.notebook
-        }))
-      })))
+      // Update tasks with notebook content (ensure tasks property exists)
+      if (notebooks.tasks) {
+        setTables(tables.map(table => ({
+          ...table,
+          tasks: table.tasks.map(task => ({
+            ...task,
+            notebook: notebooks.tasks[task.id] || task.notebook
+          }))
+        })))
+      }
     }
   }, [])
 
@@ -2003,40 +2226,54 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
       }).catch(err => console.error('Failed to load workspace notebook:', err))
 
       // Load diary entries
-      api.getDiaryEntries().then(backendEntries => {
+      // Premium users: use localStorage (encrypted workspace)
+      // Free users: fetch from backend
+      if (user.plan === 'premium') {
         const localEntries = loadDiaryEntries() || {}
-        // Merge: backend takes precedence, but keep local entries not on backend
-        const merged: Record<string, string> = { ...localEntries }
-        const entriesList: Array<{ date: string; preview: string }> = []
-        
-        // Load full content for each backend entry
-        Promise.all(backendEntries.map(async (entry) => {
-          try {
-            // Normalize the date to ensure it's in YYYY-MM-DD format
-            const normalizedDate = normalizeDate(entry.date)
-            if (!normalizedDate) {
-              console.warn('Invalid date format from backend:', entry.date)
-              return
-            }
-            
-            const { content } = await api.getDiaryEntry(normalizedDate)
-            merged[normalizedDate] = content
-            entriesList.push({ date: normalizedDate, preview: entry.preview })
-          } catch (err) {
-            console.error(`Failed to load diary entry ${entry.date}:`, err)
-            const normalizedDate = normalizeDate(entry.date)
-            if (normalizedDate) {
+        setDiaryEntries(localEntries)
+        // Build entries list for UI
+        const entriesList = Object.keys(localEntries).map(date => ({
+          date,
+          preview: localEntries[date].substring(0, 50)
+        }))
+        setDiaryEntriesList(entriesList)
+        saveDiaryEntries(localEntries)
+        console.log('📔 Loaded', Object.keys(localEntries).length, 'diary entries from encrypted workspace')
+      } else {
+        api.getDiaryEntries().then(backendEntries => {
+          const localEntries = loadDiaryEntries() || {}
+          // Merge: backend takes precedence, but keep local entries not on backend
+          const merged: Record<string, string> = { ...localEntries }
+          const entriesList: Array<{ date: string; preview: string }> = []
+          
+          // Load full content for each backend entry
+          Promise.all(backendEntries.map(async (entry) => {
+            try {
+              // Normalize the date to ensure it's in YYYY-MM-DD format
+              const normalizedDate = normalizeDate(entry.date)
+              if (!normalizedDate) {
+                console.warn('Invalid date format from backend:', entry.date)
+                return
+              }
+              
+              const { content } = await api.getDiaryEntry(normalizedDate)
+              merged[normalizedDate] = content
               entriesList.push({ date: normalizedDate, preview: entry.preview })
+            } catch (err) {
+              console.error(`Failed to load diary entry ${entry.date}:`, err)
+              const normalizedDate = normalizeDate(entry.date)
+              if (normalizedDate) {
+                entriesList.push({ date: normalizedDate, preview: entry.preview })
+              }
             }
-          }
-        })).then(() => {
-          setDiaryEntries(merged)
-          setDiaryEntriesList(entriesList)
-          saveDiaryEntries(merged)
-        })
-      }).catch(err => {
-        console.error('Failed to load diary entries:', err)
-        // Fallback to local storage
+          })).then(() => {
+            setDiaryEntries(merged)
+            setDiaryEntriesList(entriesList)
+            saveDiaryEntries(merged)
+          })
+        }).catch(err => {
+          console.error('Failed to load diary entries:', err)
+          // Fallback to local storage
         const localEntries = loadDiaryEntries() || {}
         // Normalize dates from local storage too
         const normalizedEntries: Record<string, string> = {}
@@ -2046,12 +2283,13 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
             normalizedEntries[normalized] = localEntries[date]
           }
         })
-        setDiaryEntries(normalizedEntries)
-        setDiaryEntriesList(Object.keys(normalizedEntries).map(date => ({
-          date,
-          preview: normalizedEntries[date].substring(0, 50)
-        })))
-      })
+          setDiaryEntries(normalizedEntries)
+          setDiaryEntriesList(Object.keys(normalizedEntries).map(date => ({
+            date,
+            preview: normalizedEntries[date].substring(0, 50)
+          })))
+        })
+      }
     } else {
       // Load from local storage when not logged in
       const localEntries = loadDiaryEntries() || {}
@@ -2317,6 +2555,7 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     if (draggedTask.tableId === targetTableId && draggedTask.index === targetIndex) {
       setDraggedTask(null)
       setDropTarget(null)
+      setDragGhost(null)
       return
     }
 
@@ -2346,8 +2585,62 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
       return newTables
     })
 
+    // Clear all drag state immediately on drop
     setDraggedTask(null)
     setDropTarget(null)
+    setDragGhost(null)
+  }
+
+  // Pinned items drag handlers
+  const handlePinnedItemDragStart = (itemId: string, index: number) => {
+    setDraggedPinnedItem({ itemId, index })
+  }
+
+  const handlePinnedItemDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setPinnedDropTarget(index)
+  }
+
+  const handlePinnedItemDrop = (e: React.DragEvent, targetIndex: number) => {
+    e.preventDefault()
+    e.stopPropagation()
+
+    // Clear drop target immediately to remove visual indicator
+    setPinnedDropTarget(null)
+
+    if (!draggedPinnedItem) {
+      setDraggedPinnedItem(null)
+      return
+    }
+
+    // Prevent dropping in the same position
+    if (draggedPinnedItem.index === targetIndex) {
+      setDraggedPinnedItem(null)
+      return
+    }
+
+    setPinnedItems(prevItems => {
+      const newItems = [...prevItems]
+      const [movedItem] = newItems.splice(draggedPinnedItem.index, 1)
+      
+      // Calculate correct insert index
+      let insertIndex = targetIndex
+      if (draggedPinnedItem.index < targetIndex) {
+        insertIndex = targetIndex - 1
+      }
+      
+      newItems.splice(insertIndex, 0, movedItem)
+      return newItems
+    })
+
+    setDraggedPinnedItem(null)
+  }
+
+  const handlePinnedItemDragEnd = () => {
+    // Clear all drag states when drag ends
+    setDraggedPinnedItem(null)
+    setPinnedDropTarget(null)
   }
 
   const handleExportCSV = () => {
@@ -2413,9 +2706,16 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     }
 
     setSyncing(true)
+    setSyncSuccess(false)
     try {
       await syncNow()
-      alert('Sync completed successfully!')
+      // Update last sync info
+      const syncInfo = syncManager.getLastSyncInfo()
+      setLastSyncInfo(syncInfo)
+      // Show success state
+      setSyncSuccess(true)
+      // Clear success state after 2 seconds
+      setTimeout(() => setSyncSuccess(false), 2000)
     } catch (error: any) {
       console.error('Sync failed:', error)
       alert(`Sync failed: ${error.message || 'Unknown error'}`)
@@ -2424,31 +2724,85 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     }
   }
 
+  // Format sync time with relative time, actual time, and direction
+  const formatSyncTime = (syncInfo: { time: Date | null; direction: 'uploaded' | 'downloaded' | null }): string => {
+    if (!syncInfo.time) return ''
+    
+    const now = new Date()
+    const diffMs = now.getTime() - syncInfo.time.getTime()
+    const diffSecs = Math.floor(diffMs / 1000)
+    const diffMins = Math.floor(diffSecs / 60)
+    const diffHours = Math.floor(diffMins / 60)
+    
+    const timeStr = syncInfo.time.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+    const direction = syncInfo.direction ? `(${syncInfo.direction})` : ''
+    
+    if (diffSecs < 60) return `just now at ${timeStr} ${direction}`
+    if (diffMins < 60) return `${diffMins} min ago at ${timeStr} ${direction}`
+    return `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago at ${timeStr} ${direction}`
+  }
+
+  // Update last sync time display periodically
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const syncInfo = syncManager.getLastSyncInfo()
+      setLastSyncInfo(syncInfo)
+    }, 30000) // Update every 30 seconds
+    
+    // Initial load
+    const syncInfo = syncManager.getLastSyncInfo()
+    setLastSyncInfo(syncInfo)
+    
+    return () => clearInterval(interval)
+  }, [])
+
   // Space management functions
   const handleAddSpace = () => {
-    const name = prompt('Enter space name:')
-    if (!name || !name.trim()) return
-    
-    const newSpace: Space = {
-      id: `space-${Date.now()}`,
-      name: name.trim(),
-      color: '#' + Math.floor(Math.random()*16777215).toString(16),
-    }
-    
-    setSpaces([...spaces, newSpace])
-    setActiveSpaceId(newSpace.id)
+    setEditingSpace(null)
+    setNewSpaceName('')
+    setNewSpaceIcon('briefcase')
+    setNewSpaceColor('#3b82f6')
+    setShowSpaceEditor(true)
   }
 
   const handleEditSpace = (spaceId: string) => {
     const space = spaces.find((s) => s.id === spaceId)
     if (!space) return
     
-    const newName = prompt('Edit space name:', space.name)
-    if (!newName || !newName.trim()) return
+    setEditingSpace(space)
+    setNewSpaceName(space.name)
+    setNewSpaceIcon(space.icon || 'briefcase')
+    setNewSpaceColor(space.color || '#3b82f6')
+    setShowSpaceEditor(true)
+  }
+  
+  const saveSpace = () => {
+    if (!newSpaceName.trim()) {
+      alert('Please enter a space name')
+      return
+    }
     
-    setSpaces(spaces.map((s) => 
-      s.id === spaceId ? { ...s, name: newName.trim() } : s
-    ))
+    if (editingSpace) {
+      // Update existing space
+      setSpaces(spaces.map((s) => 
+        s.id === editingSpace.id 
+          ? { ...s, name: newSpaceName.trim(), icon: newSpaceIcon, color: newSpaceColor } 
+          : s
+      ))
+    } else {
+      // Create new space
+      const newSpace: Space = {
+        id: `space-${Date.now()}`,
+        name: newSpaceName.trim(),
+        icon: newSpaceIcon,
+        color: newSpaceColor,
+      }
+      setSpaces([...spaces, newSpace])
+      setActiveSpaceId(newSpace.id)
+    }
+    
+    setShowSpaceEditor(false)
+    setEditingSpace(null)
   }
 
   const handleDeleteSpace = (spaceId: string) => {
@@ -2483,19 +2837,35 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
   }
 
   return (
+    <>
     <div className="workspace h-full overflow-hidden bg-gray-100 flex">
-      {/* Mobile Menu Button */}
-      {isMobile && (
-        <button
-          onClick={() => setShowMenu(!showMenu)}
-          className="fixed top-4 right-4 z-50 px-3 py-2 bg-[#4a6c7a] text-white rounded hover:bg-[#3a5c6a] transition shadow-lg"
-        >
-          <div className="flex flex-col gap-1 w-5">
-            <div className="h-0.5 bg-white"></div>
-            <div className="h-0.5 bg-white"></div>
-            <div className="h-0.5 bg-white"></div>
+      {/* Auth Error Warning Banner */}
+      {authError && (
+        <div className="fixed top-0 left-0 right-0 z-[9999] bg-red-600 text-white p-4 shadow-lg">
+          <div className="container mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">⚠️</span>
+              <div>
+                <div className="font-bold">Session Expired</div>
+                <div className="text-sm">Your changes are saved locally but not synced. Please log in to continue.</div>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button 
+                onClick={() => window.location.href = '/'}
+                className="px-4 py-2 bg-white text-red-600 rounded font-bold hover:bg-gray-100"
+              >
+                Log In
+              </button>
+              <button 
+                onClick={clearAuthError}
+                className="px-4 py-2 bg-red-700 hover:bg-red-800 rounded"
+              >
+                Dismiss
+              </button>
+            </div>
           </div>
-        </button>
+        </div>
       )}
 
       {/* Vertical Menu Sidebar - Desktop or Mobile Overlay */}
@@ -2503,13 +2873,13 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
         <>
           {isMobile && (
             <div 
-              className="fixed inset-0 bg-black bg-opacity-50 z-40"
+              className="fixed inset-0 bg-black bg-opacity-50 z-[110]"
               onClick={() => setShowMenu(false)}
             />
           )}
           <div className={`${
             isMobile 
-              ? 'fixed top-0 right-0 h-full w-64 bg-white shadow-2xl z-50 overflow-y-auto' 
+              ? 'fixed top-0 right-0 h-full w-64 bg-white shadow-2xl z-[120] overflow-y-auto' 
               : 'flex-shrink-0 w-48 bg-white border-l border-gray-200 overflow-y-auto order-last'
           }`}>
             <div className="p-4 flex flex-col gap-2">
@@ -2535,6 +2905,158 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
               >
                 Add Day
               </button>
+              
+              <div className="border-t border-gray-300 my-2"></div>
+              
+              {/* Pinned Items Section */}
+              {pinnedItems.length > 0 && (
+                <>
+                  <div className="mb-2">
+                    <div className="px-3 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                      Pinned
+                    </div>
+                    <div className="space-y-1 mt-1">
+                      {pinnedItems.map((itemId, index) => {
+                        const isDragging = draggedPinnedItem?.index === index
+                        const isDropTarget = pinnedDropTarget === index
+                        
+                        // Handle space items (format: space-{id})
+                        if (itemId.startsWith('space-')) {
+                          const spaceId = itemId.substring(6)
+                          const space = spaces.find(s => s.id === spaceId)
+                          if (!space) return null
+                          
+                          return (
+                            <div key={itemId} className="relative">
+                              {/* Drop indicator line */}
+                              {isDropTarget && (
+                                <div className="absolute top-0 left-0 right-0 h-0.5 bg-blue-500 z-10" style={{ marginTop: '-2px' }}>
+                                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-2 h-2 bg-blue-500 rounded-full -ml-1"></div>
+                                </div>
+                              )}
+                              <div 
+                                draggable
+                                onDragStart={() => handlePinnedItemDragStart(itemId, index)}
+                                onDragOver={(e) => handlePinnedItemDragOver(e, index)}
+                                onDrop={(e) => handlePinnedItemDrop(e, index)}
+                                onDragEnd={handlePinnedItemDragEnd}
+                                className={`flex items-center gap-1 ${isDragging ? 'opacity-50' : ''}`}
+                              >
+                                <button
+                                  onClick={() => {
+                                    handleEditSpace(space.id);
+                                    isMobile && setShowMenu(false);
+                                  }}
+                                  className="flex-1 px-2 py-1 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm text-left border border-gray-300 flex items-center gap-1 cursor-move"
+                                >
+                                  {space.icon && iconMap[space.icon] && (
+                                    <FontAwesomeIcon icon={iconMap[space.icon]} size="sm" />
+                                  )}
+                                  <span className="truncate">{space.name}</span>
+                                </button>
+                                <button 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    togglePin(itemId);
+                                  }}
+                                  className="px-1 py-1 rounded transition text-sm text-yellow-500 hover:text-yellow-600 font-bold"
+                                  title="Unpin"
+                                >
+                                  📍
+                                </button>
+                              </div>
+                            </div>
+                          )
+                        }
+                        
+                        // Map item IDs to their actions and labels
+                        const itemConfig: Record<string, { label: string; onClick: () => void; className: string }> = {
+                          'timer': { label: showEmoji ? '⏱️ Timer' : 'Timer', onClick: () => { setShowTimer(true); isMobile && setShowMenu(false); }, className: 'bg-[#4fc3f7] text-white hover:bg-[#3ba3d7]' },
+                          'notebook': { label: showEmoji ? '📓 Notebook' : 'Notebook', onClick: () => { openWorkspaceNotebook(); isMobile && setShowMenu(false); }, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
+                          'diary': { label: showEmoji ? '📔 Diary' : 'Diary', onClick: () => { setShowDiaryList(true); isMobile && setShowMenu(false); }, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
+                          'statistics': { label: showEmoji ? '📈 Statistics' : 'Statistics', onClick: () => { setShowStatistics(true); isMobile && setShowMenu(false); }, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
+                          'archived': { label: showEmoji ? '📦 Archived' : 'Archived', onClick: () => { setShowArchivedMenu(true); isMobile && setShowMenu(false); }, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
+                          'add-tab-group': { label: showEmoji ? '➕ Add Tab Group' : 'Add Tab Group', onClick: () => { handleAddSpace(); isMobile && setShowMenu(false); }, className: 'bg-green-600 text-white hover:bg-green-700' },
+                          'settings': { label: showEmoji ? '⚙️ Settings' : 'Settings', onClick: () => { setShowSettings(true); isMobile && setShowMenu(false); }, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
+                          'edit-groups': { label: showEmoji ? '🏷️ Edit Groups' : 'Edit Groups', onClick: () => { setShowGroupsEditor(true); isMobile && setShowMenu(false); }, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
+                          'manual': { label: showEmoji ? '📖 Manual' : 'Manual', onClick: () => { setShowManual(true); isMobile && setShowMenu(false); }, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
+                          'export-csv': { label: showEmoji ? '📤 Export CSV' : 'Export CSV', onClick: () => { handleExportCSV(); isMobile && setShowMenu(false); }, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
+                          'import-csv': { label: showEmoji ? '📥 Import CSV' : 'Import CSV', onClick: () => { fileInputRef.current?.click(); isMobile && setShowMenu(false); }, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
+                          'export-ics': { 
+                            label: showEmoji ? '📅 Export Calendar (.ics)' : 'Export Calendar (.ics)', 
+                            onClick: () => { 
+                              const dayTables = tables.filter(t => t.type === 'day')
+                              if (dayTables.length === 0) {
+                                alert('No day tables to export. Create some day tables first!')
+                                return
+                              }
+                              downloadICS(dayTables)
+                              isMobile && setShowMenu(false)
+                            }, 
+                            className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' 
+                          },
+                          'sync-now': { 
+                            label: syncing 
+                              ? (showEmoji ? '🔄 Syncing...' : 'Syncing...') 
+                              : syncSuccess 
+                                ? (showEmoji ? '✅ Synced!' : 'Synced!') 
+                                : (showEmoji ? '☁️ Sync Now' : 'Sync Now'), 
+                            onClick: () => { handleSyncNow(); isMobile && setShowMenu(false); }, 
+                            className: syncSuccess 
+                              ? 'bg-green-100 text-green-800 hover:bg-green-200 border border-green-300' 
+                              : 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' 
+                          },
+                          'undo': { label: showEmoji ? '↶ Undo' : 'Undo', onClick: undo, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
+                          'redo': { label: showEmoji ? '↷ Redo' : 'Redo', onClick: redo, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
+                          'report-bug': { label: showEmoji ? '🐛 Report Bug' : 'Report Bug', onClick: () => { setShowBugReport(true); isMobile && setShowMenu(false); }, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
+                          'feature-request': { label: showEmoji ? '✨ Feature Request' : 'Feature Request', onClick: () => { setShowFeatureRequest(true); isMobile && setShowMenu(false); }, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
+                        }
+                        
+                        const config = itemConfig[itemId]
+                        if (!config) return null
+                        
+                        return (
+                          <div key={itemId} className="relative">
+                            {/* Drop indicator line */}
+                            {isDropTarget && (
+                              <div className="absolute top-0 left-0 right-0 h-0.5 bg-blue-500 z-10" style={{ marginTop: '-2px' }}>
+                                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-2 h-2 bg-blue-500 rounded-full -ml-1"></div>
+                              </div>
+                            )}
+                            <div 
+                              draggable
+                              onDragStart={() => handlePinnedItemDragStart(itemId, index)}
+                              onDragOver={(e) => handlePinnedItemDragOver(e, index)}
+                              onDrop={(e) => handlePinnedItemDrop(e, index)}
+                              onDragEnd={handlePinnedItemDragEnd}
+                              className={`flex items-center gap-1 ${isDragging ? 'opacity-50' : ''}`}
+                            >
+                              <button
+                                onClick={config.onClick}
+                                disabled={itemId === 'undo' && historyIndex <= 0 || itemId === 'redo' && historyIndex >= history.length - 1 || itemId === 'sync-now' && syncing}
+                                className={`flex-1 px-3 py-2 rounded transition text-sm text-left cursor-move ${config.className} disabled:opacity-30 disabled:cursor-not-allowed`}
+                              >
+                                {config.label}
+                              </button>
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  togglePin(itemId);
+                                }}
+                                className="px-2 py-2 rounded transition text-sm text-yellow-500 hover:text-yellow-600 font-bold"
+                                title="Unpin"
+                              >
+                                📍
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                  <div className="border-t border-gray-300 my-2"></div>
+                </>
+              )}
               
               {/* View Mode Toggle - Desktop Only */}
               {!isMobile && (
@@ -2599,8 +3121,6 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
                 </>
               )}
               
-              <div className="border-t border-gray-300 my-2"></div>
-              
               {/* Collapsible Menu Sections */}
               
               {/* Workspace Section */}
@@ -2614,18 +3134,57 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
                 </button>
                 {expandedMenus.has('workspace') && (
                   <div className="ml-2 space-y-1 mt-1">
-                    <button onClick={() => { setShowTimer(true); isMobile && setShowMenu(false); }} className="w-full px-3 py-2 bg-[#4fc3f7] text-white rounded hover:bg-[#3ba3d7] transition text-sm text-left">
-                      {showEmoji && '⏱️ '}Timer
-                    </button>
-                    <button onClick={() => { openWorkspaceNotebook(); isMobile && setShowMenu(false); }} className="w-full px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm text-left border border-gray-300">
-                      {showEmoji && '📓 '}Notebook
-                    </button>
-                    <button onClick={() => { setShowDiaryList(true); isMobile && setShowMenu(false); }} className="w-full px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm text-left border border-gray-300">
-                      {showEmoji && '📔 '}Diary
-                    </button>
-                    <button onClick={() => { setShowStatistics(true); isMobile && setShowMenu(false); }} className="w-full px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm text-left border border-gray-300">
-                      {showEmoji && '📈 '}Statistics
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => { setShowTimer(true); isMobile && setShowMenu(false); }} className="flex-1 px-3 py-2 bg-[#4fc3f7] text-white rounded hover:bg-[#3ba3d7] transition text-sm text-left">
+                        {showEmoji && '⏱️ '}Timer
+                      </button>
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          togglePin('timer');
+                        }}
+                        className={`px-2 py-2 rounded transition text-sm ${pinnedItems.includes('timer') ? 'text-yellow-500 font-bold' : 'text-gray-400 hover:text-gray-600'}`}
+                        title={pinnedItems.includes('timer') ? 'Unpin' : 'Pin'}
+                      >
+                        {pinnedItems.includes('timer') ? '📍' : '📌'}
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => { openWorkspaceNotebook(); isMobile && setShowMenu(false); }} className="flex-1 px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm text-left border border-gray-300">
+                        {showEmoji && '📓 '}Notebook
+                      </button>
+                      <button 
+                        onClick={() => togglePin('notebook')}
+                        className={`px-2 py-2 rounded transition text-sm ${pinnedItems.includes('notebook') ? 'text-yellow-500 font-bold' : 'text-gray-400 hover:text-gray-600'}`}
+                        title={pinnedItems.includes('notebook') ? 'Unpin' : 'Pin'}
+                      >
+                        {pinnedItems.includes('notebook') ? '📍' : '📌'}
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => { setShowDiaryList(true); isMobile && setShowMenu(false); }} className="flex-1 px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm text-left border border-gray-300">
+                        {showEmoji && '📔 '}Diary
+                      </button>
+                      <button 
+                        onClick={() => togglePin('diary')}
+                        className={`px-2 py-2 rounded transition text-sm ${pinnedItems.includes('diary') ? 'text-yellow-500 font-bold' : 'text-gray-400 hover:text-gray-600'}`}
+                        title={pinnedItems.includes('diary') ? 'Unpin' : 'Pin'}
+                      >
+                        {pinnedItems.includes('diary') ? '📍' : '📌'}
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => { setShowStatistics(true); isMobile && setShowMenu(false); }} className="flex-1 px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm text-left border border-gray-300">
+                        {showEmoji && '📈 '}Statistics
+                      </button>
+                      <button 
+                        onClick={() => togglePin('statistics')}
+                        className={`px-2 py-2 rounded transition text-sm ${pinnedItems.includes('statistics') ? 'text-yellow-500 font-bold' : 'text-gray-400 hover:text-gray-600'}`}
+                        title={pinnedItems.includes('statistics') ? 'Unpin' : 'Pin'}
+                      >
+                        {pinnedItems.includes('statistics') ? '📍' : '📌'}
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -2641,9 +3200,75 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
                 </button>
                 {expandedMenus.has('tables') && (
                   <div className="ml-2 space-y-1 mt-1">
-                    <button onClick={() => { setShowArchivedMenu(true); isMobile && setShowMenu(false); }} className="w-full px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm text-left border border-gray-300">
-                      {showEmoji && '📦 '}Archived
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => { setShowArchivedMenu(true); isMobile && setShowMenu(false); }} className="flex-1 px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm text-left border border-gray-300">
+                        {showEmoji && '📦 '}Archived
+                      </button>
+                      <button 
+                        onClick={() => togglePin('archived')}
+                        className={`px-2 py-2 rounded transition text-sm ${pinnedItems.includes('archived') ? 'text-yellow-500 font-bold' : 'text-gray-400 hover:text-gray-600'}`}
+                        title={pinnedItems.includes('archived') ? 'Unpin' : 'Pin'}
+                      >
+                        {pinnedItems.includes('archived') ? '📍' : '📌'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Spaces (Tab Groups) Section */}
+              <div className="border-b border-gray-200 pb-2 mb-2">
+                <button
+                  onClick={() => toggleMenu('spaces')}
+                  className="w-full px-3 py-2 text-left font-semibold text-gray-700 hover:bg-gray-100 rounded flex items-center justify-between"
+                >
+                  <span>{showEmoji && '🗂️ '}Tab Groups</span>
+                  <span>{expandedMenus.has('spaces') ? '▼' : '▶'}</span>
+                </button>
+                {expandedMenus.has('spaces') && (
+                  <div className="ml-2 space-y-1 mt-1">
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => { handleAddSpace(); isMobile && setShowMenu(false); }} className="flex-1 px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition text-sm text-left">
+                        {showEmoji && '➕ '}Add Tab Group
+                      </button>
+                      <button 
+                        onClick={() => togglePin('add-tab-group')}
+                        className={`px-2 py-2 rounded transition text-sm ${pinnedItems.includes('add-tab-group') ? 'text-yellow-500 font-bold' : 'text-gray-400 hover:text-gray-600'}`}
+                        title={pinnedItems.includes('add-tab-group') ? 'Unpin' : 'Pin'}
+                      >
+                        {pinnedItems.includes('add-tab-group') ? '📍' : '📌'}
+                      </button>
+                    </div>
+                    {spaces.map(space => (
+                      <div key={space.id} className="flex items-center gap-1">
+                        <button
+                          onClick={() => {
+                            handleEditSpace(space.id);
+                            isMobile && setShowMenu(false);
+                          }}
+                          className="flex-1 px-2 py-1 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-xs text-left border border-gray-300 flex items-center gap-1"
+                        >
+                          {space.icon && iconMap[space.icon] && (
+                            <FontAwesomeIcon icon={iconMap[space.icon]} size="sm" />
+                          )}
+                          <span className="truncate">{space.name}</span>
+                        </button>
+                        <button 
+                          onClick={() => togglePin(`space-${space.id}`)}
+                          className={`px-1 py-1 rounded transition text-xs ${pinnedItems.includes(`space-${space.id}`) ? 'text-yellow-500 font-bold' : 'text-gray-400 hover:text-gray-600'}`}
+                          title={pinnedItems.includes(`space-${space.id}`) ? 'Unpin' : 'Pin'}
+                        >
+                          {pinnedItems.includes(`space-${space.id}`) ? '📍' : '📌'}
+                        </button>
+                        <button
+                          onClick={() => handleDeleteSpace(space.id)}
+                          className="px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 transition text-xs"
+                          title="Delete"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -2659,15 +3284,30 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
                 </button>
                 {expandedMenus.has('settings') && (
                   <div className="ml-2 space-y-1 mt-1">
-                    <button onClick={() => { setShowSettings(true); isMobile && setShowMenu(false); }} className="w-full px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm text-left border border-gray-300">
-                      {showEmoji && '⚙️ '}Settings
-                    </button>
-                    <button onClick={() => { setShowGroupsEditor(true); isMobile && setShowMenu(false); }} className="w-full px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm text-left border border-gray-300">
-                      {showEmoji && '🏷️ '}Edit Groups
-                    </button>
-                    <button onClick={() => { setShowManual(true); isMobile && setShowMenu(false); }} className="w-full px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm text-left border border-gray-300">
-                      {showEmoji && '📖 '}Manual
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => { setShowSettings(true); isMobile && setShowMenu(false); }} className="flex-1 px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm text-left border border-gray-300">
+                        {showEmoji && '⚙️ '}Settings
+                      </button>
+                      <button 
+                        onClick={() => togglePin('settings')}
+                        className={`px-2 py-2 rounded transition text-sm ${pinnedItems.includes('settings') ? 'text-yellow-500 font-bold' : 'text-gray-400 hover:text-gray-600'}`}
+                        title={pinnedItems.includes('settings') ? 'Unpin' : 'Pin'}
+                      >
+                        {pinnedItems.includes('settings') ? '📍' : '📌'}
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => { setShowGroupsEditor(true); isMobile && setShowMenu(false); }} className="flex-1 px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm text-left border border-gray-300">
+                        {showEmoji && '🏷️ '}Edit Groups
+                      </button>
+                      <button 
+                        onClick={() => togglePin('edit-groups')}
+                        className={`px-2 py-2 rounded transition text-sm ${pinnedItems.includes('edit-groups') ? 'text-yellow-500 font-bold' : 'text-gray-400 hover:text-gray-600'}`}
+                        title={pinnedItems.includes('edit-groups') ? 'Unpin' : 'Pin'}
+                      >
+                        {pinnedItems.includes('edit-groups') ? '📍' : '📌'}
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -2683,12 +3323,30 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
                 </button>
                 {expandedMenus.has('data') && (
                   <div className="ml-2 space-y-1 mt-1">
-                    <button onClick={() => { handleExportCSV(); isMobile && setShowMenu(false); }} className="w-full px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm text-left border border-gray-300">
-                      {showEmoji && '📤 '}Export CSV
-                    </button>
-                    <button onClick={() => { fileInputRef.current?.click(); isMobile && setShowMenu(false); }} className="w-full px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm text-left border border-gray-300">
-                      {showEmoji && '📥 '}Import CSV
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => { handleExportCSV(); isMobile && setShowMenu(false); }} className="flex-1 px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm text-left border border-gray-300">
+                        {showEmoji && '📤 '}Export CSV
+                      </button>
+                      <button 
+                        onClick={() => togglePin('export-csv')}
+                        className={`px-2 py-2 rounded transition text-sm ${pinnedItems.includes('export-csv') ? 'text-yellow-500 font-bold' : 'text-gray-400 hover:text-gray-600'}`}
+                        title={pinnedItems.includes('export-csv') ? 'Unpin' : 'Pin'}
+                      >
+                        {pinnedItems.includes('export-csv') ? '📍' : '📌'}
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => { fileInputRef.current?.click(); isMobile && setShowMenu(false); }} className="flex-1 px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm text-left border border-gray-300">
+                        {showEmoji && '📥 '}Import CSV
+                      </button>
+                      <button 
+                        onClick={() => togglePin('import-csv')}
+                        className={`px-2 py-2 rounded transition text-sm ${pinnedItems.includes('import-csv') ? 'text-yellow-500 font-bold' : 'text-gray-400 hover:text-gray-600'}`}
+                        title={pinnedItems.includes('import-csv') ? 'Unpin' : 'Pin'}
+                      >
+                        {pinnedItems.includes('import-csv') ? '📍' : '📌'}
+                      </button>
+                    </div>
                     <input
                       ref={fileInputRef}
                       type="file"
@@ -2696,17 +3354,83 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
                       onChange={handleImportCSV}
                       className="hidden"
                     />
-                    {user?.plan === 'premium' && (
-                      <button onClick={() => { handleSyncNow(); isMobile && setShowMenu(false); }} disabled={syncing} className="w-full px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm disabled:opacity-50 text-left border border-gray-300" title="Sync workspace to cloud">
-                        {syncing ? (showEmoji ? '🔄 Syncing...' : 'Syncing...') : (showEmoji ? '☁️ Sync Now' : 'Sync Now')}
+                    <div className="flex items-center gap-1">
+                      <button 
+                        onClick={() => { 
+                          const dayTables = tables.filter(t => t.type === 'day')
+                          if (dayTables.length === 0) {
+                            alert('No day tables to export. Create some day tables first!')
+                            return
+                          }
+                          downloadICS(dayTables)
+                          isMobile && setShowMenu(false)
+                        }} 
+                        className="flex-1 px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm text-left border border-gray-300"
+                      >
+                        {showEmoji && '📅 '}Export Calendar (.ics)
                       </button>
+                      <button 
+                        onClick={() => togglePin('export-ics')}
+                        className={`px-2 py-2 rounded transition text-sm ${pinnedItems.includes('export-ics') ? 'text-yellow-500 font-bold' : 'text-gray-400 hover:text-gray-600'}`}
+                        title={pinnedItems.includes('export-ics') ? 'Unpin' : 'Pin'}
+                      >
+                        {pinnedItems.includes('export-ics') ? '📍' : '📌'}
+                      </button>
+                    </div>
+                    {user?.plan === 'premium' && (
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-1">
+                          <button 
+                            onClick={() => { handleSyncNow(); isMobile && setShowMenu(false); }} 
+                            disabled={syncing} 
+                            className={`flex-1 px-3 py-2 rounded transition text-sm disabled:opacity-50 text-left border ${
+                              syncSuccess 
+                                ? 'bg-green-100 text-green-800 hover:bg-green-200 border-green-300' 
+                                : 'bg-white text-gray-800 hover:bg-gray-100 border-gray-300'
+                            }`}
+                            title="Sync workspace to cloud"
+                          >
+                            {syncing 
+                              ? (showEmoji ? '🔄 Syncing...' : 'Syncing...') 
+                              : syncSuccess 
+                                ? (showEmoji ? '✅ Synced!' : 'Synced!') 
+                                : (showEmoji ? '☁️ Sync Now' : 'Sync Now')
+                            }
+                          </button>
+                          <button 
+                            onClick={() => togglePin('sync-now')}
+                            className={`px-2 py-2 rounded transition text-sm ${pinnedItems.includes('sync-now') ? 'text-yellow-500 font-bold' : 'text-gray-400 hover:text-gray-600'}`}
+                            title={pinnedItems.includes('sync-now') ? 'Unpin' : 'Pin'}
+                          >
+                            {pinnedItems.includes('sync-now') ? '📍' : '📌'}
+                          </button>
+                        </div>
+                      </div>
                     )}
-                    <button onClick={undo} disabled={historyIndex <= 0} className="w-full px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm disabled:opacity-30 disabled:cursor-not-allowed text-left border border-gray-300" title="Undo (Ctrl+Z)">
-                      {showEmoji && '↶ '}Undo
-                    </button>
-                    <button onClick={redo} disabled={historyIndex >= history.length - 1} className="w-full px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm disabled:opacity-30 disabled:cursor-not-allowed text-left border border-gray-300" title="Redo (Ctrl+Shift+Z / Ctrl+Y)">
-                      {showEmoji && '↷ '}Redo
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button onClick={undo} disabled={historyIndex <= 0} className="flex-1 px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm disabled:opacity-30 disabled:cursor-not-allowed text-left border border-gray-300" title="Undo (Ctrl+Z)">
+                        {showEmoji && '↶ '}Undo
+                      </button>
+                      <button 
+                        onClick={() => togglePin('undo')}
+                        className={`px-2 py-2 rounded transition text-sm ${pinnedItems.includes('undo') ? 'text-yellow-500 font-bold' : 'text-gray-400 hover:text-gray-600'}`}
+                        title={pinnedItems.includes('undo') ? 'Unpin' : 'Pin'}
+                      >
+                        {pinnedItems.includes('undo') ? '📍' : '📌'}
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button onClick={redo} disabled={historyIndex >= history.length - 1} className="flex-1 px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm disabled:opacity-30 disabled:cursor-not-allowed text-left border border-gray-300" title="Redo (Ctrl+Shift+Z / Ctrl+Y)">
+                        {showEmoji && '↷ '}Redo
+                      </button>
+                      <button 
+                        onClick={() => togglePin('redo')}
+                        className={`px-2 py-2 rounded transition text-sm ${pinnedItems.includes('redo') ? 'text-yellow-500 font-bold' : 'text-gray-400 hover:text-gray-600'}`}
+                        title={pinnedItems.includes('redo') ? 'Unpin' : 'Pin'}
+                      >
+                        {pinnedItems.includes('redo') ? '📍' : '📌'}
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -2722,25 +3446,46 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
                 </button>
                 {expandedMenus.has('help') && (
                   <div className="ml-2 space-y-1 mt-1">
-                    <button onClick={() => { setShowBugReport(true); isMobile && setShowMenu(false); }} className="w-full px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm text-left border border-gray-300">
-                      {showEmoji && '🐛 '}Report Bug
-                    </button>
-                    <button onClick={() => { setShowFeatureRequest(true); isMobile && setShowMenu(false); }} className="w-full px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm text-left border border-gray-300">
-                      {showEmoji && '✨ '}Feature Request
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => { setShowManual(true); isMobile && setShowMenu(false); }} className="flex-1 px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm text-left border border-gray-300">
+                        {showEmoji && '📖 '}Manual
+                      </button>
+                      <button 
+                        onClick={() => togglePin('manual')}
+                        className={`px-2 py-2 rounded transition text-sm ${pinnedItems.includes('manual') ? 'text-yellow-500 font-bold' : 'text-gray-400 hover:text-gray-600'}`}
+                        title={pinnedItems.includes('manual') ? 'Unpin' : 'Pin'}
+                      >
+                        {pinnedItems.includes('manual') ? '📍' : '📌'}
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => { setShowBugReport(true); isMobile && setShowMenu(false); }} className="flex-1 px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm text-left border border-gray-300">
+                        {showEmoji && '🐛 '}Report Bug
+                      </button>
+                      <button 
+                        onClick={() => togglePin('report-bug')}
+                        className={`px-2 py-2 rounded transition text-sm ${pinnedItems.includes('report-bug') ? 'text-yellow-500 font-bold' : 'text-gray-400 hover:text-gray-600'}`}
+                        title={pinnedItems.includes('report-bug') ? 'Unpin' : 'Pin'}
+                      >
+                        {pinnedItems.includes('report-bug') ? '📍' : '📌'}
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => { setShowFeatureRequest(true); isMobile && setShowMenu(false); }} className="flex-1 px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm text-left border border-gray-300">
+                        {showEmoji && '✨ '}Feature Request
+                      </button>
+                      <button 
+                        onClick={() => togglePin('feature-request')}
+                        className={`px-2 py-2 rounded transition text-sm ${pinnedItems.includes('feature-request') ? 'text-yellow-500 font-bold' : 'text-gray-400 hover:text-gray-600'}`}
+                        title={pinnedItems.includes('feature-request') ? 'Unpin' : 'Pin'}
+                      >
+                        {pinnedItems.includes('feature-request') ? '📍' : '📌'}
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
               
-              <div className="border-t border-gray-300 my-2"></div>
-              
-              {/* Special Actions */}
-              <button
-                onClick={() => { window.dispatchEvent(new Event('tigement:request-merge')); isMobile && setShowMenu(false); }}
-                className="w-full px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition text-sm text-left"
-              >
-                {showEmoji && '🔗 '}Merge local data…
-              </button>
               {/* Premium Button - Mobile Only */}
               {isMobile && onShowPremium && (
                 <>
@@ -2793,6 +3538,16 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
                   >
                     {showEmoji ? '100%' : 'Reset'}
                   </button>
+                </>
+              )}
+              
+              {/* Last Synced Info - At Bottom */}
+              {user?.plan === 'premium' && lastSyncInfo.time && (
+                <>
+                  <div className="border-t border-gray-300 my-2"></div>
+                  <div className="px-3 py-2 text-xs text-gray-500 text-center">
+                    Last synced: {formatSyncTime(lastSyncInfo)}
+                  </div>
                 </>
               )}
             </div>
@@ -2863,6 +3618,7 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
                         setBulkGroupSelectorTable={setBulkGroupSelectorTable}
                         hoveredTask={hoveredTask}
                         setHoveredTask={setHoveredTask}
+                        highlightedTask={highlightedTask}
                         draggedTask={draggedTask}
                         dropTarget={dropTarget}
                         draggedTable={draggedTable}
@@ -2929,7 +3685,7 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
                   />
                 </div>
                 <div 
-                  className="flex-1 overflow-auto px-4 pb-8 bg-gray-100 relative"
+                  className={`flex-1 overflow-auto bg-gray-100 relative ${isMobile ? 'pb-32' : 'px-4 pb-8'}`}
                   style={{ 
                     transform: `scale(${zoom})`,
                     transformOrigin: 'top left',
@@ -2989,6 +3745,7 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
                           setBulkGroupSelectorTable={setBulkGroupSelectorTable}
                           hoveredTask={hoveredTask}
                           setHoveredTask={setHoveredTask}
+                          highlightedTask={highlightedTask}
                           draggedTask={draggedTask}
                           dropTarget={dropTarget}
                           draggedTable={draggedTable}
@@ -3050,7 +3807,7 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
         // ALL-IN-ONE VIEW: Current freeform canvas
         <div 
           ref={scrollContainerRef}
-          className="flex-1 overflow-auto px-8 pb-8"
+          className={`flex-1 overflow-auto ${isMobile ? 'pb-32' : 'px-8 pb-8'}`}
         >
           <div 
             className={isMobile ? "w-full" : "relative min-h-full"}
@@ -3066,8 +3823,8 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
           >
           {(isMobile ? [tables[currentTableIndex]].filter(Boolean) : tables)
             .filter(table => {
-              // In all-in-one view, filter TODO tables by visible spaces
-              if (viewMode === 'all-in-one' && table.type === 'todo') {
+              // In all-in-one view on DESKTOP only, filter TODO tables by visible spaces
+              if (!isMobile && viewMode === 'all-in-one' && table.type === 'todo') {
                 return !table.spaceId || visibleSpaces.has(table.spaceId)
               }
               return true
@@ -3122,6 +3879,7 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
                 setBulkGroupSelectorTable={setBulkGroupSelectorTable}
                 hoveredTask={hoveredTask}
                 setHoveredTask={setHoveredTask}
+                highlightedTask={highlightedTask}
                 draggedTask={draggedTask}
                 dropTarget={dropTarget}
                 draggedTable={draggedTable}
@@ -3179,7 +3937,7 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
 
       {/* Mobile Pagination */}
       {isMobile && tables.length > 1 && (
-        <div className="fixed bottom-0 left-0 right-0 flex justify-between items-center gap-2 p-3 bg-gray-100 border-t-2 border-gray-300 shadow-lg z-50">
+        <div className="fixed bottom-16 left-0 right-0 flex justify-between items-center gap-2 p-3 bg-gray-100 border-t-2 border-gray-300 shadow-lg z-50">
           <button
             onClick={() => setCurrentTableIndex(Math.max(0, currentTableIndex - 1))}
             disabled={currentTableIndex === 0}
@@ -3552,16 +4310,34 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
                   </div>
 
                   <div className="mb-3">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Icon</label>
-                    <select
-                      value={newGroupIcon}
-                      onChange={(e) => setNewGroupIcon(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded"
-                    >
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Icon</label>
+                    <div className="grid grid-cols-6 gap-2 p-2 border border-gray-300 rounded max-h-48 overflow-y-auto">
                       {Object.keys(iconMap).map(iconName => (
-                        <option key={iconName} value={iconName}>{iconName.replace('fa', '')}</option>
+                        <button
+                          key={iconName}
+                          type="button"
+                          onClick={() => setNewGroupIcon(iconName)}
+                          className={`p-3 rounded border-2 transition hover:bg-gray-100 flex items-center justify-center ${
+                            newGroupIcon === iconName 
+                              ? 'border-blue-500 bg-blue-50' 
+                              : 'border-gray-200'
+                          }`}
+                          title={iconName.replace(/([A-Z])/g, ' $1').trim()}
+                        >
+                          <FontAwesomeIcon 
+                            icon={iconMap[iconName]} 
+                            className="text-gray-700"
+                            size="lg"
+                          />
+                        </button>
                       ))}
-                    </select>
+                    </div>
+                    {newGroupIcon && (
+                      <div className="mt-2 text-sm text-gray-600 flex items-center gap-2">
+                        <FontAwesomeIcon icon={iconMap[newGroupIcon]} />
+                        <span>Selected: {newGroupIcon.replace(/([A-Z])/g, ' $1').trim()}</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="mb-3">
@@ -3594,6 +4370,172 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
           </div>
         </div>
       )}
+
+      {/* Space Editor Dialog */}
+      {showSpaceEditor && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
+              <h3 className="text-xl font-bold text-gray-900">
+                {editingSpace ? 'Edit Space' : 'Create New Space'}
+              </h3>
+              <button 
+                onClick={() => { setShowSpaceEditor(false); setEditingSpace(null); }}
+                className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="p-6">
+              {/* Space Name */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Space Name</label>
+                <input
+                  type="text"
+                  value={newSpaceName}
+                  onChange={(e) => setNewSpaceName(e.target.value)}
+                  placeholder="e.g., Work, Personal, Projects"
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  autoFocus
+                />
+              </div>
+
+              {/* Icon Selector */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Icon</label>
+                <div className="grid grid-cols-6 gap-2 p-3 border border-gray-300 rounded max-h-48 overflow-y-auto bg-gray-50">
+                  {Object.keys(iconMap).map(iconName => (
+                    <button
+                      key={iconName}
+                      type="button"
+                      onClick={() => setNewSpaceIcon(iconName)}
+                      className={`p-3 rounded border-2 transition hover:bg-white flex items-center justify-center ${
+                        newSpaceIcon === iconName 
+                          ? 'border-blue-500 bg-white shadow-md' 
+                          : 'border-gray-200 bg-white'
+                      }`}
+                      title={iconName.replace(/-/g, ' ').replace(/([A-Z])/g, ' $1').trim()}
+                    >
+                      <FontAwesomeIcon 
+                        icon={iconMap[iconName]} 
+                        className={newSpaceIcon === iconName ? 'text-blue-600' : 'text-gray-600'}
+                        size="lg"
+                      />
+                    </button>
+                  ))}
+                </div>
+                {newSpaceIcon && (
+                  <div className="mt-2 text-sm text-gray-600 flex items-center gap-2 p-2 bg-blue-50 rounded">
+                    <FontAwesomeIcon icon={iconMap[newSpaceIcon]} className="text-blue-600" />
+                    <span className="font-medium">Selected: {newSpaceIcon.replace(/-/g, ' ').replace(/([A-Z])/g, ' $1').trim()}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Color Picker */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Color</label>
+                <input
+                  type="color"
+                  value={newSpaceColor}
+                  onChange={(e) => setNewSpaceColor(e.target.value)}
+                  className="w-full h-12 border border-gray-300 rounded cursor-pointer"
+                />
+                <div className="mt-2 text-sm text-gray-600">
+                  Selected color: <span className="font-mono font-medium">{newSpaceColor}</span>
+                </div>
+              </div>
+
+              {/* Preview */}
+              <div className="mb-6 p-4 border-2 border-gray-200 rounded bg-gray-50">
+                <label className="block text-xs font-medium text-gray-500 mb-2 uppercase">Preview</label>
+                <div 
+                  className="flex items-center gap-3 px-4 py-3 rounded-lg font-medium text-white"
+                  style={{ backgroundColor: newSpaceColor }}
+                >
+                  {newSpaceIcon && iconMap[newSpaceIcon] && (
+                    <FontAwesomeIcon icon={iconMap[newSpaceIcon]} size="lg" />
+                  )}
+                  <span>{newSpaceName || 'Space Name'}</span>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3">
+                <button
+                  onClick={saveSpace}
+                  className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
+                >
+                  {editingSpace ? 'Update Space' : 'Create Space'}
+                </button>
+                <button
+                  onClick={() => { setShowSpaceEditor(false); setEditingSpace(null); }}
+                  className="flex-1 px-4 py-3 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition font-medium"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Notebook opening animation */}
+      {notebookAnimation && (
+        <>
+          {/* Connecting line */}
+          <svg className="fixed inset-0 pointer-events-none z-[9999]" style={{ width: '100%', height: '100%' }}>
+            <line
+              x1={notebookAnimation.from.x}
+              y1={notebookAnimation.from.y}
+              x2={notebookAnimation.to.x}
+              y2={notebookAnimation.to.y}
+              stroke="#4fc3f7"
+              strokeWidth="2"
+              strokeDasharray="5,5"
+              className="animate-pulse"
+            />
+          </svg>
+          {/* Flying notebook icon */}
+          <div
+            className="fixed pointer-events-none z-[9999] text-4xl transition-all duration-500 ease-out"
+            style={{
+              left: notebookAnimation.to.x,
+              top: notebookAnimation.to.y,
+              transform: `translate(-50%, -50%)`
+            }}
+          >
+            📓
+          </div>
+        </>
+      )}
+
+      {/* Drag Ghost Preview */}
+      {dragGhost && (
+        <div 
+          className="fixed pointer-events-none z-[9999] px-3 py-2 bg-white bg-opacity-60 border-2 border-dashed border-[#4fc3f7] rounded shadow-lg text-sm whitespace-nowrap"
+          style={{
+            left: dragGhost.x + 10,
+            top: dragGhost.y + 10,
+          }}
+        >
+          {dragGhost.taskName}
+        </div>
+      )}
     </div>
+
+    {/* Mobile Bottom Navigation */}
+    {isMobile && (
+      <BottomNav
+        onAddTodo={() => addTable('todo')}
+        onAddDay={() => addTable('day')}
+        onOpenNotebook={openWorkspaceNotebook}
+        onOpenTimer={() => setShowTimer(true)}
+        onOpenMenu={() => setShowMenu(true)}
+        showEmoji={showEmoji}
+      />
+    )}
+    </>
   )
 }

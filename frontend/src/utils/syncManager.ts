@@ -90,6 +90,8 @@ class SyncManager {
   private hasDecryptionFailure: boolean = false
   private decryptionFailureReason: string | null = null
   private forceOverwriteMode: boolean = false // Allow overwrite when user explicitly confirms
+  private lastSyncTime: Date | null = null // Track last successful sync time
+  private lastSyncDirection: 'uploaded' | 'downloaded' | null = null // Track sync direction
 
   constructor(config: SyncConfig = { autoSyncInterval: 60000 }) { // Default 1 minute
     this.config = config
@@ -169,6 +171,23 @@ class SyncManager {
       hasFailure: this.hasDecryptionFailure,
       reason: this.decryptionFailureReason
     }
+  }
+
+  /**
+   * Get last sync time and direction
+   */
+  getLastSyncInfo(): { time: Date | null; direction: 'uploaded' | 'downloaded' | null } {
+    return {
+      time: this.lastSyncTime,
+      direction: this.lastSyncDirection
+    }
+  }
+
+  /**
+   * Get last sync time (deprecated, use getLastSyncInfo)
+   */
+  getLastSyncTime(): Date | null {
+    return this.lastSyncTime
   }
 
   /**
@@ -282,10 +301,17 @@ class SyncManager {
   /**
    * Start automatic sync
    */
-  startAutoSync() {
+  startAutoSync(config?: Partial<SyncConfig>) {
+    // Merge provided config with existing config
+    if (config) {
+      this.config = { ...this.config, ...config }
+    }
+    
     if (this.syncInterval) {
       clearInterval(this.syncInterval)
     }
+
+    console.log('🔄 Starting auto-sync with interval:', this.config.autoSyncInterval)
 
     this.syncInterval = setInterval(() => {
       // Skip sync if user is actively editing
@@ -312,6 +338,19 @@ class SyncManager {
       this.syncInterval = null
       console.log('⏸️ Auto-sync stopped')
     }
+  }
+
+  /**
+   * Temporarily pause auto-sync (e.g., during backup restore)
+   */
+  pauseAutoSync(durationMs: number = 10000) {
+    console.log(`⏸️ Pausing auto-sync for ${durationMs}ms`)
+    this.stopAutoSync()
+    
+    setTimeout(() => {
+      console.log('▶️ Resuming auto-sync after pause')
+      this.startAutoSync()
+    }, durationMs)
   }
 
   /**
@@ -559,11 +598,21 @@ class SyncManager {
         const response = await api.saveWorkspace(encryptedData, this.localVersion)
         console.log('✅ Push completed!')
         this.localModified = false
+        this.lastSyncTime = new Date()
+        this.lastSyncDirection = 'uploaded'
         this.config.onSyncSuccess?.()
       }
     } catch (error: any) {
       console.error('❌ Sync failed:', error)
       console.error('Error details:', error.message, error.response?.data)
+      
+      // Check if this is an auth error - stop auto-sync to prevent repeated failures
+      if (error.message?.includes('Authentication failed') || 
+          error.message?.includes('Session expired')) {
+        console.error('🛑 Stopping auto-sync due to auth failure')
+        this.stopAutoSync()
+      }
+      
       this.config.onSyncError?.(error)
       throw error
     } finally {
@@ -588,6 +637,18 @@ class SyncManager {
     localStorage.setItem('tigement_settings', JSON.stringify(decryptedData.settings || {}))
     if (decryptedData.taskGroups) {
       localStorage.setItem('tigement_task_groups', JSON.stringify(decryptedData.taskGroups))
+    }
+    if (decryptedData.notebooks) {
+      localStorage.setItem('tigement_notebooks', JSON.stringify(decryptedData.notebooks))
+      console.log('📓 Restored notebooks from workspace')
+    }
+    if (decryptedData.diaries) {
+      localStorage.setItem('tigement_diary_entries', JSON.stringify(decryptedData.diaries))
+      console.log('📔 Restored', Object.keys(decryptedData.diaries).length, 'diary entries from workspace')
+    }
+    if (decryptedData.archivedTables) {
+      localStorage.setItem('tigement_archived_tables', JSON.stringify(decryptedData.archivedTables))
+      console.log('🗄️ Restored', decryptedData.archivedTables.length, 'archived tables from workspace')
     }
     
     this.updateLocalVersion(remoteWorkspace.version)
@@ -678,6 +739,8 @@ class SyncManager {
     this.updateLocalVersion(remote.version)
 
     console.log('✅ Pull completed successfully')
+    this.lastSyncTime = new Date()
+    this.lastSyncDirection = 'downloaded'
     this.config.onSyncSuccess?.()
 
     // Update React state via callback instead of reloading
@@ -703,9 +766,15 @@ class SyncManager {
     const tables = localStorage.getItem('tigement_tables')
     const settings = localStorage.getItem('tigement_settings')
     const taskGroups = localStorage.getItem('tigement_task_groups')
+    const notebooks = localStorage.getItem('tigement_notebooks')
+    const diaries = localStorage.getItem('tigement_diary_entries')
+    const archives = localStorage.getItem('tigement_archived_tables')
     console.log('📦 localStorage.tigement_tables:', tables ? `${tables.length} chars` : 'NULL')
     console.log('⚙️ localStorage.tigement_settings:', settings ? `${settings.length} chars` : 'NULL')
     console.log('📁 localStorage.tigement_task_groups:', taskGroups ? `${taskGroups.length} chars` : 'NULL')
+    console.log('📓 localStorage.tigement_notebooks:', notebooks ? `${notebooks.length} chars` : 'NULL')
+    console.log('📔 localStorage.tigement_diary_entries:', diaries ? `${diaries.length} chars` : 'NULL')
+    console.log('🗄️ localStorage.tigement_archived_tables:', archives ? `${archives.length} chars` : 'NULL')
 
     if (!tables) {
       console.error('❌ No tables found in localStorage!')
@@ -715,9 +784,12 @@ class SyncManager {
     const parsed = {
       tables: JSON.parse(tables),
       settings: settings ? JSON.parse(settings) : {},
-      taskGroups: taskGroups ? JSON.parse(taskGroups) : []
+      taskGroups: taskGroups ? JSON.parse(taskGroups) : [],
+      notebooks: notebooks ? JSON.parse(notebooks) : { workspace: '', tasks: {} },
+      diaries: diaries ? JSON.parse(diaries) : {},
+      archivedTables: archives ? JSON.parse(archives) : []
     }
-    console.log('✅ Parsed workspace data:', parsed.tables.length, 'tables', parsed.taskGroups?.length || 0, 'task groups')
+    console.log('✅ Parsed workspace data:', parsed.tables.length, 'tables', parsed.taskGroups?.length || 0, 'task groups', Object.keys(parsed.diaries).length, 'diary entries', parsed.archivedTables.length, 'archived tables')
     return parsed
   }
 
@@ -740,6 +812,8 @@ class SyncManager {
     this.localVersion++
     await api.saveWorkspace(encryptedData, this.localVersion)
 
+    this.lastSyncTime = new Date()
+    this.lastSyncDirection = 'uploaded'
     console.log('✅ Force push completed')
   }
 

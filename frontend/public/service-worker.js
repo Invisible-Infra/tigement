@@ -1,5 +1,5 @@
 // Service Worker for Tigement PWA
-const CACHE_NAME = 'tigement-v1'
+const CACHE_NAME = 'tigement-v3'
 const urlsToCache = [
   '/',
   '/index.html',
@@ -21,38 +21,71 @@ self.addEventListener('install', (event) => {
   self.skipWaiting()
 })
 
-// Fetch event - serve from cache, fallback to network
+// Fetch event - network-first for dynamic assets, cache-first for static
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url)
   
-  // Skip ServiceWorker for:
-  // 1. Vite development resources (@vite, @react-refresh, etc.)
-  // 2. Requests with timestamp query params (Vite HMR)
-  // 3. API calls
-  // 4. Non-GET requests
+  // Always bypass ServiceWorker for:
   if (
-    url.pathname.startsWith('/@') ||           // Vite special routes (@vite, @react-refresh, etc.)
-    url.pathname.startsWith('/src/') ||        // Source files in dev mode
-    url.pathname.startsWith('/node_modules/') || // Dependencies in dev mode
-    url.search.includes('?t=') ||              // Vite timestamp queries
+    url.pathname.startsWith('/@') ||           // Vite special routes
+    url.pathname.startsWith('/src/') ||        // Source files in dev
+    url.pathname.startsWith('/node_modules/') || // Vite dependencies
     url.pathname.startsWith('/api/') ||        // API calls
     event.request.method !== 'GET'             // Non-GET requests
   ) {
-    // Bypass cache for development resources and API calls
     event.respondWith(fetch(event.request))
     return
   }
   
+  // Network-first for dynamic Vite chunks (production builds)
+  if (
+    url.pathname.includes('/assets/') ||       // Vite build assets
+    url.pathname.includes('chunk-') ||         // Vite chunk files
+    url.search.includes('?v=') ||              // Versioned assets
+    url.search.includes('?t=')                 // Timestamped assets
+  ) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (!response.ok) {
+            console.error('SW: Fetch returned non-OK status:', response.status, event.request.url)
+            // Still try to cache it for offline use
+          }
+          // Cache the new version
+          const responseToCache = response.clone()
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseToCache)
+          })
+          return response
+        })
+        .catch((error) => {
+          console.error('SW: Network fetch failed:', error, event.request.url)
+          // Try cache fallback
+          return caches.match(event.request).then(cachedResponse => {
+            if (cachedResponse) {
+              return cachedResponse
+            }
+            // If critical resource fails, return error that won't break the page
+            console.error('SW: No cache available for:', event.request.url)
+            return new Response(
+              JSON.stringify({ error: 'Resource unavailable' }),
+              { status: 503, headers: { 'Content-Type': 'application/json' } }
+            )
+          })
+        })
+    )
+    return
+  }
+  
+  // Cache-first for static resources
   event.respondWith(
     caches.match(event.request)
       .then((response) => {
-        // Return cached version or fetch from network
         return response || fetch(event.request)
       })
       .catch((error) => {
-        // If cache fails, fetch from network
-        console.warn('Cache failed, fetching from network:', error)
-        return fetch(event.request)
+        console.warn('Cache and network both failed:', error)
+        return new Response('Network error', { status: 408 })
       })
   )
 })

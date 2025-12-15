@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { flashFavicon } from '../utils/faviconNotification'
 
 interface Task {
   id: string
@@ -41,6 +42,18 @@ export function Timer({ onClose, tables, position = { x: window.innerWidth - 350
     return () => clearInterval(interval)
   }, [])
 
+  // Helper function to constrain position within viewport bounds
+  const constrainPosition = (x: number, y: number): { x: number; y: number } => {
+    const modalWidth = 320 // w-80 = 320px
+    const modalHeight = 400 // Approximate modal height
+    const padding = 20 // Keep some padding from edges
+    
+    return {
+      x: Math.max(padding, Math.min(x, window.innerWidth - modalWidth - padding)),
+      y: Math.max(padding, Math.min(y, window.innerHeight - modalHeight - padding))
+    }
+  }
+
   // Drag handling
   const handleDragStart = (e: React.MouseEvent) => {
     setIsDragging(true)
@@ -54,10 +67,11 @@ export function Timer({ onClose, tables, position = { x: window.innerWidth - 350
     if (!isDragging) return
     
     const handleMouseMove = (e: MouseEvent) => {
-      onPositionChange?.({
-        x: e.clientX - dragOffset.x,
-        y: e.clientY - dragOffset.y
-      })
+      const newPos = constrainPosition(
+        e.clientX - dragOffset.x,
+        e.clientY - dragOffset.y
+      )
+      onPositionChange?.(newPos)
     }
     
     const handleMouseUp = () => {
@@ -72,6 +86,34 @@ export function Timer({ onClose, tables, position = { x: window.innerWidth - 350
       document.removeEventListener('mouseup', handleMouseUp)
     }
   }, [isDragging, dragOffset, onPositionChange])
+
+  // Constrain position on window resize
+  useEffect(() => {
+    const handleResize = () => {
+      const constrained = constrainPosition(position.x, position.y)
+      if (constrained.x !== position.x || constrained.y !== position.y) {
+        onPositionChange?.(constrained)
+      }
+    }
+    
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [position, onPositionChange])
+
+  // Initialize AudioContext when Timer mounts
+  useEffect(() => {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
+    if (AudioContextClass) {
+      const ctx = new AudioContextClass()
+      setAudioContext(ctx)
+      console.log('✅ Timer AudioContext initialized')
+      
+      return () => {
+        ctx.close()
+        console.log('🔇 Timer AudioContext closed')
+      }
+    }
+  }, [])
 
   const addMinutes = (time: string, minutes: number): Date => {
     const [h, m] = time.split(':').map(Number)
@@ -181,6 +223,8 @@ export function Timer({ onClose, tables, position = { x: window.innerWidth - 350
         }
         if (visualEnabled) {
           console.log('👁️ Showing visual notification for task:', currentTaskInfo.task.title)
+          // Flash favicon to notify user
+          flashFavicon(5)
         }
         setLastNotifiedTask(currentTaskInfo.task.id)
       }
@@ -203,32 +247,32 @@ export function Timer({ onClose, tables, position = { x: window.innerWidth - 350
 
   const playNotificationSound = async () => {
     try {
-      const ctx = initAudioContext()
-      if (!ctx) {
-        console.warn('⚠️ Web Audio API not supported')
+      // Check if AudioContext is initialized (requires user interaction first)
+      if (!audioContext) {
+        console.warn('⚠️ AudioContext not initialized. User must interact with the page first.')
         return
       }
 
-      console.log('🔊 AudioContext state:', ctx.state)
+      console.log('🔊 AudioContext state:', audioContext.state)
       
       // Resume audio context if suspended (required by some browsers)
-      if (ctx.state === 'suspended') {
-        await ctx.resume()
+      if (audioContext.state === 'suspended') {
+        await audioContext.resume()
         console.log('✅ AudioContext resumed')
       }
       
       // Play three beeps
       const beep = (delay: number) => {
-        const oscillator = ctx.createOscillator()
-        const gainNode = ctx.createGain()
+        const oscillator = audioContext.createOscillator()
+        const gainNode = audioContext.createGain()
 
         oscillator.connect(gainNode)
-        gainNode.connect(ctx.destination)
+        gainNode.connect(audioContext.destination)
 
         oscillator.frequency.value = 800
         oscillator.type = 'sine'
 
-        const startTime = ctx.currentTime + delay
+        const startTime = audioContext.currentTime + delay
         gainNode.gain.setValueAtTime(0, startTime)
         gainNode.gain.linearRampToValueAtTime(0.3, startTime + 0.01)
         gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + 0.2)
@@ -327,6 +371,9 @@ export function Timer({ onClose, tables, position = { x: window.innerWidth - 350
               className="w-4 h-4 text-[#4fc3f7] rounded focus:ring-2 focus:ring-[#4fc3f7]"
             />
             <span className="text-sm text-gray-700">🔔 Sound notification</span>
+            {soundEnabled && !audioContext && (
+              <span className="text-xs text-orange-600" title="Click 'Test Sound' to enable">⚠️</span>
+            )}
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input

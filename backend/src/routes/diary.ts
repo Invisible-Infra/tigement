@@ -61,60 +61,22 @@ router.get('/entry/:date', authMiddleware, async (req: AuthRequest, res: Respons
   }
 })
 
-// POST /api/diary/entry/:date - Save/update entry for date
+// POST /api/diary/entry/:date - Save/update entry for date [DEPRECATED]
 router.post('/entry/:date', authMiddleware, async (req: AuthRequest, res: Response) => {
-  try {
-    const { content } = saveDiaryEntrySchema.parse(req.body)
-    const userId = req.user!.id
-    const { date } = req.params
-
-    // Validate date format (YYYY-MM-DD)
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      return res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD' })
-    }
-
-    // Upsert diary entry
-    const result = await query(
-      `INSERT INTO diary_entries (user_id, entry_date, content)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (user_id, entry_date)
-       DO UPDATE SET content = $3, updated_at = NOW()
-       RETURNING id`,
-      [userId, date, content]
-    )
-
-    res.json({ success: true, id: result.rows[0].id })
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Invalid input', details: error.errors })
-    }
-    console.error('Save diary entry error:', error)
-    res.status(500).json({ error: 'Internal server error' })
-  }
+  return res.status(410).json({ 
+    error: 'This endpoint is deprecated. Diary entries are now synced via encrypted workspace.',
+    migrateTo: '/api/workspace',
+    message: 'Please update your client to use the unified workspace encryption API.'
+  })
 })
 
-// DELETE /api/diary/entry/:date - Delete entry
+// DELETE /api/diary/entry/:date - Delete entry [DEPRECATED]
 router.delete('/entry/:date', authMiddleware, async (req: AuthRequest, res: Response) => {
-  try {
-    const userId = req.user!.id
-    const { date } = req.params
-
-    // Validate date format (YYYY-MM-DD)
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      return res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD' })
-    }
-
-    await query(
-      `DELETE FROM diary_entries 
-       WHERE user_id = $1 AND entry_date = $2`,
-      [userId, date]
-    )
-
-    res.json({ success: true })
-  } catch (error) {
-    console.error('Delete diary entry error:', error)
-    res.status(500).json({ error: 'Internal server error' })
-  }
+  return res.status(410).json({ 
+    error: 'This endpoint is deprecated. Diary entries are now synced via encrypted workspace.',
+    migrateTo: '/api/workspace',
+    message: 'Please update your client to use the unified workspace encryption API.'
+  })
 })
 
 export default router

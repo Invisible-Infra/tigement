@@ -25,6 +25,7 @@ export function EncryptionPassphraseDialog({
   const [confirmPassphrase, setConfirmPassphrase] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,6 +47,23 @@ export function EncryptionPassphraseDialog({
       onSuccess(response, passphrase);
     } catch (err: any) {
       const errorMessage = err.message || 'Failed to process passphrase';
+      setError(errorMessage);
+      onError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetPassphrase = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      await api.resetOAuthPassphrase(oauthToken);
+      setShowResetConfirm(false);
+      // After reset, treat as new user to set new passphrase
+      window.location.reload(); // Reload to get fresh state
+    } catch (err: any) {
+      const errorMessage = err.message || 'Failed to reset passphrase';
       setError(errorMessage);
       onError(errorMessage);
     } finally {
@@ -171,8 +189,64 @@ export function EncryptionPassphraseDialog({
           >
             Cancel
           </button>
+
+          {/* Forgot Passphrase Link (only for existing users) */}
+          {!isNewUser && (
+            <div className="text-center">
+              <button
+                type="button"
+                onClick={() => setShowResetConfirm(true)}
+                disabled={loading}
+                className="text-sm text-red-600 hover:text-red-700 hover:underline disabled:text-gray-400"
+              >
+                Forgot passphrase? Reset it
+              </button>
+            </div>
+          )}
         </form>
       </div>
+
+      {/* Reset Confirmation Dialog */}
+      {showResetConfirm && (
+        <div className="absolute inset-0 bg-black bg-opacity-70 flex items-center justify-center z-10">
+          <div className="bg-white rounded-lg shadow-2xl w-[400px] p-6">
+            <h3 className="text-xl font-bold text-red-600 mb-4">⚠️ Reset Encryption Passphrase?</h3>
+            
+            <div className="space-y-3 text-sm text-gray-700 mb-6">
+              <p className="font-semibold">This will permanently delete:</p>
+              <ul className="list-disc list-inside space-y-1 ml-2">
+                <li>All encrypted workspace data</li>
+                <li>All notebooks and notes</li>
+                <li>All diary entries</li>
+                <li>All archived tables</li>
+              </ul>
+              <p className="font-semibold text-red-600 mt-3">
+                This action cannot be undone!
+              </p>
+              <p>
+                After reset, you can set a new passphrase and start fresh.
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowResetConfirm(false)}
+                disabled={loading}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleResetPassphrase}
+                disabled={loading}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
+              >
+                {loading ? 'Resetting...' : 'Reset & Delete Data'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

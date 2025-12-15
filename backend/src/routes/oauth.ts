@@ -135,11 +135,11 @@ router.post('/oauth/passphrase', async (req: Request, res: Response) => {
     try {
       decoded = jwt.verify(oauthToken, secret) as any;
     } catch (error) {
-      return res.status(401).json({ error: 'Invalid or expired OAuth token' });
+      return res.status(400).json({ error: 'Invalid or expired OAuth token' });
     }
     
     if (!decoded.oauth_temp) {
-      return res.status(401).json({ error: 'Invalid token type' });
+      return res.status(400).json({ error: 'Invalid token type' });
     }
 
     // Fetch user with subscription info
@@ -177,7 +177,7 @@ router.post('/oauth/passphrase', async (req: Request, res: Response) => {
       
       const valid = await bcrypt.compare(passphrase, user.encryption_passphrase_hash);
       if (!valid) {
-        return res.status(401).json({ error: 'Invalid passphrase' });
+        return res.status(400).json({ error: 'Invalid passphrase' });
       }
       console.log(`Verified encryption passphrase for user ${user.id}`);
     }
@@ -248,6 +248,62 @@ router.post('/oauth/passphrase', async (req: Request, res: Response) => {
     }
     console.error('Passphrase setup error:', error);
     res.status(500).json({ error: 'Failed to process passphrase' });
+  }
+});
+
+/**
+ * Reset encryption passphrase (deletes all encrypted data)
+ * POST /api/auth/oauth/reset-passphrase
+ */
+const resetPassphraseSchema = z.object({
+  oauthToken: z.string()
+});
+
+router.post('/oauth/reset-passphrase', async (req: Request, res: Response) => {
+  try {
+    const { oauthToken } = resetPassphraseSchema.parse(req.body);
+
+    const secret = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
+
+    // Verify OAuth token
+    let decoded: any;
+    try {
+      decoded = jwt.verify(oauthToken, secret) as any;
+    } catch (error) {
+      return res.status(400).json({ error: 'Invalid or expired OAuth token' });
+    }
+    
+    if (!decoded.oauth_temp) {
+      return res.status(400).json({ error: 'Invalid token type' });
+    }
+
+    const userId = decoded.id;
+
+    console.log(`🗑️ Resetting encryption passphrase for user ${userId} - all encrypted data will be deleted`);
+
+    // Clear encryption passphrase hash
+    await query(
+      'UPDATE users SET encryption_passphrase_hash = NULL WHERE id = $1',
+      [userId]
+    );
+    console.log(`  ✅ Cleared passphrase hash for user ${userId}`);
+
+    // Delete encrypted workspace data
+    await query(
+      'DELETE FROM workspaces WHERE user_id = $1',
+      [userId]
+    );
+    console.log(`  ✅ Deleted encrypted workspace for user ${userId}`);
+
+    console.log(`✅ Passphrase reset complete for user ${userId}`);
+
+    res.json({ success: true });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: 'Invalid input', details: error.errors });
+    }
+    console.error('Passphrase reset error:', error);
+    res.status(500).json({ error: 'Failed to reset passphrase' });
   }
 });
 

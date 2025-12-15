@@ -15,6 +15,8 @@ interface AuthContextType {
   syncNow: () => Promise<void>
   decryptionFailure: { hasFailure: boolean; reason: string | null }
   onDecryptionFailureHandled: () => void
+  authError: string | null
+  clearAuthError: () => void
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -23,6 +25,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [decryptionFailure, setDecryptionFailure] = useState<{ hasFailure: boolean; reason: string | null }>({ hasFailure: false, reason: null })
+  const [authError, setAuthError] = useState<string | null>(null)
+
+  // Set up auth failure handler on mount
+  useEffect(() => {
+    api.setAuthFailureHandler(() => {
+      console.error('🚨 Authentication failure detected!')
+      setAuthError('Your session has expired. Please log in again to continue syncing.')
+      setUser(null)
+      syncManager.stopAutoSync()
+    })
+  }, [])
 
   useEffect(() => {
     // Check if user is already authenticated
@@ -58,11 +71,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (hasActivePremium) {
               // Check if we should skip initial sync (e.g., after backup restore)
               const skipInitialSync = sessionStorage.getItem('tigement_skip_initial_sync')
+              const backupRestored = sessionStorage.getItem('tigement_backup_restored')
+              
               if (skipInitialSync) {
                 console.log('⏭️ Skipping initial sync - backup was just restored')
                 // Clear the flag immediately after using it (one-time skip)
                 sessionStorage.removeItem('tigement_skip_initial_sync')
                 console.log('✅ Cleared skip flag - future reloads will sync normally')
+              } else if (backupRestored) {
+                console.log('📦 Backup was restored - pushing local data to server instead of pulling')
+                sessionStorage.removeItem('tigement_backup_restored')
+                try {
+                  await syncManager.forcePush()
+                  console.log('✅ Restored backup data pushed to server successfully')
+                } catch (error: any) {
+                  console.error('❌ Failed to push restored backup to server:', error)
+                }
               } else {
                 try {
                   console.log('🔄 Loading server data for authenticated user...')
@@ -107,8 +131,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                              })())
     
     if (hasActivePremium) {
-      // For premium users, start auto-sync
-      syncManager.startAutoSync()
+      // For premium users, start auto-sync with state update callback
+      syncManager.startAutoSync({
+        onStateUpdate: (data) => {
+          // This will be called instead of window.location.reload()
+          console.log('🔄 Sync received, triggering custom event to update UI')
+          window.dispatchEvent(new CustomEvent('tigement:sync-update', { 
+            detail: data 
+          }))
+        }
+      })
     } else {
       syncManager.stopAutoSync()
     }
@@ -164,6 +196,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                              })())
     
     if (hasActivePremium) {
+      const backupRestored = sessionStorage.getItem('tigement_backup_restored')
+      
+      if (backupRestored) {
+        console.log('📦 Backup was restored - pushing local data to server instead of pulling')
+        sessionStorage.removeItem('tigement_backup_restored')
+        try {
+          await syncManager.forcePush()
+          console.log('✅ Restored backup data pushed to server successfully')
+        } catch (error: any) {
+          console.error('❌ Failed to push restored backup to server:', error)
+        }
+      } else {
       try {
         console.log('🔄 Starting initial sync for premium user...')
         await syncManager.pull()
@@ -179,6 +223,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.log('⚠️ Decryption failure detected, user should be redirected to ProfileMenu')
         }
         // Don't block login if sync fails
+        }
       }
     } else if (response.user.plan === 'premium' && response.user.subscription_status === 'expired') {
       console.log('⚠️ Premium subscription expired, sync disabled')
@@ -302,6 +347,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return true
   }
 
+  const clearAuthError = () => setAuthError(null)
+
   const value = {
     user,
     loading,
@@ -313,6 +360,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     syncNow,
     decryptionFailure,
     onDecryptionFailureHandled,
+    authError,
+    clearAuthError,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

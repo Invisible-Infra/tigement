@@ -46,87 +46,31 @@ router.get('/', authMiddleware, async (req: AuthRequest, res: Response) => {
   }
 })
 
-// POST /api/archives - Archive a table
+// POST /api/archives - Archive a table [DEPRECATED]
 router.post('/', authMiddleware, async (req: AuthRequest, res: Response) => {
-  try {
-    const tableData = archiveTableSchema.parse(req.body)
-    const userId = req.user!.id
-
-    // Extract metadata
-    const tableType = tableData.type
-    const tableDate = tableData.date || null
-    const tableTitle = tableData.title
-    const taskCount = tableData.tasks.length
-
-    // Insert archived table
-    const result = await query(
-      `INSERT INTO archived_tables (user_id, table_data, table_type, table_date, table_title, task_count)
-       VALUES ($1, $2::jsonb, $3, $4, $5, $6)
-       RETURNING id`,
-      [userId, JSON.stringify(tableData), tableType, tableDate, tableTitle, taskCount]
-    )
-
-    res.json({ id: result.rows[0].id })
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Invalid input', details: error.errors })
-    }
-    console.error('Archive table error:', error)
-    res.status(500).json({ error: 'Internal server error' })
-  }
+  return res.status(410).json({ 
+    error: 'This endpoint is deprecated. Archived tables are now synced via encrypted workspace.',
+    migrateTo: '/api/workspace',
+    message: 'Please update your client to use the unified workspace encryption API.'
+  })
 })
 
-// POST /api/archives/:id/restore - Restore archived table
+// POST /api/archives/:id/restore - Restore archived table [DEPRECATED]
 router.post('/:id/restore', authMiddleware, async (req: AuthRequest, res: Response) => {
-  try {
-    const userId = req.user!.id
-    const archiveId = parseInt(req.params.id)
-
-    if (isNaN(archiveId)) {
-      return res.status(400).json({ error: 'Invalid archive ID' })
-    }
-
-    // Get archived table
-    const result = await query(
-      `SELECT table_data FROM archived_tables 
-       WHERE id = $1 AND user_id = $2`,
-      [archiveId, userId]
-    )
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Archived table not found' })
-    }
-
-    const tableData = result.rows[0].table_data
-
-    res.json(tableData)
-  } catch (error) {
-    console.error('Restore archived table error:', error)
-    res.status(500).json({ error: 'Internal server error' })
-  }
+  return res.status(410).json({ 
+    error: 'This endpoint is deprecated. Archived tables are now synced via encrypted workspace.',
+    migrateTo: '/api/workspace',
+    message: 'Please update your client to use the unified workspace encryption API.'
+  })
 })
 
-// DELETE /api/archives/:id - Permanently delete archived table
+// DELETE /api/archives/:id - Permanently delete archived table [DEPRECATED]
 router.delete('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
-  try {
-    const userId = req.user!.id
-    const archiveId = parseInt(req.params.id)
-
-    if (isNaN(archiveId)) {
-      return res.status(400).json({ error: 'Invalid archive ID' })
-    }
-
-    await query(
-      `DELETE FROM archived_tables 
-       WHERE id = $1 AND user_id = $2`,
-      [archiveId, userId]
-    )
-
-    res.json({ success: true })
-  } catch (error) {
-    console.error('Delete archived table error:', error)
-    res.status(500).json({ error: 'Internal server error' })
-  }
+  return res.status(410).json({ 
+    error: 'This endpoint is deprecated. Archived tables are now synced via encrypted workspace.',
+    migrateTo: '/api/workspace',
+    message: 'Please update your client to use the unified workspace encryption API.'
+  })
 })
 
 export default router

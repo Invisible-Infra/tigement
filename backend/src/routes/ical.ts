@@ -39,7 +39,11 @@ function generateICalFeed(tables: any[], userEmail: string): string {
     currentTime.setHours(startHour, startMinute, 0, 0)
 
     table.tasks.forEach((task: any, index: number) => {
-      if (!task.title || task.title.trim() === '') return // Skip empty tasks
+      // Skip empty tasks but still advance time to maintain correct schedule
+      if (!task.title || task.title.trim() === '') {
+        currentTime = new Date(currentTime.getTime() + task.duration * 60000)
+        return
+      }
 
       const startTime = new Date(currentTime)
       const endTime = new Date(currentTime.getTime() + task.duration * 60000)
@@ -115,11 +119,14 @@ router.post('/sync', authMiddleware, async (req: AuthRequest, res: Response) => 
       currentTime.setHours(startHour, startMinute, 0, 0)
 
       for (const task of table.tasks) {
-        // Skip empty tasks or placeholder text
-        if (!task.title || task.title.trim() === '' || task.title === 'Task name...') continue
-
         const startTime = new Date(currentTime)
         const endTime = new Date(currentTime.getTime() + task.duration * 60000)
+
+        // Skip empty tasks or placeholder text, but still advance time
+        if (!task.title || task.title.trim() === '' || task.title === 'Task name...') {
+          currentTime = endTime
+          continue
+        }
 
         // Note: created_at, last_modified, sequence, and etag are automatically
         // set by database triggers (see migration 022_caldav_support.sql)

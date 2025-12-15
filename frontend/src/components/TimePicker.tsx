@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 interface TimePickerProps {
   value: string // HH:MM in 24h format
@@ -11,11 +11,15 @@ export function TimePicker({ value, onChange, onClose, timeFormat }: TimePickerP
   const [hours24, minutes] = value.split(':').map(Number)
   const [selectedHours, setSelectedHours] = useState(hours24)
   const [selectedMinutes, setSelectedMinutes] = useState(minutes)
+  const prevValues = useRef({ hours: selectedHours, minutes: selectedMinutes })
 
   useEffect(() => {
-    // Update parent on every change (convert to 24h format)
+    // Only update if values actually changed to prevent infinite loop
+    if (prevValues.current.hours !== selectedHours || prevValues.current.minutes !== selectedMinutes) {
     const time24 = `${selectedHours.toString().padStart(2, '0')}:${selectedMinutes.toString().padStart(2, '0')}`
     onChange(time24)
+      prevValues.current = { hours: selectedHours, minutes: selectedMinutes }
+    }
   }, [selectedHours, selectedMinutes, onChange])
 
   const incrementHours = () => setSelectedHours(prev => prev >= 23 ? 0 : prev + 1)
@@ -93,7 +97,6 @@ export function TimePicker({ value, onChange, onClose, timeFormat }: TimePickerP
                 }
               }}
               onWheel={(e) => {
-                e.preventDefault()
                 if (e.deltaY < 0) incrementHours()
                 else decrementHours()
               }}
@@ -126,7 +129,6 @@ export function TimePicker({ value, onChange, onClose, timeFormat }: TimePickerP
                 if (!isNaN(val) && val >= 0 && val <= 59) setSelectedMinutes(val)
               }}
               onWheel={(e) => {
-                e.preventDefault()
                 if (e.deltaY < 0) incrementMinutes()
                 else decrementMinutes()
               }}

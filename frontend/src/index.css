@@ -21,3 +21,33 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Task highlight animation when opening notebook */
+@keyframes taskPulse {
+  0%, 100% { 
+    background-color: transparent; 
+    box-shadow: none; 
+  }
+  50% { 
+    background-color: rgba(79, 195, 247, 0.2); 
+    box-shadow: 0 0 20px rgba(79, 195, 247, 0.5); 
+  }
+}
+
+.task-highlight-pulse {
+  animation: taskPulse 0.6s ease-in-out;
+}
+
+/* Safe area support for notched devices */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Active state for mobile buttons */
+@media (hover: none) {
+  .active\:bg-gray-100:active {
+    background-color: rgb(243 244 246);
+  }
+}
+

@@ -752,5 +752,95 @@ router.put('/announcement', async (req: AuthRequest, res) => {
   }
 })
 
+/**
+ * GET /api/admin/migration-check
+ * Check which users still have plaintext data that needs migration
+ */
+router.get('/migration-check', async (req: AuthRequest, res) => {
+  try {
+    // Check for users with plaintext notebooks
+    let notebooksUsers: number[] = []
+    try {
+      const result = await query(`
+        SELECT DISTINCT user_id FROM notebooks 
+        WHERE content IS NOT NULL AND content != ''
+      `)
+      notebooksUsers = result.rows.map(r => r.user_id)
+    } catch (error: any) {
+      if (!error.message.includes('column') && !error.message.includes('does not exist')) {
+        throw error
+      }
+    }
+
+    // Check for users with plaintext diaries
+    let diariesUsers: number[] = []
+    try {
+      const result = await query(`
+        SELECT DISTINCT user_id FROM diary_entries 
+        WHERE content IS NOT NULL AND content != ''
+      `)
+      diariesUsers = result.rows.map(r => r.user_id)
+    } catch (error: any) {
+      if (!error.message.includes('column') && !error.message.includes('does not exist')) {
+        throw error
+      }
+    }
+
+    // Check for users with plaintext archives
+    let archivesUsers: number[] = []
+    try {
+      const result = await query(`
+        SELECT DISTINCT user_id FROM archived_tables 
+        WHERE table_data IS NOT NULL
+      `)
+      archivesUsers = result.rows.map(r => r.user_id)
+    } catch (error: any) {
+      if (!error.message.includes('column') && !error.message.includes('does not exist')) {
+        throw error
+      }
+    }
+
+    // Get total counts
+    const totalNotebooks = await query(`
+      SELECT COUNT(*) as count FROM notebooks 
+      WHERE content IS NOT NULL AND content != ''
+    `).catch(() => ({ rows: [{ count: 0 }] }))
+
+    const totalDiaries = await query(`
+      SELECT COUNT(*) as count FROM diary_entries 
+      WHERE content IS NOT NULL AND content != ''
+    `).catch(() => ({ rows: [{ count: 0 }] }))
+
+    const totalArchives = await query(`
+      SELECT COUNT(*) as count FROM archived_tables 
+      WHERE table_data IS NOT NULL
+    `).catch(() => ({ rows: [{ count: 0 }] }))
+
+    // Combine all users
+    const allUsersSet = new Set([...notebooksUsers, ...diariesUsers, ...archivesUsers])
+
+    res.json({
+      usersWithPlaintext: {
+        notebooks: notebooksUsers,
+        diaries: diariesUsers,
+        archives: archivesUsers,
+        total: Array.from(allUsersSet)
+      },
+      totalCounts: {
+        notebooks: parseInt(totalNotebooks.rows[0].count),
+        diaries: parseInt(totalDiaries.rows[0].count),
+        archives: parseInt(totalArchives.rows[0].count)
+      },
+      summary: {
+        usersAffected: allUsersSet.size,
+        safeToDropColumns: allUsersSet.size === 0
+      }
+    })
+  } catch (error) {
+    console.error('Migration check error:', error)
+    res.status(500).json({ error: 'Failed to check migration status' })
+  }
+})
+
 export default router;
 

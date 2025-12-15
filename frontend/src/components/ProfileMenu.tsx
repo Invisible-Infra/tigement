@@ -21,8 +21,6 @@ export function ProfileMenu({ onClose, showDecryptionWarning }: ProfileMenuProps
   const [encryptionMessage, setEncryptionMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
   const [show2FASetup, setShow2FASetup] = useState(false)
   const [usingCustomKey, setUsingCustomKey] = useState(encryptionKeyManager.isUsingCustomKey())
-  const [icalUrl, setIcalUrl] = useState<string | null>(null)
-  const [loadingIcal, setLoadingIcal] = useState(false)
   const [username, setUsername] = useState(user?.username || '')
   const [profilePicture, setProfilePicture] = useState(user?.profile_picture_url || '')
   const [displayProfileMessage, setDisplayProfileMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
@@ -54,12 +52,6 @@ export function ProfileMenu({ onClose, showDecryptionWarning }: ProfileMenuProps
       }, 300)
     }
   }, [showDecryptionWarning, decryptionFailure.hasFailure, showAdvanced])
-
-  useEffect(() => {
-    if (user?.plan === 'premium') {
-      loadICalUrl()
-    }
-  }, [user])
 
   // Update username and profile picture when user changes
   useEffect(() => {
@@ -96,27 +88,6 @@ export function ProfileMenu({ onClose, showDecryptionWarning }: ProfileMenuProps
     }
   }, [])
 
-  const loadICalUrl = async () => {
-    setLoadingIcal(true)
-    try {
-      const response = await api.generateICalToken()
-      setIcalUrl(response.url)
-    } catch (error: any) {
-      console.error('Failed to load iCal URL:', error)
-      console.error('Error details:', error.message, error.details)
-      // Don't show error to user - iCal is optional feature
-      // Just log it for debugging
-    } finally {
-      setLoadingIcal(false)
-    }
-  }
-
-  const copyICalUrl = () => {
-    if (icalUrl) {
-      navigator.clipboard.writeText(icalUrl)
-      alert('📋 iCal URL copied to clipboard!\n\nPaste this URL into your calendar app to subscribe.')
-    }
-  }
 
   const handleUpdateProfile = async () => {
     setProfileMessage(null)
@@ -371,11 +342,11 @@ export function ProfileMenu({ onClose, showDecryptionWarning }: ProfileMenuProps
     reader.readAsText(file)
   }
 
-  const handleRestoreConfirm = () => {
+  const handleRestoreConfirm = async () => {
     if (!pendingBackupData) return
 
     try {
-      importBackup(pendingBackupData)
+      await importBackup(pendingBackupData)
       // Set flag in sessionStorage to prevent sync from overwriting the restored backup
       // sessionStorage persists across page reload but clears when tab closes
       sessionStorage.setItem('tigement_skip_initial_sync', 'true')
@@ -811,50 +782,7 @@ export function ProfileMenu({ onClose, showDecryptionWarning }: ProfileMenuProps
               </div>
             )}
 
-            {/* iCal Calendar Subscription (Premium Only) */}
-            {user?.plan === 'premium' && (
-              <div className="border-t pt-4">
-                <h3 className="text-lg font-semibold text-gray-800 mb-3">📅 Calendar Integration</h3>
-                
-                <div className="bg-green-50 p-4 rounded border border-green-200">
-                  <div className="flex items-start justify-between mb-3">
-                    <div>
-                      <h4 className="font-semibold text-green-900 mb-1">iCal Subscription Feed</h4>
-                      <p className="text-sm text-green-800">
-                        Subscribe to your tasks in Google Calendar, Apple Calendar, Outlook, or any calendar app
-                      </p>
-                    </div>
-                    <div className="text-3xl">✨</div>
-                  </div>
-
-                  {loadingIcal ? (
-                    <p className="text-sm text-gray-600">Loading calendar URL...</p>
-                  ) : icalUrl ? (
-                    <div className="space-y-2">
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={icalUrl}
-                          readOnly
-                          className="flex-1 px-3 py-2 bg-white border border-green-300 rounded text-xs font-mono"
-                        />
-                        <button
-                          onClick={copyICalUrl}
-                          className="px-4 py-2 bg-green-600 text-white hover:bg-green-700 rounded transition flex-shrink-0"
-                        >
-                          📋 Copy
-                        </button>
-                      </div>
-                      <p className="text-xs text-green-700">
-                        ℹ️ Paste this URL into your calendar app's "Subscribe to Calendar" feature
-                      </p>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-red-600">Failed to load calendar URL. Try refreshing.</p>
-                  )}
-                </div>
-              </div>
-            )}
+            {/* iCal removed for privacy - use Data menu > Export Calendar (.ics) instead */}
 
             {/* Referral Coupons (Premium Only) */}
             {user?.plan === 'premium' && user?.subscription_status === 'active' && (

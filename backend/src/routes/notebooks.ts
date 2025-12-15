@@ -32,31 +32,13 @@ router.get('/workspace', authMiddleware, async (req: AuthRequest, res: Response)
   }
 })
 
-// POST /api/notebooks/workspace - Save workspace notebook
+// POST /api/notebooks/workspace - Save workspace notebook [DEPRECATED]
 router.post('/workspace', authMiddleware, async (req: AuthRequest, res: Response) => {
-  try {
-    const { content } = saveNotebookSchema.parse(req.body)
-    const userId = req.user!.id
-
-    // Upsert workspace notebook
-    const result = await query(
-      `INSERT INTO notebooks (user_id, notebook_type, content)
-       VALUES ($1, 'workspace', $2)
-       ON CONFLICT (user_id, notebook_type)
-       WHERE notebook_type = 'workspace'
-       DO UPDATE SET content = $2, updated_at = NOW()
-       RETURNING id`,
-      [userId, content]
-    )
-
-    res.json({ success: true, id: result.rows[0].id })
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Invalid input', details: error.errors })
-    }
-    console.error('Save workspace notebook error:', error)
-    res.status(500).json({ error: 'Internal server error' })
-  }
+  return res.status(410).json({ 
+    error: 'This endpoint is deprecated. Notebooks are now synced via encrypted workspace.',
+    migrateTo: '/api/workspace',
+    message: 'Please update your client to use the unified workspace encryption API.'
+  })
 })
 
 // GET /api/notebooks/task/:taskId - Get task notebook
@@ -82,51 +64,22 @@ router.get('/task/:taskId', authMiddleware, async (req: AuthRequest, res: Respon
   }
 })
 
-// POST /api/notebooks/task/:taskId - Save task notebook
+// POST /api/notebooks/task/:taskId - Save task notebook [DEPRECATED]
 router.post('/task/:taskId', authMiddleware, async (req: AuthRequest, res: Response) => {
-  try {
-    const { content } = saveNotebookSchema.parse(req.body)
-    const userId = req.user!.id
-    const { taskId } = req.params
-
-    // Upsert task notebook
-    const result = await query(
-      `INSERT INTO notebooks (user_id, notebook_type, task_id, content)
-       VALUES ($1, 'task', $2, $3)
-       ON CONFLICT (user_id, task_id)
-       WHERE task_id IS NOT NULL
-       DO UPDATE SET content = $3, updated_at = NOW()
-       RETURNING id`,
-      [userId, taskId, content]
-    )
-
-    res.json({ success: true, id: result.rows[0].id })
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Invalid input', details: error.errors })
-    }
-    console.error('Save task notebook error:', error)
-    res.status(500).json({ error: 'Internal server error' })
-  }
+  return res.status(410).json({ 
+    error: 'This endpoint is deprecated. Notebooks are now synced via encrypted workspace.',
+    migrateTo: '/api/workspace',
+    message: 'Please update your client to use the unified workspace encryption API.'
+  })
 })
 
-// DELETE /api/notebooks/task/:taskId - Delete task notebook
+// DELETE /api/notebooks/task/:taskId - Delete task notebook [DEPRECATED]
 router.delete('/task/:taskId', authMiddleware, async (req: AuthRequest, res: Response) => {
-  try {
-    const userId = req.user!.id
-    const { taskId } = req.params
-
-    await query(
-      `DELETE FROM notebooks 
-       WHERE user_id = $1 AND notebook_type = 'task' AND task_id = $2`,
-      [userId, taskId]
-    )
-
-    res.json({ success: true })
-  } catch (error) {
-    console.error('Delete task notebook error:', error)
-    res.status(500).json({ error: 'Internal server error' })
-  }
+  return res.status(410).json({ 
+    error: 'This endpoint is deprecated. Notebooks are now synced via encrypted workspace.',
+    migrateTo: '/api/workspace',
+    message: 'Please update your client to use the unified workspace encryption API.'
+  })
 })
 
 export default router
