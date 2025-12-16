@@ -8,7 +8,6 @@ import authRoutes from './routes/auth';
 import workspaceRoutes from './routes/workspace';
 import calendarRoutes from './routes/calendar';
 import subscriptionRoutes from './routes/subscription';
-// Test sync workflow with preserved commit messages
 import adminRoutes from './routes/admin';
 import userRoutes from './routes/user';
 import twoFactorRoutes from './routes/twoFactor';

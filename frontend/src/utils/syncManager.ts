@@ -19,7 +19,14 @@ interface SyncConfig {
   onConflict?: (conflict: ConflictData) => Promise<{ resolution: 'local' | 'remote' | 'merge', mergedTables?: any[] }>
   onEmptyDataConfirm?: () => Promise<boolean> // Returns true if user confirms syncing empty data
   isUserEditing?: () => boolean // Returns true if user is actively editing
-  onStateUpdate?: (data: { tables: any[]; settings: any; taskGroups?: any[] }) => void // Callback to update React state instead of reloading
+  onStateUpdate?: (data: { 
+    tables: any[]; 
+    settings: any; 
+    taskGroups?: any[];
+    notebooks?: { workspace: string; tasks: Record<string, string> };
+    diaries?: Record<string, string>;
+    archivedTables?: any[];
+  }) => void // Callback to update React state instead of reloading
 }
 
 // Deep equality comparison for workspace data
@@ -88,6 +95,8 @@ class SyncManager {
   private localModified: boolean = false // Track if local has unsaved changes
   private readonly VERSION_STORAGE_KEY = 'tigement_sync_version'
   private hasDecryptionFailure: boolean = false
+  private debounceTimer: NodeJS.Timeout | null = null // For debouncing immediate syncs
+  private readonly DEBOUNCE_DELAY = 3000 // 3 seconds debounce for immediate sync after changes
   private decryptionFailureReason: string | null = null
   private forceOverwriteMode: boolean = false // Allow overwrite when user explicitly confirms
   private lastSyncTime: Date | null = null // Track last successful sync time
@@ -225,9 +234,26 @@ class SyncManager {
   /**
    * Mark local data as modified (has unsaved changes)
    * Called by UI when user makes changes
+   * Triggers a debounced sync after a short delay
    */
   markLocalModified() {
     this.localModified = true
+    
+    // Clear existing debounce timer
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer)
+    }
+    
+    // Schedule sync after debounce delay
+    this.debounceTimer = setTimeout(() => {
+      console.log('🔄 Debounced sync triggered after local change')
+      this.sync().catch(err => {
+        console.error('❌ Debounced sync failed:', err)
+        this.config.onSyncError?.(err)
+      })
+    }, this.DEBOUNCE_DELAY)
+    
+    console.log(`⏱️ Sync scheduled in ${this.DEBOUNCE_DELAY}ms`)
   }
 
   /**
@@ -337,6 +363,13 @@ class SyncManager {
       clearInterval(this.syncInterval)
       this.syncInterval = null
       console.log('⏸️ Auto-sync stopped')
+    }
+    
+    // Also clear any pending debounced sync
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer)
+      this.debounceTimer = null
+      console.log('⏸️ Debounced sync cancelled')
     }
   }
 
@@ -660,7 +693,10 @@ class SyncManager {
       this.config.onStateUpdate({
         tables: decryptedData.tables || [],
         settings: decryptedData.settings || {},
-        taskGroups: decryptedData.taskGroups || []
+        taskGroups: decryptedData.taskGroups || [],
+        notebooks: decryptedData.notebooks || { workspace: '', tasks: {} },
+        diaries: decryptedData.diaries || {},
+        archivedTables: decryptedData.archivedTables || []
       })
     } else {
       // Fallback to reload if no callback provided (backward compatibility)
@@ -735,6 +771,20 @@ class SyncManager {
         // Otherwise keep local ones
       }
     }
+    
+    // Save notebooks, diaries, and archived tables
+    if (decryptedData.notebooks) {
+      localStorage.setItem('tigement_notebooks', JSON.stringify(decryptedData.notebooks))
+      console.log('📓 Restored notebooks from workspace')
+    }
+    if (decryptedData.diaries) {
+      localStorage.setItem('tigement_diary_entries', JSON.stringify(decryptedData.diaries))
+      console.log('📔 Restored', Object.keys(decryptedData.diaries).length, 'diary entries from workspace')
+    }
+    if (decryptedData.archivedTables) {
+      localStorage.setItem('tigement_archived_tables', JSON.stringify(decryptedData.archivedTables))
+      console.log('🗄️ Restored', decryptedData.archivedTables.length, 'archived tables from workspace')
+    }
 
     this.updateLocalVersion(remote.version)
 
@@ -749,7 +799,10 @@ class SyncManager {
       this.config.onStateUpdate({
         tables: decryptedData.tables || [],
         settings: decryptedData.settings || {},
-        taskGroups: decryptedData.taskGroups || []
+        taskGroups: decryptedData.taskGroups || [],
+        notebooks: decryptedData.notebooks || { workspace: '', tasks: {} },
+        diaries: decryptedData.diaries || {},
+        archivedTables: decryptedData.archivedTables || []
       })
     } else {
       // Fallback to reload if no callback provided (backward compatibility)

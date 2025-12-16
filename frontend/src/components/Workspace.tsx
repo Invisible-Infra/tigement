@@ -845,7 +845,14 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
   // Listen for sync updates from background sync
   useEffect(() => {
     const handleSyncUpdate = (event: CustomEvent) => {
-      const { tables: newTables, settings: newSettings, taskGroups: newTaskGroups } = event.detail
+      const { 
+        tables: newTables, 
+        settings: newSettings, 
+        taskGroups: newTaskGroups,
+        notebooks: newNotebooks,
+        diaries: newDiaries,
+        archivedTables: newArchivedTables
+      } = event.detail
       
       // Only update if not currently editing to avoid conflicts
       const isEditing = document.activeElement?.tagName === 'INPUT' || 
@@ -860,6 +867,38 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
       setTables(newTables || [])
       setSettings(prev => ({ ...prev, ...newSettings }))
       setTaskGroups(newTaskGroups || defaultTaskGroups)
+      
+      // Update notebooks
+      if (newNotebooks) {
+        setWorkspaceNotebook(newNotebooks.workspace || '')
+        // Also update task notebooks in tables
+        if (newNotebooks.tasks && Object.keys(newNotebooks.tasks).length > 0) {
+          setTables(prevTables => prevTables.map(table => ({
+            ...table,
+            tasks: table.tasks.map(task => ({
+              ...task,
+              notebook: newNotebooks.tasks[task.id] || task.notebook
+            }))
+          })))
+        }
+        console.log('📓 Synced workspace notebook and', Object.keys(newNotebooks.tasks || {}).length, 'task notebooks')
+      }
+      
+      // Update diaries
+      if (newDiaries) {
+        setDiaryEntries(newDiaries)
+        setDiaryEntriesList(Object.keys(newDiaries).map(date => ({
+          date,
+          preview: newDiaries[date].substring(0, 50)
+        })))
+        console.log('📔 Synced', Object.keys(newDiaries).length, 'diary entries')
+      }
+      
+      // Update archived tables
+      if (newArchivedTables) {
+        setArchivedTables(newArchivedTables)
+        console.log('🗄️ Synced', newArchivedTables.length, 'archived tables')
+      }
     }
     
     window.addEventListener('tigement:sync-update', handleSyncUpdate as any)
@@ -2212,23 +2251,32 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     }
   }, [])
 
-  // Load notebooks from backend when user logs in
+  // Load notebooks and diaries when user logs in
   useEffect(() => {
     if (user) {
-      // Load workspace notebook
-      api.getWorkspaceNotebook().then(({ content }) => {
-        if (content) {
-          setWorkspaceNotebook(content)
-          const notebooks = loadNotebooks() || { workspace: '', tasks: {} }
-          notebooks.workspace = content
-          saveNotebooks(notebooks)
-        }
-      }).catch(err => console.error('Failed to load workspace notebook:', err))
-
-      // Load diary entries
-      // Premium users: use localStorage (encrypted workspace)
-      // Free users: fetch from backend
+      // For premium users: notebooks, diaries, and archived tables are synced via encrypted workspace
+      // The syncManager will restore them to localStorage and trigger state updates via the sync-update event
+      // For free users: still fetch from backend (they don't have encrypted workspace)
+      
       if (user.plan === 'premium') {
+        // Load notebooks from localStorage (encrypted workspace)
+        const notebooks = loadNotebooks()
+        if (notebooks) {
+          setWorkspaceNotebook(notebooks.workspace || '')
+          // Also update task notebooks in tables
+          if (notebooks.tasks && Object.keys(notebooks.tasks).length > 0) {
+            setTables(prevTables => prevTables.map(table => ({
+              ...table,
+              tasks: table.tasks.map(task => ({
+                ...task,
+                notebook: notebooks.tasks[task.id] || task.notebook
+              }))
+            })))
+          }
+          console.log('📓 Loaded workspace notebook and', Object.keys(notebooks.tasks || {}).length, 'task notebooks from encrypted workspace')
+        }
+        
+        // Load diary entries from localStorage (encrypted workspace)
         const localEntries = loadDiaryEntries() || {}
         setDiaryEntries(localEntries)
         // Build entries list for UI
@@ -2240,6 +2288,18 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
         saveDiaryEntries(localEntries)
         console.log('📔 Loaded', Object.keys(localEntries).length, 'diary entries from encrypted workspace')
       } else {
+        // Free users: load notebooks from backend
+        api.getWorkspaceNotebook().then(({ content }) => {
+          if (content) {
+            setWorkspaceNotebook(content)
+            const notebooks = loadNotebooks() || { workspace: '', tasks: {} }
+            notebooks.workspace = content
+            saveNotebooks(notebooks)
+            console.log('📓 Loaded workspace notebook from backend')
+          }
+        }).catch(err => console.error('Failed to load workspace notebook:', err))
+        
+        // Free users: load diaries from backend
         api.getDiaryEntries().then(backendEntries => {
           const localEntries = loadDiaryEntries() || {}
           // Merge: backend takes precedence, but keep local entries not on backend
@@ -2317,40 +2377,11 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
       setArchivedTables(localArchives)
     }
     
-    // Load from backend if logged in
-    if (user) {
-      api.listArchivedTables().then(backendArchives => {
-        // Merge backend archives (which don't have table_data in list)
-        // with local archives, prioritizing backend IDs
-        const mergedArchives: ArchivedTable[] = []
-        
-        // Add backend archives (metadata only, table_data fetched on restore)
-        backendArchives.forEach(backendArchive => {
-          mergedArchives.push({
-            id: backendArchive.id,
-            table_type: backendArchive.table_type,
-            table_date: backendArchive.table_date,
-            table_title: backendArchive.table_title,
-            task_count: backendArchive.task_count,
-            archived_at: backendArchive.archived_at
-            // table_data will be fetched on restore
-          })
-        })
-        
-        // Add local archives that don't exist in backend (by checking if ID is string)
-        const backendIds = new Set(backendArchives.map(a => a.id))
-        if (localArchives) {
-          localArchives.forEach(localArchive => {
-            if (typeof localArchive.id === 'string' || !backendIds.has(localArchive.id)) {
-              mergedArchives.push(localArchive)
-            }
-          })
-        }
-        
-        setArchivedTables(mergedArchives)
-        saveArchivedTables(mergedArchives)
-      }).catch(err => console.error('Failed to load archived tables:', err))
-    }
+    // For premium users: After migration, archived tables are synced via encrypted workspace
+    // No need to load from backend API (which would overwrite restored data)
+    // For free users: archived tables were never stored on backend anyway
+    // So we just use localStorage for all users now
+    console.log('🗄️ Loaded', localArchives?.length || 0, 'archived tables from localStorage')
   }, [user])
 
   // Render group selector
