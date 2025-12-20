@@ -207,7 +207,7 @@ router.post('/oauth/passphrase', async (req: Request, res: Response) => {
     const accessToken = jwt.sign(
       { id: user.id, email: user.email },
       secret,
-      { expiresIn: '15m' }
+      { expiresIn: '2h' }
     );
     
     const refreshToken = jwt.sign(

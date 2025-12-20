@@ -29,7 +29,7 @@ function App() {
 }
 
 function AppContent() {
-  const { isAuthenticated, user, logout, decryptionFailure, onDecryptionFailureHandled } = useAuth()
+  const { isAuthenticated, user, logout, decryptionFailure, onDecryptionFailureHandled, isPremium, syncNow } = useAuth()
   const [showLogin, setShowLogin] = useState(false)
   const [showRegister, setShowRegister] = useState(false)
   const [showForgotPassword, setShowForgotPassword] = useState(false)
@@ -167,18 +167,26 @@ function AppContent() {
       // Prefer pre-login stashed snapshot if present (guarantees we didn't miss anon data)
       const stashed = loadStashedAnonData('pre_login')
       // Only prompt automatically when a pre-login stash exists
-      if (!stashed) return
+      if (!stashed) {
+        // Clear the flag if there's no stash
+        sessionStorage.removeItem('tigement_has_merge_data')
+        return
+      }
       
-      const anonTables = stashed?.tables ?? loadTables()
-      const anonNotebooks = stashed?.notebooks ?? loadNotebooks()
+      // ONLY use stashed data, never fall back to current localStorage
+      // (current localStorage may have been contaminated by cloud sync)
+      const anonTables = stashed.tables
+      const anonNotebooks = stashed.notebooks
+      
       const detected = detectNonEmptyLocalData(anonTables, anonNotebooks)
       const hasItems =
         detected.nonEmptyTables.length > 0 ||
         !!detected.nonEmptyNotebooks.workspace ||
         Object.keys(detected.nonEmptyNotebooks.tasks || {}).length > 0
       if (!hasItems) {
-        // Clear stash if no items to merge
+        // Clear stash and flag if no items to merge
         try { clearStashedAnonData('pre_login') } catch {}
+        sessionStorage.removeItem('tigement_has_merge_data')
         return
       }
       
@@ -223,7 +231,7 @@ function AppContent() {
     loadServerDataAndShowMerge()
   }, [isAuthenticated])
 
-  const handleMergeConfirm = () => {
+  const handleMergeConfirm = async () => {
     if (!serverSnapshot || !detectedLocal) {
       setShowMergeDialog(false)
       setShownAnonMergePrompt()
@@ -241,15 +249,38 @@ function AppContent() {
     setShownAnonMergePrompt()
     // Clear stash after merge
     try { clearStashedAnonData('pre_login') } catch {}
+    
+    // Force push merged data to cloud before reloading (don't do smart sync)
+    if (isPremium) {
+      try {
+        console.log('🔄 Force pushing merged data to cloud...')
+        await syncManager.forcePush()
+        console.log('✅ Merged data pushed to cloud')
+      } catch (error) {
+        console.error('❌ Failed to push merged data:', error)
+      }
+    }
+    
     // Reload page to show merged data in UI
     window.location.reload()
   }
 
-  const handleMergeSkip = () => {
+  const handleMergeSkip = async () => {
     setShowMergeDialog(false)
     setShownAnonMergePrompt()
     // Clear stash after user interaction
     try { clearStashedAnonData('pre_login') } catch {}
+    
+    // Pull cloud data to replace local data
+    if (isPremium) {
+      try {
+        console.log('🔄 Skipped merge - pulling cloud data instead')
+        await syncNow()
+        window.location.reload()
+      } catch (error) {
+        console.error('❌ Failed to pull cloud data after skip:', error)
+      }
+    }
   }
 
   const handleDownloadBackup = async () => {

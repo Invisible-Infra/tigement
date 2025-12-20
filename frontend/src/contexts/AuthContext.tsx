@@ -37,6 +37,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  // Proactive token refresh - refresh every 90 minutes (before 2h expiry)
+  useEffect(() => {
+    if (!user) return
+
+    console.log('🔄 Setting up proactive token refresh (every 90 minutes)')
+    
+    const refreshInterval = setInterval(async () => {
+      try {
+        console.log('🔄 Proactive token refresh triggered')
+        const success = await api.refreshAccessToken()
+        if (success) {
+          console.log('✅ Token refreshed successfully')
+        } else {
+          console.error('❌ Proactive token refresh failed')
+        }
+      } catch (error) {
+        console.error('❌ Proactive token refresh error:', error)
+      }
+    }, 90 * 60 * 1000) // 90 minutes
+
+    return () => {
+      clearInterval(refreshInterval)
+      console.log('⏹️ Proactive token refresh stopped')
+    }
+  }, [user])
+
   useEffect(() => {
     // Check if user is already authenticated
     const checkAuth = async () => {
@@ -211,7 +237,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         console.log('🔄 Starting initial sync for premium user...')
         await syncManager.pull()
-        // pull() will reload the page if data exists
+        
+        // Check if there's merge data to show (stashed before login)
+        const hasMergeData = sessionStorage.getItem('tigement_has_merge_data')
+        if (hasMergeData) {
+          console.log('⏸️ Skipping auto-reload - merge dialog will be shown')
+          sessionStorage.removeItem('tigement_has_merge_data')
+          return response
+        }
+        
+        // Force reload after initial login sync to ensure UI is fully updated
+        console.log('🔄 Reloading page after initial sync...')
+        window.location.reload()
       } catch (error: any) {
         console.error('❌ Initial sync failed:', error)
         console.error('Error details:', error.message, error.stack)

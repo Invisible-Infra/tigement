@@ -33,6 +33,9 @@ export function LoginForm({ onClose, onSwitchToRegister, onSwitchToForgotPasswor
         const anonNotebooks = loadNotebooks()
         if ((anonTables && anonTables.length) || (anonNotebooks && ((anonNotebooks.workspace?.trim()?.length || 0) > 0 || Object.keys(anonNotebooks.tasks || {}).length > 0))) {
           stashAnonDataSnapshot('pre_login', anonTables, anonNotebooks)
+          // Set flag to prevent auto-reload so merge dialog can be shown
+          sessionStorage.setItem('tigement_has_merge_data', 'true')
+          console.log('🔒 Merge data detected - auto-reload will be skipped')
         }
       } catch {}
 

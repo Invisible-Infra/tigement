@@ -143,6 +143,7 @@ class ApiClient {
 
   async refreshAccessToken(): Promise<boolean> {
     try {
+      console.log('🔄 Attempting to refresh access token...')
       const response = await fetch(`${API_BASE}/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -150,6 +151,14 @@ class ApiClient {
       })
 
       if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+        console.error('❌ Token refresh failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorData.error,
+          refreshTokenPresent: !!this.refreshToken,
+          refreshTokenLength: this.refreshToken?.length || 0
+        })
         this.clearTokens()
         return false
       }
@@ -157,8 +166,14 @@ class ApiClient {
       const data = await response.json()
       this.accessToken = data.accessToken
       localStorage.setItem('accessToken', data.accessToken)
+      console.log('✅ Access token refreshed successfully')
       return true
-    } catch {
+    } catch (error: any) {
+      console.error('❌ Token refresh exception:', {
+        message: error.message,
+        name: error.name,
+        refreshTokenPresent: !!this.refreshToken
+      })
       this.clearTokens()
       return false
     }

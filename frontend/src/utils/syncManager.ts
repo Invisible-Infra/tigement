@@ -239,6 +239,12 @@ class SyncManager {
   markLocalModified() {
     this.localModified = true
     
+    // Don't schedule sync if not authenticated or auto-sync is not running
+    if (!this.autoSyncInterval) {
+      console.log('⏸️ Sync not scheduled - auto-sync not active (user not authenticated)')
+      return
+    }
+    
     // Clear existing debounce timer
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer)

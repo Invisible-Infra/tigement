@@ -1532,12 +1532,24 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
       }
       return table
     }))
+    
+    // Delete associated task notebook
+    deleteTaskNotebook(taskId)
+    
     focusTable(tableId) // Focus table when task is deleted
   }
 
   const deleteSelected = (tableId: string) => {
+    // First, collect task IDs that will be deleted
+    const deletedTaskIds: string[] = []
+    
     setTables(tables.map(table => {
       if (table.id === tableId) {
+        // Collect IDs of selected tasks
+        table.tasks.forEach(task => {
+          if (task.selected) deletedTaskIds.push(task.id)
+        })
+        
         return {
           ...table,
           tasks: table.tasks.filter(task => !task.selected)
@@ -1545,6 +1557,9 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
       }
       return table
     }))
+    
+    // Delete associated task notebooks
+    deletedTaskIds.forEach(taskId => deleteTaskNotebook(taskId))
   }
 
   const toggleSelect = (tableId: string, taskId: string) => {

@@ -30,6 +30,7 @@ export interface MergeTable {
   tasks: MergeTask[]
   position: { x: number; y: number }
   size?: { width: number; height: number }
+  spaceId?: string | null // null or undefined = "All Spaces"
 }
 
 export interface MergeWorkspace {

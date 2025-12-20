@@ -73,7 +73,7 @@ router.post('/register', async (req, res) => {
     // Use user-defined session duration or default to 7 days (register)
     const daysRegister = sessionDays && sessionDays >= 1 && sessionDays <= 90 ? sessionDays : 7;
     
-    const accessToken = jwt.sign({ id: user.id, email: user.email }, secret, { expiresIn: '15m' });
+    const accessToken = jwt.sign({ id: user.id, email: user.email }, secret, { expiresIn: '2h' });
     const refreshToken = jwt.sign({ id: user.id }, refreshSecret, { expiresIn: `${daysRegister}d` });
     
     // Store refresh token
@@ -199,7 +199,7 @@ router.post('/login', async (req, res) => {
     // Use user-defined session duration or default to 7 days (login)
     const daysLogin = sessionDays && sessionDays >= 1 && sessionDays <= 90 ? sessionDays : 7;
     
-    const accessToken = jwt.sign({ id: user.id, email: user.email }, secret, { expiresIn: '15m' });
+    const accessToken = jwt.sign({ id: user.id, email: user.email }, secret, { expiresIn: '2h' });
     const refreshToken = jwt.sign({ id: user.id }, refreshSecret, { expiresIn: `${daysLogin}d` });
     
     // Store refresh token
@@ -208,6 +208,15 @@ router.post('/login', async (req, res) => {
       'INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)',
       [user.id, refreshToken, expiresAt]
     );
+    
+    // Clean up expired refresh tokens for this user
+    const deletedResult = await query(
+      'DELETE FROM refresh_tokens WHERE user_id = $1 AND expires_at <= NOW() RETURNING id',
+      [user.id]
+    );
+    if (deletedResult.rowCount && deletedResult.rowCount > 0) {
+      console.log(`🧹 Cleaned up ${deletedResult.rowCount} expired refresh token(s) for user ${user.id}`);
+    }
     
     // Update last login timestamp
     await query(
@@ -266,6 +275,7 @@ router.post('/refresh', async (req, res) => {
     const { refreshToken } = req.body;
     
     if (!refreshToken) {
+      console.error('❌ Refresh attempt without token');
       return res.status(401).json({ error: 'Refresh token required' });
     }
     
@@ -280,12 +290,17 @@ router.post('/refresh', async (req, res) => {
     );
     
     if (tokenResult.rows.length === 0) {
+      console.error('❌ Refresh token not found in database or expired', {
+        userId: decoded?.id,
+        tokenLength: refreshToken?.length || 0
+      });
       return res.status(401).json({ error: 'Invalid refresh token' });
     }
     
     // Get user
     const userResult = await query('SELECT id, email FROM users WHERE id = $1', [decoded.id]);
     if (userResult.rows.length === 0) {
+      console.error('❌ User not found for refresh token', { userId: decoded.id });
       return res.status(401).json({ error: 'User not found' });
     }
     
@@ -293,11 +308,12 @@ router.post('/refresh', async (req, res) => {
     
     // Generate new access token
     const secret = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
-    const accessToken = jwt.sign({ id: user.id, email: user.email }, secret, { expiresIn: '15m' });
+    const accessToken = jwt.sign({ id: user.id, email: user.email }, secret, { expiresIn: '2h' });
     
+    console.log('✅ Token refreshed successfully', { userId: user.id, email: user.email });
     res.json({ accessToken });
   } catch (error) {
-    console.error('Refresh error:', error);
+    console.error('❌ Refresh error:', error);
     res.status(401).json({ error: 'Invalid refresh token' });
   }
 });
@@ -309,6 +325,17 @@ router.post('/logout', authMiddleware, async (req: AuthRequest, res) => {
     
     if (refreshToken) {
       await query('DELETE FROM refresh_tokens WHERE token = $1', [refreshToken]);
+    }
+    
+    // Clean up expired refresh tokens for this user
+    const userId = req.user!.id;
+    const deletedResult = await query(
+      'DELETE FROM refresh_tokens WHERE user_id = $1 AND expires_at <= NOW() RETURNING id',
+      [userId]
+    );
+    
+    if (deletedResult.rowCount && deletedResult.rowCount > 0) {
+      console.log(`🧹 Cleaned up ${deletedResult.rowCount} expired refresh token(s) for user ${userId}`);
     }
     
     res.json({ message: 'Logged out successfully' });
