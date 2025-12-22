@@ -1083,6 +1083,24 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     })
   }
 
+  // Sync spaces state when settings.spaces changes (e.g., after sync from server)
+  useEffect(() => {
+    if (settings.spaces) {
+      setSpaces(settings.spaces)
+      // Also update active space if current one no longer exists
+      const currentSpaceExists = settings.spaces.some(s => s.id === activeSpaceId)
+      if (!currentSpaceExists && settings.activeSpaceId) {
+        setActiveSpaceId(settings.activeSpaceId)
+      }
+    }
+    if (settings.viewMode && settings.viewMode !== viewMode) {
+      setViewMode(settings.viewMode)
+    }
+    if (settings.spacesSplitPosition !== undefined && settings.spacesSplitPosition !== spacesSplitPosition) {
+      setSpacesSplitPosition(settings.spacesSplitPosition)
+    }
+  }, [settings.spaces, settings.activeSpaceId, settings.viewMode, settings.spacesSplitPosition])
+
   // Helper functions for duration formatting
   const formatDuration = (minutes: number): string => {
     const h = Math.floor(minutes / 60)
