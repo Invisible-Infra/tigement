@@ -13,6 +13,17 @@ export default defineConfig({
       'tigement.com',      // Allows root domain
       'localhost',         // Allow localhost for development
     ],
+    watch: {
+      ignored: [
+        '**/node_modules/**',
+        '**/dist/**',
+        '**/Dockerfile',
+        '**/docker-compose*.yml',
+        '**/.git/**',
+        '**/package-lock.json',
+        '**/nginx.conf'
+      ]
+    },
     proxy: {
       '/api': {
         target: 'http://tigement-backend:3000',
