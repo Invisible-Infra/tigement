@@ -171,6 +171,12 @@ const defaultSpaces: Space[] = [
   { id: 'home', name: 'Home', color: '#f59e0b', icon: 'home' },
 ]
 
+function areSpacesEqual(a: Space[] | undefined, b: Space[] | undefined): boolean {
+  if (a === b) return true
+  if (!a || !b || a.length !== b.length) return false
+  return a.every((s, i) => s.id === b[i].id && s.name === b[i].name)
+}
+
 // Icon mapping for Font Awesome
 const iconMap: Record<string, any> = {
   'briefcase': faBriefcase,
@@ -779,6 +785,29 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     }
   }, [user, hasLoadedUser, loading])
 
+  // Initialize tables for anonymous users on first load.
+  // If there is existing anonymous data in localStorage, load it.
+  // Otherwise, create the default day + TODO tables.
+  useEffect(() => {
+    if (!hasLoadedUser || loading || user || wasAuthenticatedRef.current) return
+
+    const savedTables = loadTables()
+    if (savedTables && savedTables.length > 0) {
+      console.log(`📦 Loading anonymous tables from localStorage: ${savedTables.length} tables`)
+      setTables(savedTables)
+      hasLoadedTables.current = true
+      console.log(`✅ Loaded ${savedTables.length} anonymous tables into React state`)
+      return
+    }
+
+    if (!hasLoadedTables.current && tables.length === 0) {
+      console.log('🆕 No existing tables for anonymous user, creating default day + TODO tables')
+      const defaults = getDefaultTables()
+      setTables(defaults)
+      hasLoadedTables.current = true
+    }
+  }, [hasLoadedUser, loading, user, tables.length])
+
   // Reload data from localStorage when user logs in
   useEffect(() => {
     if (user && hasLoadedUser && !loading) {
@@ -801,7 +830,10 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
           hasLoadedTables.current = true
           console.log(`✅ Loaded ${savedTables.length} tables into React state`)
         } else {
-          console.warn('⚠️ No tables found in localStorage after login')
+          console.warn('⚠️ No tables found in localStorage after login, creating default day + TODO tables')
+          const defaults = getDefaultTables()
+          setTables(defaults)
+          hasLoadedTables.current = true
         }
       }
       const savedSettings = loadSettings()
@@ -1246,21 +1278,21 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     })
   }
 
-  // Sync spaces state when settings.spaces changes (e.g., after sync from server)
+  // Sync spaces state when settings.spaces changes (e.g., after sync from server).
+  // Only update state when values actually differ to avoid feedback loop with the effect that writes state → settings.
   useEffect(() => {
-    // Only update if settings.spaces is a non-empty array
     if (settings.spaces && Array.isArray(settings.spaces) && settings.spaces.length > 0) {
-      console.log('🔄 Updating spaces from settings:', settings.spaces.length, 'spaces')
-      setSpaces(settings.spaces)
-      // Also update active space if current one no longer exists
+      if (!areSpacesEqual(settings.spaces, spaces)) {
+        setSpaces(settings.spaces)
+      }
       const currentSpaceExists = settings.spaces.some(s => s.id === activeSpaceId)
-      if (!currentSpaceExists && settings.activeSpaceId) {
+      if (!currentSpaceExists && settings.activeSpaceId && settings.activeSpaceId !== activeSpaceId) {
         setActiveSpaceId(settings.activeSpaceId)
       }
     } else if (!settings.spaces || (Array.isArray(settings.spaces) && settings.spaces.length === 0)) {
-      // If settings.spaces is empty or missing, ensure we have defaultSpaces
-      console.log('⚠️ Settings spaces empty or missing, ensuring defaultSpaces')
-      setSpaces(defaultSpaces)
+      if (!areSpacesEqual(defaultSpaces, spaces)) {
+        setSpaces(defaultSpaces)
+      }
       if (!activeSpaceId || !defaultSpaces.some(s => s.id === activeSpaceId)) {
         setActiveSpaceId(defaultSpaces[0].id)
       }
@@ -1271,7 +1303,7 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     if (settings.spacesSplitPosition !== undefined && settings.spacesSplitPosition !== spacesSplitPosition) {
       setSpacesSplitPosition(settings.spacesSplitPosition)
     }
-  }, [settings.spaces, settings.activeSpaceId, settings.viewMode, settings.spacesSplitPosition, activeSpaceId, viewMode, spacesSplitPosition])
+  }, [settings.spaces, settings.activeSpaceId, settings.viewMode, settings.spacesSplitPosition, activeSpaceId, spacesSplitPosition])
 
   // Helper functions for duration formatting
   const formatDuration = (minutes: number): string => {
@@ -1540,16 +1572,21 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     }
   }, [timerPosition])
 
-  // Update settings when spaces state changes
+  // Update settings when spaces state changes. Only write when something actually changed to avoid loop with the effect that syncs settings → state.
   useEffect(() => {
-    const updatedSettings = {
+    const same =
+      settings.viewMode === viewMode &&
+      settings.activeSpaceId === activeSpaceId &&
+      (settings.spacesSplitPosition ?? 40) === spacesSplitPosition &&
+      areSpacesEqual(settings.spaces, spaces)
+    if (same) return
+    setSettings({
       ...settings,
       viewMode,
       spaces,
       spacesSplitPosition,
       activeSpaceId
-    }
-    setSettings(updatedSettings)
+    })
   }, [viewMode, spaces, spacesSplitPosition, activeSpaceId])
 
   const addMinutes = (time: string, minutes: number): string => {

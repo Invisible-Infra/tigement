@@ -38,9 +38,17 @@ export function SpaceTabs({
     <div className="relative z-10 flex items-center gap-3 bg-gray-100 p-4 border-b overflow-x-auto overflow-y-visible">
       {spaces.map((space) => (
         <div key={space.id} className="relative group z-10">
-          <button
+          <div
+            role="tab"
+            tabIndex={0}
             onClick={() => onSpaceChange(space.id)}
-            className={`relative z-10 px-8 py-4 rounded-t-lg flex items-center gap-3 transition text-base font-medium ${
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onSpaceChange(space.id)
+              }
+            }}
+            className={`relative z-10 px-8 py-4 rounded-t-lg flex items-center gap-3 transition text-base font-medium cursor-pointer ${
               activeSpaceId === space.id
                 ? 'bg-white shadow-md'
                 : 'bg-gray-200 hover:bg-gray-300'
@@ -62,12 +70,10 @@ export function SpaceTabs({
             ) : null}
             <span className={activeSpaceId === space.id ? 'text-gray-900' : 'text-gray-700'}>{space.name}</span>
             {activeSpaceId === space.id && (
-              <div className="flex gap-1 ml-2">
+              <div className="flex gap-1 ml-2" onClick={(e) => e.stopPropagation()}>
                 <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onEditSpace(space.id)
-                  }}
+                  type="button"
+                  onClick={() => onEditSpace(space.id)}
                   className="text-sm px-2 py-1 bg-white hover:bg-gray-100 rounded border border-gray-300 transition"
                   title="Edit space"
                 >
@@ -75,10 +81,8 @@ export function SpaceTabs({
                 </button>
                 {spaces.length > 1 && (
                   <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onDeleteSpace(space.id)
-                    }}
+                    type="button"
+                    onClick={() => onDeleteSpace(space.id)}
                     className="text-sm px-2 py-1 bg-white hover:bg-red-100 rounded border border-gray-300 transition"
                     title="Delete space"
                   >
@@ -87,7 +91,7 @@ export function SpaceTabs({
                 )}
               </div>
             )}
-          </button>
+          </div>
         </div>
       ))}
       
