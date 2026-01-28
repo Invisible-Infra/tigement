@@ -22,6 +22,9 @@ import oauthRoutes from './routes/oauth';
 import couponsRoutes from './routes/coupons';
 import announcementsRoutes from './routes/announcements';
 import migrationRoutes from './routes/migration';
+import tokensRoutes from './routes/tokens';
+import apiRoutes from './routes/api';
+import docsRoutes from './routes/docs';
 import { runMigrations } from './db/migrate';
 import { initPaymentSettings } from './db/initPaymentSettings';
 import { configureOAuth } from './services/oauth';
@@ -102,6 +105,8 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/2fa', twoFactorRoutes);
 app.use('/api/payment', paymentRoutes);
+app.use('/api/tokens', tokensRoutes);
+app.use('/api/v1', apiRoutes);
 // iCal and CalDAV routes disabled - replaced with client-side .ics export for privacy
 // app.use('/api/ical', icalRoutes);
 // app.use('/caldav', caldavRoutes);
@@ -112,6 +117,7 @@ app.use('/api/bugs', bugsRoutes);
 app.use('/api/coupons', couponsRoutes);
 app.use('/api/announcements', announcementsRoutes);
 app.use('/api/migration', migrationRoutes);
+app.use('/api-docs', docsRoutes);
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

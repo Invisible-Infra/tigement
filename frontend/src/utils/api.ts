@@ -662,6 +662,71 @@ class ApiClient {
       body: JSON.stringify(data)
     })
   }
+
+  async getDebugSettings(): Promise<{ debug_button_enabled: boolean }> {
+    return this.request('/admin/debug-settings')
+  }
+
+  async updateDebugSettings(data: { debug_button_enabled: boolean }): Promise<any> {
+    return this.request('/admin/debug-settings', {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    })
+  }
+
+  // API Token Management
+  async generateApiToken(data: { name: string; scopes: string[]; canDecrypt: boolean; expiresInDays?: number }): Promise<any> {
+    const { canDecrypt, ...rest } = data;
+    
+    let payload: any = {
+      ...rest,
+      enableDecryption: canDecrypt,
+    };
+    
+    // If decryption is enabled, include the encryption key
+    if (canDecrypt) {
+      // Get encryption key from encryptionKeyManager
+      const { encryptionKeyManager } = await import('./encryptionKey');
+      const encryptionKey = encryptionKeyManager.getKey();
+      
+      if (!encryptionKey) {
+        throw new Error('Encryption key not available. Please log in first.');
+      }
+      
+      payload.encryptionKey = encryptionKey;
+    }
+    
+    return this.request('/tokens/generate', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async listApiTokens(): Promise<{ tokens: any[] }> {
+    return this.request('/tokens', {
+      method: 'GET',
+    })
+  }
+
+  async getApiToken(id: number): Promise<any> {
+    return this.request(`/tokens/${id}`, {
+      method: 'GET',
+    })
+  }
+
+  async revokeApiToken(id: number): Promise<{ success: boolean; message: string }> {
+    return this.request(`/tokens/${id}`, {
+      method: 'DELETE',
+    })
+  }
+
+  // Encryption key rotation
+  async rotateEncryptionKey(invalidateTokens: boolean = true): Promise<any> {
+    return this.request('/user/rotate-encryption-key', {
+      method: 'POST',
+      body: JSON.stringify({ invalidateTokens }),
+    })
+  }
 }
 
 export const api = new ApiClient()

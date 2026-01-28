@@ -2,6 +2,15 @@
    TIGEMENT THEMES
    ============================================ */
 
+/* ZX Spectrum ROM Font */
+@font-face {
+  font-family: 'ZX Spectrum';
+  src: url('/fonts/zxspectrum.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+
 /* Base theme variables */
 :root {
   --color-primary: #4fc3f7;
@@ -341,6 +350,240 @@
 @keyframes blink {
   0%, 50% { opacity: 1; }
   51%, 100% { opacity: 0; }
+}
+
+/* ============================================
+   ZX SPECTRUM THEME (Sinclair ZX Spectrum)
+   ============================================ */
+.theme-spectrum {
+  --color-primary: #00D8FF;           /* Authentic ZX Spectrum Cyan */
+  --color-primary-hover: #00B0DD;     /* Dimmed authentic cyan */
+  --color-primary-dark: #0088AA;      /* Darker cyan */
+  --color-background: #1A1A1A;        /* Dark gray (workspace) */
+  --color-surface: #0A0A0A;           /* Very dark gray (for tabs) */
+  --color-surface-elevated: #111111;  /* Near black */
+  --color-text: #FFFFFF;              /* Bright White */
+  --color-text-secondary: #00D8FF;    /* Authentic cyan */
+  --color-text-muted: #0088AA;        /* Dim cyan */
+  --color-border: #00D8FF;            /* Authentic cyan */
+  --color-border-light: #0088AA;      /* Dim cyan */
+  --color-error: #FF0000;             /* Bright Red (ZX red) */
+  --color-success: #00FF00;           /* Bright Green (ZX green) */
+  --color-warning: #FFFF00;           /* Bright Yellow (ZX yellow) */
+  --color-info: #FF00FF;              /* Bright Magenta (ZX magenta) */
+  
+  /* No shadows in ZX Spectrum */
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+}
+
+/* Apply ZX Spectrum font and remove rounded corners */
+.theme-spectrum * {
+  font-family: 'ZX Spectrum', 'Courier New', monospace !important;
+  font-size: 1.05em !important; /* Increase font size by 5% */
+  font-weight: normal !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  
+  /* Pixelated rendering for authentic bitmap look */
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: grayscale;
+  font-smooth: never;
+  letter-spacing: 0.5px;
+}
+
+/* Specific overrides for elements that shouldn't be enlarged */
+.theme-spectrum input,
+.theme-spectrum textarea,
+.theme-spectrum select,
+.theme-spectrum button {
+  font-size: 1em !important; /* Keep form elements at normal size */
+}
+
+.theme-spectrum body {
+  background-color: #1A1A1A;
+  color: #FFFFFF;
+}
+
+/* Blocky borders - authentic cyan */
+.theme-spectrum .table-container,
+.theme-spectrum .modal,
+.theme-spectrum button,
+.theme-spectrum input,
+.theme-spectrum select,
+.theme-spectrum textarea {
+  border: 2px solid #00D8FF !important;
+  background-color: #000000 !important;
+  color: #FFFFFF !important;
+}
+
+/* Headers - cyan background with black text */
+.theme-spectrum .bg-\[#4a6c7a\],
+.theme-spectrum .bg-\[#5a7c8a\],
+.theme-spectrum [style*="background"],
+.theme-spectrum header,
+.theme-spectrum nav {
+  background-color: #00D8FF !important;
+  color: #000000 !important;
+  border: 2px solid #00D8FF !important;
+}
+
+/* Buttons */
+.theme-spectrum button {
+  border: 2px solid #00D8FF !important;
+  background-color: #000000 !important;
+  color: #00D8FF !important;
+}
+
+.theme-spectrum button:hover {
+  background-color: #00D8FF !important;
+  color: #000000 !important;
+}
+
+.theme-spectrum button:disabled {
+  opacity: 0.5;
+  border: 2px solid #0088AA !important;
+  color: #0088AA !important;
+}
+
+/* Table/Tab borders - make them visible */
+.theme-spectrum .table-container {
+  border: 2px solid #00D8FF !important;
+  background-color: #0A0A0A !important;
+  box-sizing: border-box;
+}
+
+/* Table headers with cyan border */
+.theme-spectrum .table-header {
+  border-bottom: 2px solid #00D8FF !important;
+  background-color: #0A0A0A !important;
+}
+
+/* Inputs and form elements */
+.theme-spectrum input,
+.theme-spectrum select,
+.theme-spectrum textarea {
+  background-color: #000000 !important;
+  color: #FFFFFF !important;
+  border: 2px solid #00D8FF !important;
+}
+
+.theme-spectrum input::placeholder {
+  color: #0088AA !important;
+}
+
+.theme-spectrum input:focus,
+.theme-spectrum select:focus,
+.theme-spectrum textarea:focus {
+  outline: none !important;
+  border: 2px solid #FFFF00 !important;  /* Yellow on focus */
+  ring: none !important;
+}
+
+/* Hide SVGs (not authentic) */
+.theme-spectrum svg {
+  display: none !important;
+  visibility: hidden !important;
+}
+
+/* ASCII-style checkboxes */
+.theme-spectrum input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #00D8FF !important;
+  background-color: #000000 !important;
+}
+
+.theme-spectrum input[type="checkbox"]:checked {
+  background-color: #00D8FF !important;
+  position: relative;
+}
+
+.theme-spectrum input[type="checkbox"]:checked::after {
+  content: '✓';
+  position: absolute;
+  top: -4px;
+  left: 1px;
+  color: #000000;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+/* Remove gradients and effects */
+.theme-spectrum .bg-gradient-to-r,
+.theme-spectrum .shadow,
+.theme-spectrum .shadow-sm,
+.theme-spectrum .shadow-md,
+.theme-spectrum .shadow-lg,
+.theme-spectrum .shadow-xl {
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+/* Override Tailwind classes */
+.theme-spectrum .bg-white {
+  background-color: #0A0A0A !important;
+}
+
+.theme-spectrum .text-gray-700,
+.theme-spectrum .text-gray-600,
+.theme-spectrum .text-gray-500,
+.theme-spectrum .text-gray-800,
+.theme-spectrum .text-gray-900 {
+  color: #FFFFFF !important;
+}
+
+.theme-spectrum .border-gray-300,
+.theme-spectrum .border-gray-200 {
+  border-color: #00D8FF !important;
+}
+
+.theme-spectrum .bg-gray-50 {
+  background: linear-gradient(
+    315deg,
+    transparent 0%,
+    transparent 40px,
+    #0000FF 40px,
+    #0000FF 60px,
+    #00FF00 60px,
+    #00FF00 80px,
+    #FFFF00 80px,
+    #FFFF00 100px,
+    #FF0000 100px,
+    #FF0000 120px,
+    #1A1A1A 120px,
+    #1A1A1A 100%
+  ) bottom right / 100% 100% no-repeat !important;
+}
+
+.theme-spectrum .bg-gray-100 {
+  background-color: #1A1A1A !important;  /* Workspace background - lighter */
+}
+
+.theme-spectrum .bg-gray-200 {
+  background-color: #1A1A1A !important;  /* Workspace background - lighter */
+}
+
+.theme-spectrum .hover\:bg-gray-50:hover {
+  background-color: #111111 !important;
+}
+
+.theme-spectrum .hover\:bg-gray-300:hover {
+  background-color: #0A0A0A !important;
+}
+
+/* Proper contrast for text */
+.theme-spectrum .group:hover .text-gray-600,
+.theme-spectrum .group:hover .text-gray-700,
+.theme-spectrum .group:hover .group-hover\:text-gray-900 {
+  color: #FFFFFF !important;
 }
 
 /* ============================================

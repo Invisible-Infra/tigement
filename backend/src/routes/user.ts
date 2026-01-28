@@ -264,5 +264,45 @@ router.delete('/account', async (req: AuthRequest, res) => {
   }
 });
 
+// Rotate encryption key
+const rotateKeySchema = z.object({
+  invalidateTokens: z.boolean().default(true),
+});
+
+router.post('/rotate-encryption-key', async (req: AuthRequest, res) => {
+  try {
+    const { invalidateTokens } = rotateKeySchema.parse(req.body);
+    
+    if (invalidateTokens) {
+      // Revoke all API tokens (default, more secure)
+      await query(
+        'UPDATE api_tokens SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL',
+        [req.user!.id]
+      );
+      
+      res.json({ 
+        success: true, 
+        message: 'All API tokens have been revoked. Please regenerate tokens with your new encryption key.',
+        tokensRevoked: true
+      });
+    } else {
+      // Note: Re-wrapping DEKs requires old and new keys from client
+      // This is a placeholder - actual re-wrapping happens client-side
+      res.json({ 
+        success: true, 
+        message: 'Encryption key rotation initiated. API tokens will continue to work.',
+        tokensRevoked: false,
+        warning: 'Re-wrapping DEKs must be done client-side with both old and new keys'
+      });
+    }
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: 'Invalid input', details: error.errors });
+    }
+    console.error('Rotate encryption key error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;
 

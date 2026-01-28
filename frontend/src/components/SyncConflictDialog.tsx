@@ -14,10 +14,12 @@ interface ConflictData {
   local: {
     tables: Table[]
     settings: any
+    archivedTables?: any[]
   }
   remote: {
     tables: Table[]
     settings: any
+    archivedTables?: any[]
   }
 }
 
@@ -176,7 +178,7 @@ export function SyncConflictDialog({ conflictData, onResolve, onCancel }: SyncCo
                       Use the data from this device. Server data will be overwritten.
                     </p>
                     <div className="mt-2 text-sm text-gray-500">
-                      {conflictData.local.tables.length} tables, {getTotalTasks(conflictData.local.tables)} tasks
+                      {conflictData.local.tables.length} tables{conflictData.local.archivedTables ? `, ${conflictData.local.archivedTables.length} archived` : ''}, {getTotalTasks(conflictData.local.tables)} tasks
                     </div>
                   </div>
                 </div>
@@ -194,7 +196,7 @@ export function SyncConflictDialog({ conflictData, onResolve, onCancel }: SyncCo
                       Download data from the server. Your local changes will be lost.
                     </p>
                     <div className="mt-2 text-sm text-gray-500">
-                      {conflictData.remote.tables.length} tables, {getTotalTasks(conflictData.remote.tables)} tasks
+                      {conflictData.remote.tables.length} tables{conflictData.remote.archivedTables ? `, ${conflictData.remote.archivedTables.length} archived` : ''}, {getTotalTasks(conflictData.remote.tables)} tasks
                     </div>
                   </div>
                 </div>

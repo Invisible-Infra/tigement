@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 
-export type ThemeName = 'light' | 'classic' | 'dark' | 'terminal'
+export type ThemeName = 'light' | 'classic' | 'dark' | 'terminal' | 'spectrum'
 
 interface ThemeContextType {
   theme: ThemeName
@@ -17,7 +17,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // Remove all theme classes
-    document.documentElement.classList.remove('theme-light', 'theme-classic', 'theme-dark', 'theme-terminal')
+    document.documentElement.classList.remove('theme-light', 'theme-classic', 'theme-dark', 'theme-terminal', 'theme-spectrum')
     
     // Add current theme class
     document.documentElement.classList.add(`theme-${theme}`)

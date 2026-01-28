@@ -90,6 +90,7 @@ export function Settings({ onClose, settings, onSettingsChange }: SettingsProps)
               <option value="classic">Classic (Retro)</option>
               <option value="dark">Dark</option>
               <option value="terminal">Terminal (Hacker)</option>
+              <option value="spectrum">ZX Spectrum</option>
             </select>
             <p className="text-xs text-gray-500 mt-1">Change the app's visual appearance</p>
           </div>

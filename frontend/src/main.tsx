@@ -5,6 +5,10 @@ import './index.css'
 import './themes.css'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { logCapture } from './utils/logCapture'
+import { debugLogger } from './utils/debugLogger'
+
+// Initialize debug logger first (captures all console logs and errors)
+debugLogger
 
 // Initialize log capture for bug reports
 logCapture
@@ -24,11 +28,18 @@ if ('serviceWorker' in navigator) {
         // Listen for updates
         registration.addEventListener('updatefound', () => {
           const newWorker = registration.installing
+          const existingWorker = registration.active  // Check if there's already an active worker
+          
           newWorker?.addEventListener('statechange', () => {
             if (newWorker.state === 'activated') {
-              // Notify user or auto-reload
-              if (confirm('A new version is available. Reload to update?')) {
-                window.location.reload()
+              // Only show update prompt if replacing an existing worker
+              if (existingWorker) {
+                console.log('Service Worker update available')
+                if (confirm('A new version is available. Reload to update?')) {
+                  window.location.reload()
+                }
+              } else {
+                console.log('Service Worker installed (first time)')
               }
             }
           })
@@ -40,11 +51,21 @@ if ('serviceWorker' in navigator) {
   })
 }
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
+const root = ReactDOM.createRoot(document.getElementById('root')!)
+
+if (import.meta.env.DEV) {
+  root.render(
+    <React.StrictMode>
+      <ThemeProvider>
+        <App />
+      </ThemeProvider>
+    </React.StrictMode>
+  )
+} else {
+  root.render(
     <ThemeProvider>
       <App />
     </ThemeProvider>
-  </React.StrictMode>,
-)
+  )
+}
 

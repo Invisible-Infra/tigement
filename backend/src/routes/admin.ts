@@ -753,6 +753,47 @@ router.put('/announcement', async (req: AuthRequest, res) => {
 })
 
 /**
+ * GET /api/admin/debug-settings
+ * Get debug settings (admin only)
+ */
+router.get('/debug-settings', async (req: AuthRequest, res) => {
+  try {
+    const result = await query('SELECT debug_button_enabled FROM payment_settings WHERE id = 1')
+    if (result.rows.length === 0) {
+      return res.json({ debug_button_enabled: false })
+    }
+    res.json(result.rows[0])
+  } catch (error: any) {
+    console.error('Error fetching debug settings:', error)
+    res.status(500).json({ error: 'Failed to fetch debug settings' })
+  }
+})
+
+/**
+ * PUT /api/admin/debug-settings
+ * Update debug settings (admin only)
+ */
+router.put('/debug-settings', async (req: AuthRequest, res) => {
+  try {
+    const { debug_button_enabled } = req.body
+    
+    if (typeof debug_button_enabled !== 'boolean') {
+      return res.status(400).json({ error: 'debug_button_enabled must be boolean' })
+    }
+    
+    await query(
+      'UPDATE payment_settings SET debug_button_enabled = $1 WHERE id = 1',
+      [debug_button_enabled]
+    )
+    
+    res.json({ success: true, debug_button_enabled })
+  } catch (error: any) {
+    console.error('Error updating debug settings:', error)
+    res.status(500).json({ error: 'Failed to update debug settings' })
+  }
+})
+
+/**
  * GET /api/admin/migration-check
  * Check which users still have plaintext data that needs migration
  */

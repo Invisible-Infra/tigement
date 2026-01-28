@@ -99,6 +99,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               const skipInitialSync = sessionStorage.getItem('tigement_skip_initial_sync')
               const backupRestored = sessionStorage.getItem('tigement_backup_restored')
               
+              // Display backup restore logs if available
+              const restoreLogs = sessionStorage.getItem('tigement_backup_restore_logs')
+              if (restoreLogs) {
+                try {
+                  const logs = JSON.parse(restoreLogs)
+                  console.log('📋 Backup Restore Logs (from before reload):')
+                  logs.forEach((log: string) => {
+                    if (log.startsWith('ERROR:')) {
+                      console.error(log)
+                    } else {
+                      console.log(log)
+                    }
+                  })
+                  sessionStorage.removeItem('tigement_backup_restore_logs')
+                } catch (e) {
+                  console.error('Failed to parse restore logs:', e)
+                }
+              }
+              
               if (skipInitialSync) {
                 console.log('⏭️ Skipping initial sync - backup was just restored')
                 // Clear the flag immediately after using it (one-time skip)
@@ -106,10 +125,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 console.log('✅ Cleared skip flag - future reloads will sync normally')
               } else if (backupRestored) {
                 console.log('📦 Backup was restored - pushing local data to server instead of pulling')
+                
+                // Check if user has active premium before pushing
+                const hasActivePremium = user?.plan === 'premium' && 
+                                         (user?.subscription_status === 'active' || user?.in_grace_period) &&
+                                         (!user?.expires_at || (() => {
+                                           const expiresAt = new Date(user.expires_at)
+                                           const now = new Date()
+                                           const gracePeriodDays = 3
+                                           const gracePeriodEnd = new Date(expiresAt)
+                                           gracePeriodEnd.setDate(gracePeriodEnd.getDate() + gracePeriodDays)
+                                           return now <= gracePeriodEnd
+                                         })())
+                
+                if (!hasActivePremium) {
+                  console.log('⏭️ Skipping server push - user does not have active premium subscription')
+                  sessionStorage.removeItem('tigement_backup_restored')
+                  // Trigger a reload of tables in Workspace component
+                  window.dispatchEvent(new CustomEvent('tigement-restore-complete'))
+                  return
+                }
+                
+                // CRITICAL: Load tables from localStorage first to ensure they're available
+                const { loadTables } = await import('../utils/storage')
+                const restoredTables = loadTables()
+                console.log(`📦 Loaded ${restoredTables?.length || 0} tables from localStorage for push`)
+                
+                if (!restoredTables || restoredTables.length === 0) {
+                  console.error('❌ ERROR: No tables found in localStorage after restore!')
+                  console.error('❌ This means the restore failed to save tables properly')
+                }
+                
                 sessionStorage.removeItem('tigement_backup_restored')
                 try {
                   await syncManager.forcePush()
                   console.log('✅ Restored backup data pushed to server successfully')
+                  
+                  // Trigger a reload of tables in Workspace component
+                  window.dispatchEvent(new CustomEvent('tigement-restore-complete'))
                 } catch (error: any) {
                   console.error('❌ Failed to push restored backup to server:', error)
                 }

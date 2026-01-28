@@ -216,6 +216,20 @@ export function Timer({ onClose, tables, position = { x: window.innerWidth - 350
       if (remainingSeconds <= 0 && lastNotifiedTask !== currentTaskInfo.task.id) {
         console.log('⏰ Task ended! Remaining seconds:', remainingSeconds)
         
+        // Show browser notification (works in background)
+        if ('Notification' in window && Notification.permission === 'granted') {
+          const notification = new Notification('Task Completed', {
+            body: currentTaskInfo.task.title,
+            icon: '/favicon.svg',
+            tag: 'task-notification',
+            requireInteraction: false,
+            silent: false
+          })
+          
+          // Auto-close after 10 seconds
+          setTimeout(() => notification.close(), 10000)
+        }
+        
         // Task time is up!
         if (soundEnabled) {
           console.log('🔔 Playing notification sound for task:', currentTaskInfo.task.title)

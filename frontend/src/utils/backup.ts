@@ -138,16 +138,81 @@ export function validateBackup(jsonString: string): { valid: boolean; data?: Bac
  * Import backup data - replaces all existing data
  */
 export async function importBackup(backupData: BackupData): Promise<void> {
+  // Store debug info in sessionStorage before reload
+  const debugInfo: string[] = []
+  const log = (msg: string) => {
+    console.log(msg)
+    debugInfo.push(msg)
+  }
+  const error = (msg: string) => {
+    console.error(msg)
+    debugInfo.push(`ERROR: ${msg}`)
+  }
+  
+  log('📦 Starting backup restore...')
+  log(`📦 Backup data: tables=${backupData.tables?.length || 0}, taskGroups=${backupData.taskGroups?.length || 0}, diaries=${Object.keys(backupData.diaries || {}).length}`)
+  
   // CRITICAL: Set flag to prevent server pull from overwriting restored data
   sessionStorage.setItem('tigement_backup_restored', 'true')
-  console.log('🛑 Set backup restore flag - will skip server pull on next load')
+  log('🛑 Set backup restore flag - will skip server pull on next load')
   
   // CRITICAL: Pause auto-sync for 30 seconds to prevent overwrite
   syncManager.pauseAutoSync(30000)
-  console.log('🛑 Auto-sync paused during backup restore')
+  log('🛑 Auto-sync paused during backup restore')
+  
+  // Ensure tables have required fields (position) to prevent UI crashes
+  const tablesWithDefaults = (backupData.tables || []).map((table: any, index: number) => {
+    // Ensure position exists (required for web UI rendering)
+    if (!table.position || typeof table.position !== 'object') {
+      table.position = {
+        x: 20 + index * 100,
+        y: 20 + index * 50
+      }
+    }
+    return table
+  })
+  
+  log(`📦 Restoring ${tablesWithDefaults.length} tables from backup`)
+  if (tablesWithDefaults.length > 0) {
+    log(`📦 First table: id=${tablesWithDefaults[0].id}, title=${tablesWithDefaults[0].title || '(no title)'}, tasks=${tablesWithDefaults[0].tasks?.length || 0}`)
+  }
+  
+  if (tablesWithDefaults.length === 0 && (backupData.tables?.length || 0) > 0) {
+    error('⚠️ WARNING: Tables were filtered out during restore!')
+    error(`⚠️ Original tables count: ${backupData.tables.length}`)
+  }
   
   // Replace all data with backup data
-  saveTables(backupData.tables || [])
+  saveTables(tablesWithDefaults)
+  log(`✅ Saved ${tablesWithDefaults.length} tables to localStorage`)
+  
+  // Verify it was saved correctly
+  const verifyTables = loadTables()
+  log(`✅ Verified: ${verifyTables?.length || 0} tables in localStorage after save`)
+  
+  if (verifyTables?.length !== tablesWithDefaults.length) {
+    error(`⚠️ MISMATCH: Saved ${tablesWithDefaults.length} but found ${verifyTables?.length || 0} in localStorage!`)
+  }
+  
+  // Double-check by reading raw localStorage
+  const rawTables = localStorage.getItem('tigement_tables')
+  if (rawTables) {
+    try {
+      const parsed = JSON.parse(rawTables)
+      log(`✅ Raw localStorage check: ${Array.isArray(parsed) ? parsed.length : 'not array'} items`)
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        log(`✅ First table in raw data: id=${parsed[0].id}, title=${parsed[0].title || '(no title)'}`)
+      }
+    } catch (e) {
+      error(`⚠️ Failed to parse raw localStorage: ${e}`)
+    }
+  } else {
+    error('⚠️ Raw localStorage is NULL after save!')
+  }
+  
+  // Store debug logs in sessionStorage so they survive reload
+  sessionStorage.setItem('tigement_backup_restore_logs', JSON.stringify(debugInfo))
+  
   saveSettings(backupData.settings || {})
   // Only save taskGroups if the array is not empty
   // An empty array would cause the app to show no groups
@@ -165,32 +230,40 @@ export async function importBackup(backupData: BackupData): Promise<void> {
   // Restore diaries (if present in backup)
   if (backupData.diaries) {
     saveDiaryEntries(backupData.diaries)
-    console.log(`📔 Restored ${Object.keys(backupData.diaries).length} diary entries`)
+    log(`📔 Restored ${Object.keys(backupData.diaries).length} diary entries`)
   }
   
-  // Push restored data to server immediately (for premium users)
+  // Push restored data to server immediately (for premium users with active subscription)
   try {
     const user = await api.getCurrentUser()
-    if (user?.plan === 'premium') {
-      console.log('☁️ Pushing restored backup to server...')
+    // Check if user has active premium (not expired)
+    const hasActivePremium = user?.plan === 'premium' && 
+                             (user?.subscription_status === 'active' || user?.in_grace_period) &&
+                             (!user?.expires_at || (() => {
+                               const expiresAt = new Date(user.expires_at)
+                               const now = new Date()
+                               const gracePeriodDays = 3
+                               const gracePeriodEnd = new Date(expiresAt)
+                               gracePeriodEnd.setDate(gracePeriodEnd.getDate() + gracePeriodDays)
+                               return now <= gracePeriodEnd
+                             })())
+    
+    if (hasActivePremium) {
+      log('☁️ Pushing restored backup to server...')
       await syncManager.forcePush()
-      console.log('✅ Backup pushed to server successfully')
+      log('✅ Backup pushed to server successfully')
       
       // Also push diary entries to server
       if (backupData.diaries) {
-        for (const [date, content] of Object.entries(backupData.diaries)) {
-          try {
-            await api.saveDiaryEntry(date, content)
-          } catch (error) {
-            console.error(`⚠️ Failed to push diary entry ${date} to server:`, error)
-          }
-        }
-        console.log(`✅ ${Object.keys(backupData.diaries).length} diary entries pushed to server`)
+        // Note: Diary entries are now synced via encrypted workspace, not individual endpoints
+        // The diaries are already included in the workspace push above
+        log(`ℹ️ Diaries are synced via encrypted workspace (${Object.keys(backupData.diaries).length} entries)`)
       }
+    } else {
+      log('⏭️ Skipping server push - user does not have active premium subscription')
     }
   } catch (error) {
-    console.error('⚠️ Failed to push backup to server:', error)
+    error(`⚠️ Failed to push backup to server: ${error}`)
     // Continue anyway - data is restored locally
   }
 }
-

@@ -15,6 +15,8 @@ import { SplitView } from './SplitView'
 import { SpaceTabs } from './SpaceTabs'
 import { TableComponent } from './TableComponent'
 import { BottomNav } from './BottomNav'
+import { AIChat } from './AIChat'
+import { AIHistory } from './AIHistory'
 import { exportToCSV, downloadCSV, importFromCSV } from '../utils/csvUtils'
 import { saveTables, loadTables, saveSettings, loadSettings, saveTaskGroups, loadTaskGroups, saveNotebooks, loadNotebooks, saveArchivedTables, loadArchivedTables, saveDiaryEntries, loadDiaryEntries } from '../utils/storage'
 import { normalizeDate } from '../utils/dateFormat'
@@ -408,10 +410,7 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
   // Helper to conditionally show emoji (hide in terminal theme)
   const showEmoji = theme !== 'terminal'
 
-  const [tables, setTables] = useState<Table[]>(() => {
-    const saved = loadTables()
-    return saved || getDefaultTables()
-  })
+  const [tables, setTables] = useState<Table[]>([])
 
   const [draggedTask, setDraggedTask] = useState<{ tableId: string; taskId: string; index: number } | null>(null)
   const [dropTarget, setDropTarget] = useState<{ tableId: string; index: number } | null>(null)
@@ -428,10 +427,14 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     const saved = localStorage.getItem('tigement_sound_notifications_enabled')
     return saved !== null ? JSON.parse(saved) : true // Default: enabled
   })
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default')
   const [touchDragCurrent, setTouchDragCurrent] = useState<number | null>(null)
   const [hoveredTask, setHoveredTask] = useState<string | null>(null)
   const handleLongPressTimer = useRef<number | null>(null)
   const dragHandleTimer = useRef<number | null>(null)
+  const isApplyingSyncUpdate = useRef(false)
+  const hasLoadedTables = useRef(false)
+  const prevTablesHash = useRef<string>('')
   const [showSettings, setShowSettings] = useState(false)
   const [showTimer, setShowTimer] = useState(false)
   const [timerPosition, setTimerPosition] = useState(() => {
@@ -448,6 +451,8 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
   const [showStatistics, setShowStatistics] = useState(false)
   const [showBugReport, setShowBugReport] = useState(false)
   const [showFeatureRequest, setShowFeatureRequest] = useState(false)
+  const [showAIChat, setShowAIChat] = useState(false)
+  const [showAIHistory, setShowAIHistory] = useState(false)
   const [showGroupsEditor, setShowGroupsEditor] = useState(false)
   const [showConflict, setShowConflict] = useState(false)
   const [conflictData, setConflictData] = useState<any>(null)
@@ -463,7 +468,10 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
       return 0
     }
   })
-  const [isMobile, setIsMobile] = useState(false)
+  const [isMobile, setIsMobile] = useState(() => {
+    // Initialize with actual window width to prevent FOUC
+    return typeof window !== 'undefined' && window.innerWidth < 768
+  })
   const [showMenu, setShowMenu] = useState(false)
   const [expandedMenus, setExpandedMenus] = useState<Set<string>>(() => new Set(['workspace']))
   
@@ -616,6 +624,32 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     return () => document.removeEventListener('click', handleFirstClick)
   }, [audioContext, soundNotificationsEnabled])
 
+  // Request browser notification permission on user interaction
+  useEffect(() => {
+    if ('Notification' in window) {
+      setNotificationPermission(Notification.permission)
+      
+      // If permission not decided, request on first click
+      if (Notification.permission === 'default' && soundNotificationsEnabled) {
+        const requestOnClick = () => {
+          Notification.requestPermission().then(permission => {
+            setNotificationPermission(permission)
+            console.log('📬 Notification permission:', permission)
+            
+            if (permission === 'granted') {
+              console.log('✅ Browser notifications enabled - you will get notified even when tab is in background')
+            }
+          })
+          document.removeEventListener('click', requestOnClick)
+        }
+        
+        document.addEventListener('click', requestOnClick, { once: true })
+        
+        return () => document.removeEventListener('click', requestOnClick)
+      }
+    }
+  }, [soundNotificationsEnabled])
+
   // Global sound notifications for task endings
   useEffect(() => {
     // Skip global notifications if Timer is open (Timer handles its own)
@@ -642,7 +676,21 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
           console.log('⏰ Task ended globally:', task.title)
           setLastNotifiedTaskId(task.id)
           
-          // Play sound
+          // Show browser notification (works in background)
+          if ('Notification' in window && Notification.permission === 'granted') {
+            const notification = new Notification('Task Completed', {
+              body: task.title,
+              icon: '/favicon.svg',
+              tag: 'task-' + task.id,
+              requireInteraction: false,
+              silent: false
+            })
+            
+            // Auto-close after 10 seconds
+            setTimeout(() => notification.close(), 10000)
+          }
+          
+          // Play sound (bonus when tab is active)
           playNotificationSound()
           
           // Flash favicon
@@ -735,9 +783,26 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
   useEffect(() => {
     if (user && hasLoadedUser && !loading) {
       console.log('🔄 User logged in, reloading data from localStorage')
-      const savedTables = loadTables()
-      if (savedTables && savedTables.length > 0) {
-        setTables(savedTables)
+      
+      // Check if backup was just restored - if so, wait for restore-complete event instead
+      const backupRestored = sessionStorage.getItem('tigement_backup_restored')
+      if (backupRestored) {
+        console.log('📦 Backup restore detected - will load tables via restore-complete event')
+        // Don't load tables here, let the restore-complete handler do it
+        // But still load other data
+      } else {
+        // Prevent marking as modified during initial data load
+        isApplyingSyncUpdate.current = true
+        
+        const savedTables = loadTables()
+        console.log(`📦 Loading tables from localStorage: ${savedTables?.length || 0} tables`)
+        if (savedTables && savedTables.length > 0) {
+          setTables(savedTables)
+          hasLoadedTables.current = true
+          console.log(`✅ Loaded ${savedTables.length} tables into React state`)
+        } else {
+          console.warn('⚠️ No tables found in localStorage after login')
+        }
       }
       const savedSettings = loadSettings()
       if (savedSettings) {
@@ -759,8 +824,89 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
           preview: savedDiaryEntries[date].substring(0, 50)
         })))
       }
+      
+      // Reset flag after state updates complete
+      setTimeout(() => {
+        isApplyingSyncUpdate.current = false
+        console.log('🏁 Login data reload complete')
+      }, 200)
     }
   }, [user, hasLoadedUser, loading])
+
+  // Listen for restore completion event to reload tables
+  useEffect(() => {
+    const handleRestoreComplete = () => {
+      console.log('📦 Restore complete event received, reloading tables from localStorage')
+      const savedTables = loadTables()
+      console.log(`📦 Reloading: ${savedTables?.length || 0} tables found`)
+      if (savedTables && savedTables.length > 0) {
+        setTables(savedTables)
+        hasLoadedTables.current = true
+        console.log(`✅ Reloaded ${savedTables.length} tables after restore`)
+      } else {
+        console.error('❌ ERROR: No tables found in localStorage after restore event!')
+        // Try to check what's actually in localStorage
+        const rawData = localStorage.getItem('tigement_tables')
+        console.error('❌ Raw localStorage data:', rawData ? `${rawData.length} chars` : 'NULL')
+        if (rawData) {
+          try {
+            const parsed = JSON.parse(rawData)
+            console.error('❌ Parsed data:', Array.isArray(parsed) ? `${parsed.length} items` : typeof parsed)
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              console.error('❌ First item:', parsed[0])
+            }
+          } catch (e) {
+            console.error('❌ Failed to parse localStorage data:', e)
+          }
+        }
+      }
+    }
+    
+    window.addEventListener('tigement-restore-complete', handleRestoreComplete)
+    
+    // Also check immediately if restore flag is set (in case event already fired or fires synchronously)
+    const checkRestoreFlag = () => {
+      const backupRestored = sessionStorage.getItem('tigement_backup_restored')
+      if (backupRestored) {
+        console.log('📦 Backup restore flag found, checking tables immediately')
+        const savedTables = loadTables()
+        console.log(`📦 Immediate check: ${savedTables?.length || 0} tables found`)
+      if (savedTables && savedTables.length > 0) {
+        setTables(savedTables)
+        hasLoadedTables.current = true
+        console.log(`✅ Loaded ${savedTables.length} tables from restore flag check`)
+      } else {
+        console.error('❌ No tables found even with restore flag set!')
+        const rawData = localStorage.getItem('tigement_tables')
+        console.error('❌ Raw localStorage:', rawData ? `${rawData.length} chars` : 'NULL')
+        if (rawData && rawData.length > 2) { // More than just "[]"
+          try {
+            const parsed = JSON.parse(rawData)
+            console.error('❌ Parsed data:', Array.isArray(parsed) ? `${parsed.length} items` : typeof parsed)
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              console.error('❌ First item:', parsed[0])
+              // Try to load it anyway if it exists
+              setTables(parsed)
+              hasLoadedTables.current = true
+              console.log(`✅ Loaded ${parsed.length} tables from parsed data`)
+            }
+          } catch (e) {
+            console.error('❌ Failed to parse localStorage data:', e)
+          }
+        }
+      }
+      }
+    }
+    
+    // Check immediately
+    checkRestoreFlag()
+    
+    // Also check after a short delay in case tables are saved asynchronously
+    setTimeout(checkRestoreFlag, 100)
+    setTimeout(checkRestoreFlag, 500)
+    
+    return () => window.removeEventListener('tigement-restore-complete', handleRestoreComplete)
+  }, [])
 
   // Save task groups to localStorage whenever they change
   useEffect(() => {
@@ -824,7 +970,11 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
 
   // Detect mobile viewport
   useEffect(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth < 768)
+    const checkMobile = () => {
+      const width = window.innerWidth
+      const mobile = width < 768
+      setIsMobile(mobile)
+    }
     checkMobile()
     window.addEventListener('resize', checkMobile)
     return () => window.removeEventListener('resize', checkMobile)
@@ -854,33 +1004,30 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
         archivedTables: newArchivedTables
       } = event.detail
       
-      // Only update if not currently editing to avoid conflicts
-      const isEditing = document.activeElement?.tagName === 'INPUT' || 
-                       document.activeElement?.tagName === 'TEXTAREA'
+      // Mark that we're applying a sync update to prevent marking as modified
+      isApplyingSyncUpdate.current = true
+      console.log('✅ Applying sync update to workspace')
       
-      if (isEditing) {
-        console.log('⏸️ User is editing, deferring sync update...')
-        return
+      // Merge notebooks into tables BEFORE setting state (single update instead of two)
+      let finalTables = newTables || []
+      if (newNotebooks?.tasks && Object.keys(newNotebooks.tasks).length > 0) {
+        finalTables = finalTables.map(table => ({
+          ...table,
+          tasks: table.tasks.map(task => ({
+            ...task,
+            notebook: newNotebooks.tasks[task.id] || task.notebook
+          }))
+        }))
       }
       
-      console.log('✅ Applying sync update to workspace')
-      setTables(newTables || [])
+      // Single setTables call with merged data
+      setTables(finalTables)
       setSettings(prev => ({ ...prev, ...newSettings }))
       setTaskGroups(newTaskGroups || defaultTaskGroups)
       
-      // Update notebooks
+      // Update notebook state separately
       if (newNotebooks) {
         setWorkspaceNotebook(newNotebooks.workspace || '')
-        // Also update task notebooks in tables
-        if (newNotebooks.tasks && Object.keys(newNotebooks.tasks).length > 0) {
-          setTables(prevTables => prevTables.map(table => ({
-            ...table,
-            tasks: table.tasks.map(task => ({
-              ...task,
-              notebook: newNotebooks.tasks[task.id] || task.notebook
-            }))
-          })))
-        }
         console.log('📓 Synced workspace notebook and', Object.keys(newNotebooks.tasks || {}).length, 'task notebooks')
       }
       
@@ -899,6 +1046,12 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
         setArchivedTables(newArchivedTables)
         console.log('🗄️ Synced', newArchivedTables.length, 'archived tables')
       }
+      
+      // Reset flag after ALL state updates complete (including cascading effects)
+      setTimeout(() => {
+        isApplyingSyncUpdate.current = false
+        console.log('🏁 Sync update application complete')
+      }, 200)
     }
     
     window.addEventListener('tigement:sync-update', handleSyncUpdate as any)
@@ -908,6 +1061,8 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
   // Keep currentTableIndex in bounds when tables change (only adjust if out of bounds)
   useEffect(() => {
     if (isAdjustingIndex.current) return // Skip if already adjusting
+    if (isApplyingSyncUpdate.current) return // Skip during sync updates
+    if (!hasLoadedTables.current) return // Skip until tables loaded from storage
     
     if (tables.length > 0 && currentTableIndex >= tables.length) {
       // Index out of bounds, adjust to last valid index
@@ -1054,10 +1209,18 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
 
   // State for spaces view mode
   const [spaces, setSpaces] = useState<Space[]>(() => {
-    return settings.spaces || defaultSpaces
+    // Ensure we always have at least defaultSpaces - empty array is truthy but we want to use defaults
+    const initialSpaces = (settings.spaces && Array.isArray(settings.spaces) && settings.spaces.length > 0) 
+      ? settings.spaces 
+      : defaultSpaces
+    console.log('🏠 Initializing spaces:', initialSpaces.length, 'spaces', initialSpaces)
+    return initialSpaces
   })
   const [activeSpaceId, setActiveSpaceId] = useState<string>(() => {
-    return settings.activeSpaceId || (settings.spaces?.[0]?.id || defaultSpaces[0].id)
+    const spacesToUse = (settings.spaces && Array.isArray(settings.spaces) && settings.spaces.length > 0) 
+      ? settings.spaces 
+      : defaultSpaces
+    return settings.activeSpaceId || (spacesToUse[0]?.id || defaultSpaces[0].id)
   })
   const [viewMode, setViewMode] = useState<'all-in-one' | 'spaces'>(() => {
     return settings.viewMode || 'all-in-one'
@@ -1085,12 +1248,21 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
 
   // Sync spaces state when settings.spaces changes (e.g., after sync from server)
   useEffect(() => {
-    if (settings.spaces) {
+    // Only update if settings.spaces is a non-empty array
+    if (settings.spaces && Array.isArray(settings.spaces) && settings.spaces.length > 0) {
+      console.log('🔄 Updating spaces from settings:', settings.spaces.length, 'spaces')
       setSpaces(settings.spaces)
       // Also update active space if current one no longer exists
       const currentSpaceExists = settings.spaces.some(s => s.id === activeSpaceId)
       if (!currentSpaceExists && settings.activeSpaceId) {
         setActiveSpaceId(settings.activeSpaceId)
+      }
+    } else if (!settings.spaces || (Array.isArray(settings.spaces) && settings.spaces.length === 0)) {
+      // If settings.spaces is empty or missing, ensure we have defaultSpaces
+      console.log('⚠️ Settings spaces empty or missing, ensuring defaultSpaces')
+      setSpaces(defaultSpaces)
+      if (!activeSpaceId || !defaultSpaces.some(s => s.id === activeSpaceId)) {
+        setActiveSpaceId(defaultSpaces[0].id)
       }
     }
     if (settings.viewMode && settings.viewMode !== viewMode) {
@@ -1099,7 +1271,7 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     if (settings.spacesSplitPosition !== undefined && settings.spacesSplitPosition !== spacesSplitPosition) {
       setSpacesSplitPosition(settings.spacesSplitPosition)
     }
-  }, [settings.spaces, settings.activeSpaceId, settings.viewMode, settings.spacesSplitPosition])
+  }, [settings.spaces, settings.activeSpaceId, settings.viewMode, settings.spacesSplitPosition, activeSpaceId, viewMode, spacesSplitPosition])
 
   // Helper functions for duration formatting
   const formatDuration = (minutes: number): string => {
@@ -1318,10 +1490,36 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
 
   // Auto-save tables to localStorage
   useEffect(() => {
+    // CRITICAL: Don't auto-save empty tables during initial load, especially after restore
+    // This prevents overwriting restored tables with empty array
+    if (tables.length === 0 && !hasLoadedTables.current) {
+      console.log('⏭️ Skipping auto-save: tables empty and not yet loaded')
+      return
+    }
+    
+    // Also skip if restore flag is set and we haven't loaded tables yet
+    const backupRestored = sessionStorage.getItem('tigement_backup_restored')
+    if (backupRestored && tables.length === 0) {
+      console.log('⏭️ Skipping auto-save: restore in progress, tables not loaded yet')
+      return
+    }
+    
     console.log('💾 Auto-saving tables to localStorage:', tables.length, 'tables')
     saveTables(tables)
-    // Mark as modified for conflict detection
-    syncManager.markLocalModified()
+    
+    // Only mark as modified if data actually changed (not just reference)
+    if (!isApplyingSyncUpdate.current) {
+      const currentHash = JSON.stringify(tables)
+      if (currentHash !== prevTablesHash.current) {
+        prevTablesHash.current = currentHash
+        syncManager.markLocalModified()
+      } else {
+        console.log('⏭️ Tables unchanged, skipping sync scheduling')
+      }
+    } else {
+      // Update hash during sync to prevent false positives after sync completes
+      prevTablesHash.current = JSON.stringify(tables)
+    }
   }, [tables])
 
   // Sync calendar for premium users (debounced, separate effect)
@@ -1538,6 +1736,19 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
       return table
     }))
     focusTable(tableId) // Focus table when date is changed
+  }
+
+  const deleteTaskNotebook = (taskId: string) => {
+    try {
+      const notebooks = loadNotebooks()
+      if (notebooks && notebooks.tasks && notebooks.tasks[taskId]) {
+        delete notebooks.tasks[taskId]
+        saveNotebooks(notebooks)
+        console.log('📓 Deleted notebook for task:', taskId)
+      }
+    } catch (error) {
+      console.error('Failed to delete task notebook:', error)
+    }
   }
 
   const deleteTask = (tableId: string, taskId: string) => {
@@ -2015,6 +2226,13 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
 
   // Archive handlers
   const archiveTable = async (tableId: string) => {
+    // Prevent archive during active sync to avoid mid-sync state changes
+    if (syncManager.syncInProgress) {
+      console.log('⏸️ Archive blocked - sync in progress, will retry after sync')
+      setTimeout(() => archiveTable(tableId), 500)
+      return
+    }
+    
     const table = tables.find(t => t.id === tableId)
     if (!table) return
     
@@ -2038,14 +2256,18 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     saveArchivedTables(archives)
     setArchivedTables(archives)
     
-    // Trigger workspace sync (archived tables now included in encrypted workspace blob)
-    if (user) {
-      syncManager.markLocalModified()
-      console.log('🗄️ Table archived - will sync via encrypted workspace')
-    }
+    // Note: Sync is automatically triggered by setTables() above via useEffect monitoring
+    console.log('🗄️ Table archived - will sync via encrypted workspace')
   }
 
   const restoreTable = async (archivedTable: ArchivedTable) => {
+    // Prevent restore during active sync to avoid mid-sync state changes
+    if (syncManager.syncInProgress) {
+      console.log('⏸️ Restore blocked - sync in progress, will retry after sync')
+      setTimeout(() => restoreTable(archivedTable), 500)
+      return
+    }
+    
     // All archived tables now have table_data locally (stored in encrypted workspace blob)
     if (!archivedTable.table_data) {
       console.error('Cannot restore: no table data available')
@@ -2063,11 +2285,8 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     setTables([...tables, tableData])
     focusTable(tableData.id) // Focus restored table
     
-    // Trigger workspace sync (archived tables now included in encrypted workspace blob)
-    if (user) {
-      syncManager.markLocalModified()
-      console.log('🗄️ Table restored - will sync via encrypted workspace')
-    }
+    // Note: Sync is automatically triggered by setTables() above via useEffect monitoring
+    console.log('🗄️ Table restored - will sync via encrypted workspace')
   }
 
   // Notebook handlers
@@ -2771,6 +2990,16 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
 
     setSyncing(true)
     setSyncSuccess(false)
+    
+    // Save current state to localStorage FIRST
+    // This ensures sync compares against actual current state, even if user is typing
+    saveTables(tables)
+    saveArchivedTables(archivedTables)
+    saveSettings(settings)
+    saveTaskGroups(taskGroups)
+    saveNotebooks({ workspace: workspaceNotebook, tasks: {} })
+    saveDiaryEntries(diaryEntries)
+    
     try {
       await syncNow()
       // Update last sync info
@@ -3039,6 +3268,8 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
                           'notebook': { label: showEmoji ? '📓 Notebook' : 'Notebook', onClick: () => { openWorkspaceNotebook(); isMobile && setShowMenu(false); }, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
                           'diary': { label: showEmoji ? '📔 Diary' : 'Diary', onClick: () => { setShowDiaryList(true); isMobile && setShowMenu(false); }, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
                           'statistics': { label: showEmoji ? '📈 Statistics' : 'Statistics', onClick: () => { setShowStatistics(true); isMobile && setShowMenu(false); }, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
+                          'ai-chat': { label: showEmoji ? '🤖 AI Assistant' : 'AI Assistant', onClick: () => { setShowAIChat(true); isMobile && setShowMenu(false); }, className: 'bg-purple-600 text-white hover:bg-purple-700' },
+                          'ai-history': { label: showEmoji ? '📜 AI History' : 'AI History', onClick: () => { setShowAIHistory(true); isMobile && setShowMenu(false); }, className: 'bg-indigo-600 text-white hover:bg-indigo-700' },
                           'archived': { label: showEmoji ? '📦 Archived' : 'Archived', onClick: () => { setShowArchivedMenu(true); isMobile && setShowMenu(false); }, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
                           'add-tab-group': { label: showEmoji ? '➕ Add Tab Group' : 'Add Tab Group', onClick: () => { handleAddSpace(); isMobile && setShowMenu(false); }, className: 'bg-green-600 text-white hover:bg-green-700' },
                           'settings': { label: showEmoji ? '⚙️ Settings' : 'Settings', onClick: () => { setShowSettings(true); isMobile && setShowMenu(false); }, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
@@ -3247,6 +3478,30 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
                         title={pinnedItems.includes('statistics') ? 'Unpin' : 'Pin'}
                       >
                         {pinnedItems.includes('statistics') ? '📍' : '📌'}
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => { setShowAIChat(true); isMobile && setShowMenu(false); }} className="flex-1 px-3 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition text-sm text-left">
+                        {showEmoji && '🤖 '}AI Assistant
+                      </button>
+                      <button 
+                        onClick={() => togglePin('ai-chat')}
+                        className={`px-2 py-2 rounded transition text-sm ${pinnedItems.includes('ai-chat') ? 'text-yellow-500 font-bold' : 'text-gray-400 hover:text-gray-600'}`}
+                        title={pinnedItems.includes('ai-chat') ? 'Unpin' : 'Pin'}
+                      >
+                        {pinnedItems.includes('ai-chat') ? '📍' : '📌'}
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => { setShowAIHistory(true); isMobile && setShowMenu(false); }} className="flex-1 px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition text-sm text-left">
+                        {showEmoji && '📜 '}AI History
+                      </button>
+                      <button 
+                        onClick={() => togglePin('ai-history')}
+                        className={`px-2 py-2 rounded transition text-sm ${pinnedItems.includes('ai-history') ? 'text-yellow-500 font-bold' : 'text-gray-400 hover:text-gray-600'}`}
+                        title={pinnedItems.includes('ai-history') ? 'Unpin' : 'Pin'}
+                      >
+                        {pinnedItems.includes('ai-history') ? '📍' : '📌'}
                       </button>
                     </div>
                   </div>
@@ -3894,6 +4149,18 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
               return true
             })
             .map(table => {
+          // Safety check: ensure table has required fields before rendering
+          if (!table.position || typeof table.position !== 'object' || table.position === null) {
+            console.error('❌ Workspace: Table missing position during render', {
+              tableId: table.id,
+              tableType: table.type,
+              tableTitle: table.title,
+              position: table.position
+            });
+            // Skip rendering this table to prevent crash
+            return null;
+          }
+          
           const times = table.type === 'day' ? calculateTimes(table) : []
           const isDraggingTable = draggedTable?.id === table.id
           const tableZIndex = tableZIndexes[table.id] || 1
@@ -3994,7 +4261,8 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
               />
             </div>
           )
-        })}
+        })
+        .filter(Boolean)}
         </div>
         </div>
       )}
@@ -4260,6 +4528,110 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
 
       {showStatistics && (
         <Statistics onClose={() => setShowStatistics(false)} />
+      )}
+
+      {/* AI Chat */}
+      {showAIChat && (
+        <AIChat 
+          workspace={{ tables, taskGroups, settings }}
+          onWorkspaceUpdate={(updatedWorkspace) => {
+            console.log('🔄 Workspace: onWorkspaceUpdate called from AI', {
+              hasTables: !!updatedWorkspace.tables,
+              tablesCount: updatedWorkspace.tables?.length || 0,
+              currentTablesCount: tables.length,
+              updatedWorkspace: {
+                tables: updatedWorkspace.tables?.map((t: any) => ({
+                  id: t.id,
+                  type: t.type,
+                  title: t.title,
+                  hasPosition: !!t.position,
+                  positionType: typeof t.position,
+                  positionIsNull: t.position === null,
+                  positionIsUndefined: t.position === undefined,
+                  positionValue: t.position,
+                  positionX: t.position?.x,
+                  positionY: t.position?.y,
+                  hasTasks: !!t.tasks,
+                  tasksIsArray: Array.isArray(t.tasks),
+                  tasksIsNull: t.tasks === null,
+                  tasksIsUndefined: t.tasks === undefined,
+                  tasksLength: t.tasks?.length || 0
+                }))
+              }
+            });
+            
+            if (updatedWorkspace.tables) {
+              // Validate all tables have required fields before setting
+              const invalidTables = updatedWorkspace.tables.filter((t: any) => {
+                const missingPosition = !t.position || typeof t.position !== 'object' || t.position === null;
+                const missingTasks = !t.tasks || !Array.isArray(t.tasks);
+                return missingPosition || missingTasks;
+              });
+              
+              if (invalidTables.length > 0) {
+                console.error('❌ Workspace: Invalid tables detected before setTables', {
+                  invalidTables: invalidTables.map((t: any) => ({
+                    id: t.id,
+                    type: t.type,
+                    title: t.title,
+                    hasPosition: !!t.position,
+                    positionType: typeof t.position,
+                    positionValue: t.position,
+                    hasTasks: !!t.tasks,
+                    tasksType: typeof t.tasks,
+                    tasksIsArray: Array.isArray(t.tasks)
+                  }))
+                });
+              } else {
+                console.log('✅ Workspace: All tables validated, setting tables');
+              }
+              
+              console.log('🔄 Workspace: Calling setTables', {
+                tablesCount: updatedWorkspace.tables.length,
+                firstTable: updatedWorkspace.tables[0] ? {
+                  id: updatedWorkspace.tables[0].id,
+                  position: updatedWorkspace.tables[0].position,
+                  tasksLength: updatedWorkspace.tables[0].tasks?.length || 0
+                } : null,
+                lastTable: updatedWorkspace.tables[updatedWorkspace.tables.length - 1] ? {
+                  id: updatedWorkspace.tables[updatedWorkspace.tables.length - 1].id,
+                  position: updatedWorkspace.tables[updatedWorkspace.tables.length - 1].position,
+                  tasksLength: updatedWorkspace.tables[updatedWorkspace.tables.length - 1].tasks?.length || 0
+                } : null
+              });
+              
+              setTables(updatedWorkspace.tables);
+              
+              console.log('✅ Workspace: setTables called successfully');
+            }
+            if (updatedWorkspace.taskGroups) {
+              setTaskGroups(updatedWorkspace.taskGroups)
+            }
+            if (updatedWorkspace.settings) {
+              saveSettings(updatedWorkspace.settings)
+            }
+          }}
+          onClose={() => setShowAIChat(false)}
+        />
+      )}
+
+      {/* AI History */}
+      {showAIHistory && (
+        <AIHistory 
+          workspace={{ tables, taskGroups, settings }}
+          onWorkspaceUpdate={(updatedWorkspace) => {
+            if (updatedWorkspace.tables) {
+              setTables(updatedWorkspace.tables)
+            }
+            if (updatedWorkspace.taskGroups) {
+              setTaskGroups(updatedWorkspace.taskGroups)
+            }
+            if (updatedWorkspace.settings) {
+              saveSettings(updatedWorkspace.settings)
+            }
+          }}
+          onClose={() => setShowAIHistory(false)}
+        />
       )}
 
       {/* Render diary list */}

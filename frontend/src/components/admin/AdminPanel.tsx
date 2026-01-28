@@ -9,7 +9,7 @@ interface AdminPanelProps {
 
 export function AdminPanel({ onClose }: AdminPanelProps) {
   const { user } = useAuth()
-  const [activeTab, setActiveTab] = useState<'users' | 'coupons' | 'stats' | 'payment' | 'payment-methods' | 'referral-coupons' | 'announcements'>('users')
+  const [activeTab, setActiveTab] = useState<'users' | 'coupons' | 'stats' | 'payment' | 'payment-methods' | 'referral-coupons' | 'announcements' | 'debugging'>('users')
   const [users, setUsers] = useState<any[]>([])
   const [coupons, setCoupons] = useState<any[]>([])
   const [stats, setStats] = useState<any>(null)
@@ -43,6 +43,12 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
     enabled: false
   })
   const [announcementSaved, setAnnouncementSaved] = useState(false)
+
+  // Debugging settings state
+  const [debugSettings, setDebugSettings] = useState({
+    debug_button_enabled: false
+  })
+  const [debugSettingsSaved, setDebugSettingsSaved] = useState(false)
 
   // Coupon form
   const [newCoupon, setNewCoupon] = useState({
@@ -80,6 +86,8 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
       loadCouponSettings()
     } else if (activeTab === 'announcements') {
       loadAnnouncement()
+    } else if (activeTab === 'debugging') {
+      loadDebugSettings()
     }
   }, [activeTab, page, search])
 
@@ -217,6 +225,32 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
       alert('Announcement saved successfully!')
     } catch (error: any) {
       alert(`Failed to save announcement: ${error.message}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const loadDebugSettings = async () => {
+    setLoading(true)
+    try {
+      const data = await api.getDebugSettings()
+      setDebugSettings(data)
+    } catch (error) {
+      console.error('Failed to load debug settings:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const saveDebugSettings = async () => {
+    setLoading(true)
+    try {
+      await api.updateDebugSettings(debugSettings)
+      setDebugSettingsSaved(true)
+      setTimeout(() => setDebugSettingsSaved(false), 3000)
+      alert('Debug settings saved successfully!')
+    } catch (error: any) {
+      alert(`Failed to save debug settings: ${error.message}`)
     } finally {
       setLoading(false)
     }
@@ -380,6 +414,12 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
             className={`px-6 py-3 font-medium ${activeTab === 'announcements' ? 'border-b-2 border-[#4fc3f7] text-[#4fc3f7]' : 'text-gray-600'}`}
           >
             📢 Announcements
+          </button>
+          <button
+            onClick={() => setActiveTab('debugging')}
+            className={`px-6 py-3 font-medium ${activeTab === 'debugging' ? 'border-b-2 border-[#4fc3f7] text-[#4fc3f7]' : 'text-gray-600'}`}
+          >
+            🐛 Debugging
           </button>
         </div>
 
@@ -1236,6 +1276,56 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
                       style={{ color: '#991b1b', backgroundColor: '#fee2e2' }}
                     >
                       Alert (Red)
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Debugging Tab */}
+          {activeTab === 'debugging' && !loading && (
+            <div className="max-w-3xl">
+              <h2 className="text-2xl font-bold mb-6">🐛 Debugging Settings</h2>
+              
+              <div className="bg-blue-50 p-4 rounded-lg mb-6">
+                <p className="text-sm text-blue-800">
+                  Control debugging features visible to users for diagnostics and troubleshooting.
+                </p>
+              </div>
+
+              {debugSettingsSaved && (
+                <div className="bg-green-50 border border-green-200 p-4 rounded mb-4 text-green-800">
+                  ✓ Debug settings saved successfully!
+                </div>
+              )}
+
+              <div className="bg-white p-6 rounded-lg shadow">
+                <div className="space-y-6">
+                  {/* Debug Button Toggle */}
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h3 className="text-lg font-bold">Debug Button</h3>
+                      <p className="text-sm text-gray-600 mt-1">
+                        Show red DEBUG button in bottom-right corner that allows users to export console logs for troubleshooting
+                      </p>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={debugSettings.debug_button_enabled}
+                      onChange={(e) => setDebugSettings({ ...debugSettings, debug_button_enabled: e.target.checked })}
+                      className="w-6 h-6"
+                    />
+                  </div>
+
+                  {/* Save Button */}
+                  <div className="flex gap-4 pt-4 border-t">
+                    <button
+                      onClick={saveDebugSettings}
+                      className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                      disabled={loading}
+                    >
+                      {loading ? 'Saving...' : 'Save Debug Settings'}
                     </button>
                   </div>
                 </div>

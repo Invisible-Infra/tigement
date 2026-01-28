@@ -7,6 +7,8 @@ import { syncManager } from '../utils/syncManager'
 import { exportBackup, downloadBackup, validateBackup, importBackup } from '../utils/backup'
 import { formatDateWithSettings } from '../utils/dateFormat'
 import { ReferralCouponsPanel } from './ReferralCouponsPanel'
+import { TokenManagement } from './TokenManagement'
+import { AIConfigPanel } from './AIConfigPanel'
 
 interface ProfileMenuProps {
   onClose: () => void
@@ -39,6 +41,8 @@ export function ProfileMenu({ onClose, showDecryptionWarning }: ProfileMenuProps
   const [installPrompt, setInstallPrompt] = useState<any>(null)
   const [isInstalled, setIsInstalled] = useState(false)
   const [showReferralCoupons, setShowReferralCoupons] = useState(false)
+  const [showTokenManagement, setShowTokenManagement] = useState(false)
+  const [showAIConfig, setShowAIConfig] = useState(false)
   const customKeyInputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   
@@ -301,13 +305,19 @@ export function ProfileMenu({ onClose, showDecryptionWarning }: ProfileMenuProps
     const file = event.target.files?.[0]
     if (!file) return
 
+    console.log('📁 File selected for restore:', file.name, file.size, 'bytes')
+
     const reader = new FileReader()
     reader.onload = (e) => {
       try {
         const jsonString = e.target?.result as string
+        console.log('📄 File read, length:', jsonString.length)
         const validation = validateBackup(jsonString)
         
+        console.log('✅ Backup validation result:', validation.valid, validation.error)
+        
         if (!validation.valid) {
+          console.error('❌ Backup validation failed:', validation.error)
           setBackupMessage({ type: 'error', text: validation.error || 'Invalid backup file' })
           setTimeout(() => setBackupMessage(null), 5000)
           // Reset file input
@@ -317,10 +327,13 @@ export function ProfileMenu({ onClose, showDecryptionWarning }: ProfileMenuProps
           return
         }
 
+        console.log('✅ Backup validated, showing confirmation dialog')
         // Store validated backup data and show confirmation
         setPendingBackupData(validation.data)
         setShowRestoreConfirm(true)
+        console.log('✅ Dialog state set to true, pendingBackupData:', validation.data?.tables?.length || 0, 'tables')
       } catch (error: any) {
+        console.error('❌ Error reading backup file:', error)
         setBackupMessage({ type: 'error', text: `Failed to read backup file: ${error.message}` })
         setTimeout(() => setBackupMessage(null), 5000)
         // Reset file input
@@ -331,6 +344,7 @@ export function ProfileMenu({ onClose, showDecryptionWarning }: ProfileMenuProps
     }
     
     reader.onerror = () => {
+      console.error('❌ FileReader error')
       setBackupMessage({ type: 'error', text: 'Failed to read backup file' })
       setTimeout(() => setBackupMessage(null), 5000)
       // Reset file input
@@ -784,6 +798,60 @@ export function ProfileMenu({ onClose, showDecryptionWarning }: ProfileMenuProps
 
             {/* iCal removed for privacy - use Data menu > Export Calendar (.ics) instead */}
 
+            {/* API Tokens Section */}
+            <div className="border-t pt-4">
+              <h3 className="text-lg font-semibold text-gray-800 mb-3">🔑 API Tokens</h3>
+              
+              <div className="bg-blue-50 p-4 rounded border border-blue-200">
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <h4 className="font-semibold text-blue-900 mb-1">Programmatic Access</h4>
+                    <p className="text-sm text-blue-800">
+                      Generate API tokens for CLI tools, scripts, and third-party integrations.
+                    </p>
+                  </div>
+                  <div className="text-3xl">🔑</div>
+                </div>
+
+                <button
+                  onClick={() => setShowTokenManagement(true)}
+                  className="w-full px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded transition"
+                >
+                  🎫 Manage API Tokens
+                </button>
+                <p className="text-xs text-blue-700 mt-2">
+                  ℹ️ Tokens enable decryption and maintain end-to-end encryption
+                </p>
+              </div>
+            </div>
+
+            {/* AI Assistant Section */}
+            <div className="border-t pt-4">
+              <h3 className="text-lg font-semibold text-gray-800 mb-3">🤖 AI Assistant</h3>
+              
+              <div className="bg-purple-50 p-4 rounded border border-purple-200">
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <h4 className="font-semibold text-purple-900 mb-1">Bring Your Own AI</h4>
+                    <p className="text-sm text-purple-800">
+                      Connect OpenAI, Anthropic, or your own AI model to help manage tasks.
+                    </p>
+                  </div>
+                  <div className="text-3xl">🤖</div>
+                </div>
+
+                <button
+                  onClick={() => setShowAIConfig(true)}
+                  className="w-full px-4 py-2 bg-purple-600 text-white hover:bg-purple-700 rounded transition"
+                >
+                  ⚙️ Configure AI Assistant
+                </button>
+                <p className="text-xs text-purple-700 mt-2">
+                  ℹ️ Processing happens in your browser. API keys stored encrypted locally.
+                </p>
+              </div>
+            </div>
+
             {/* Referral Coupons (Premium Only) */}
             {user?.plan === 'premium' && user?.subscription_status === 'active' && (
               <div className="border-t pt-4">
@@ -975,6 +1043,16 @@ export function ProfileMenu({ onClose, showDecryptionWarning }: ProfileMenuProps
         {/* Referral Coupons Panel */}
         {showReferralCoupons && (
           <ReferralCouponsPanel onClose={() => setShowReferralCoupons(false)} />
+        )}
+
+        {/* Token Management Panel */}
+        {showTokenManagement && (
+          <TokenManagement onClose={() => setShowTokenManagement(false)} />
+        )}
+
+        {/* AI Config Panel */}
+        {showAIConfig && (
+          <AIConfigPanel onClose={() => setShowAIConfig(false)} />
         )}
       </div>
     </div>

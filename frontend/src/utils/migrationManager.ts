@@ -98,8 +98,7 @@ export async function migrateDiaries(encryptionKey: string): Promise<void> {
 export async function migrateArchives(encryptionKey: string): Promise<void> {
   try {
     // Fetch archived tables
-    const response = await api.get('/api/archives')
-    const archives = response.data || []
+    const archives = await api.listArchivedTables()
 
     // Migrate each archived table
     for (const archive of archives) {

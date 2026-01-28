@@ -30,7 +30,9 @@
     "express-session": "^1.18.0",
     "stripe": "^14.10.0",
     "@paypal/checkout-server-sdk": "^1.0.3",
-    "multer": "^1.4.5-lts.1"
+    "multer": "^1.4.5-lts.1",
+    "swagger-ui-express": "^5.0.0",
+    "yamljs": "^0.3.0"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
@@ -49,6 +51,8 @@
     "@types/passport-twitter": "^1.0.40",
     "@types/passport-facebook": "^3.0.3",
     "@types/multer": "^1.4.11",
+    "@types/swagger-ui-express": "^4.1.6",
+    "@types/yamljs": "^0.2.34",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.3.3"
   }

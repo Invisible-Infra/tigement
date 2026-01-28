@@ -8,8 +8,8 @@ import { encryptWorkspace, decryptWorkspace } from './encryption'
 import { encryptionKeyManager } from './encryptionKey'
 
 interface ConflictData {
-  local: { tables: any[]; settings: any }
-  remote: { tables: any[]; settings: any }
+  local: { tables: any[]; settings: any; archivedTables?: any[] }
+  remote: { tables: any[]; settings: any; archivedTables?: any[] }
 }
 
 interface SyncConfig {
@@ -101,15 +101,108 @@ class SyncManager {
   private forceOverwriteMode: boolean = false // Allow overwrite when user explicitly confirms
   private lastSyncTime: Date | null = null // Track last successful sync time
   private lastSyncDirection: 'uploaded' | 'downloaded' | null = null // Track sync direction
+  private focusDetectionSetup: boolean = false // Track if focus detection was setup
+  private readonly VISIBLE_SYNC_INTERVAL = 10000 // 10 seconds when tab is visible
+  private readonly HIDDEN_SYNC_INTERVAL = 60000 // 60 seconds when tab is hidden
 
   constructor(config: SyncConfig = { autoSyncInterval: 60000 }) { // Default 1 minute
-    this.config = config
+    // Start with fast polling if tab is visible
+    const initialInterval = document.visibilityState === 'visible' 
+      ? 10000  // Fast polling when visible
+      : 60000  // Slow polling when hidden
+    
+    this.config = { ...config, autoSyncInterval: initialInterval }
+    
     // Load last synced version from localStorage
     const savedVersion = localStorage.getItem(this.VERSION_STORAGE_KEY)
     if (savedVersion) {
       this.localVersion = parseInt(savedVersion, 10)
       console.log('📌 Loaded last sync version from storage:', this.localVersion)
     }
+    
+    console.log('⚙️ SyncManager initialized with', initialInterval/1000, 'second interval')
+  }
+
+  /**
+   * Setup window focus/visibility detection for smart polling + instant sync
+   * - Triggers immediate sync when tab becomes visible (instant conflict detection)
+   * - Adjusts polling interval based on visibility (10s visible, 60s hidden)
+   */
+  private setupFocusDetection() {
+    // Use Page Visibility API - works across all browsers
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        console.log('👁️ Tab became visible')
+        
+        // 1. Trigger immediate sync for instant conflict detection
+        if (this.syncInterval) {
+          if (!this.isSyncing) {
+            if (!this.config.isUserEditing || !this.config.isUserEditing()) {
+              // Clear any pending debounced sync to prevent race conditions
+              if (this.debounceTimer) {
+                clearTimeout(this.debounceTimer)
+                this.debounceTimer = null
+                console.log('🔄 Cleared pending debounce timer before focus sync')
+              }
+              
+              console.log('🔄 Focus sync triggered')
+              this.sync().catch(error => {
+                console.error('Focus sync failed:', error)
+                this.config.onSyncError?.(error)
+              })
+            } else {
+              console.log('⏸️ Focus sync skipped - user is actively editing')
+            }
+          } else {
+            console.log('⏸️ Focus sync skipped - sync already in progress')
+          }
+        }
+        
+        // 2. Switch to fast polling (10s) when visible
+        if (this.syncInterval && this.config.autoSyncInterval !== this.VISIBLE_SYNC_INTERVAL) {
+          console.log('⚡ Switching to fast polling (10s) - tab is visible')
+          this.config.autoSyncInterval = this.VISIBLE_SYNC_INTERVAL
+          this.restartAutoSync()
+        }
+      } else {
+        // Tab hidden - switch to slow polling (60s) to save battery
+        console.log('👁️ Tab hidden')
+        if (this.syncInterval && this.config.autoSyncInterval !== this.HIDDEN_SYNC_INTERVAL) {
+          console.log('🐌 Switching to slow polling (60s) - tab is hidden')
+          this.config.autoSyncInterval = this.HIDDEN_SYNC_INTERVAL
+          this.restartAutoSync()
+        }
+      }
+    })
+    
+    console.log('👁️ Smart polling + focus detection enabled')
+  }
+
+  /**
+   * Restart auto-sync with current interval (used when switching polling speed)
+   */
+  private restartAutoSync() {
+    if (!this.syncInterval) return
+    
+    clearInterval(this.syncInterval)
+    
+    this.syncInterval = setInterval(() => {
+      if (this.isSyncing) {
+        console.log('⏸️ Periodic sync skipped: sync already in progress')
+        return
+      }
+      
+      if (this.config.isUserEditing && this.config.isUserEditing()) {
+        console.log('⏸️ Auto-sync skipped: user is actively editing')
+        return
+      }
+      
+      console.log('⏰ Periodic sync triggered')
+      this.sync().catch(error => {
+        console.error('Auto-sync failed:', error)
+        this.config.onSyncError?.(error)
+      })
+    }, this.config.autoSyncInterval)
   }
 
   /**
@@ -193,6 +286,13 @@ class SyncManager {
   }
 
   /**
+   * Check if sync operation is currently in progress
+   */
+  public get syncInProgress(): boolean {
+    return this.isSyncing
+  }
+
+  /**
    * Get last sync time (deprecated, use getLastSyncInfo)
    */
   getLastSyncTime(): Date | null {
@@ -240,13 +340,14 @@ class SyncManager {
     this.localModified = true
     
     // Don't schedule sync if not authenticated or auto-sync is not running
-    if (!this.autoSyncInterval) {
+    if (!this.syncInterval) {
       console.log('⏸️ Sync not scheduled - auto-sync not active (user not authenticated)')
       return
     }
     
-    // Clear existing debounce timer
+    // Don't reschedule if timer already running (prevents duplicate schedules)
     if (this.debounceTimer) {
+      console.log('⏱️ Debounce timer already active, extending wait period')
       clearTimeout(this.debounceTimer)
     }
     
@@ -345,13 +446,26 @@ class SyncManager {
 
     console.log('🔄 Starting auto-sync with interval:', this.config.autoSyncInterval)
 
+    // Setup focus detection on first auto-sync start (only once)
+    if (!this.focusDetectionSetup) {
+      this.setupFocusDetection()
+      this.focusDetectionSetup = true
+    }
+
     this.syncInterval = setInterval(() => {
+      // Skip if sync already in progress
+      if (this.isSyncing) {
+        console.log('⏸️ Periodic sync skipped: sync already in progress')
+        return
+      }
+      
       // Skip sync if user is actively editing
       if (this.config.isUserEditing && this.config.isUserEditing()) {
         console.log('⏸️ Auto-sync skipped: user is actively editing')
         return
       }
       
+      console.log('⏰ Periodic sync triggered')
       this.sync().catch(error => {
         console.error('Auto-sync failed:', error)
         this.config.onSyncError?.(error)
@@ -395,18 +509,12 @@ class SyncManager {
   /**
    * Manually trigger sync
    */
-  async sync(): Promise<void> {
-    console.log('🔄 Starting sync operation...')
+  async sync(isRetry: boolean = false): Promise<void> {
+    console.log(isRetry ? '🔄 Retrying sync operation...' : '🔄 Starting sync operation...')
     
     if (this.isSyncing) {
       console.log('⏭️ Sync already in progress, skipping')
       return
-    }
-
-    // Skip sync if user is actively editing (unless forced)
-    if (this.config.isUserEditing && this.config.isUserEditing()) {
-      console.log('⏸️ Sync skipped: user is actively editing')
-      throw new Error('Cannot sync while user is actively editing. Please finish editing and try again.')
     }
 
     // Block sync if decryption failure is active (unless force overwrite mode)
@@ -426,6 +534,13 @@ class SyncManager {
     }
 
     this.isSyncing = true
+
+    // Clear any pending debounce timer to prevent race conditions
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer)
+      this.debounceTimer = null
+      console.log('🔄 Cleared pending debounce timer')
+    }
 
     try {
       // Get local workspace data
@@ -484,8 +599,10 @@ class SyncManager {
       // If user confirmed empty sync, skip conflict detection and overwrite
       if (confirmedEmptySync) {
         console.log('⚠️ User confirmed empty sync - overwriting server data without conflict check')
-        this.updateLocalVersion(remoteVersion.version + 1)
-        const response = await api.saveWorkspace(encryptedData, this.localVersion)
+        const targetVersion = remoteVersion.version + 1
+        const response = await api.saveWorkspace(encryptedData, targetVersion)
+        // Only update local version after successful push
+        this.updateLocalVersion(targetVersion)
         console.log('✅ Empty data sync completed (server data overwritten)')
         this.localModified = false
         this.config.onSyncSuccess?.()
@@ -495,7 +612,7 @@ class SyncManager {
 
       // Determine if we need to check for conflicts
       const remoteIsNewer = remoteVersion.version > this.localVersion
-      const hasLocalChanges = this.localModified || localData !== null
+      const hasLocalChanges = this.localModified
 
       if (remoteIsNewer && hasLocalChanges) {
         console.log('🔍 Potential conflict detected, fetching remote data for comparison...')
@@ -505,8 +622,10 @@ class SyncManager {
         if (!remoteWorkspace || !remoteWorkspace.data) {
           console.log('⚠️ No remote data found, safe to push')
           // No remote data yet, safe to push our local changes
-          this.updateLocalVersion(remoteVersion.version + 1)
-          const response = await api.saveWorkspace(encryptedData, this.localVersion)
+          const targetVersion = remoteVersion.version + 1
+          const response = await api.saveWorkspace(encryptedData, targetVersion)
+          // Only update local version after successful push
+          this.updateLocalVersion(targetVersion)
           console.log('✅ First sync completed, data saved to cloud!')
           this.localModified = false
           this.config.onSyncSuccess?.()
@@ -522,8 +641,10 @@ class SyncManager {
           // If force overwrite mode is enabled, proceed with overwrite
           if (this.forceOverwriteMode) {
             console.log('⚠️ Force overwrite mode: overwriting server data')
-            this.updateLocalVersion(remoteVersion.version + 1)
-            const response = await api.saveWorkspace(encryptedData, this.localVersion)
+            const targetVersion = remoteVersion.version + 1
+            const response = await api.saveWorkspace(encryptedData, targetVersion)
+            // Only update local version after successful push
+            this.updateLocalVersion(targetVersion)
             console.log('✅ Forced local push completed')
             this.localModified = false
             this.config.onSyncSuccess?.()
@@ -570,8 +691,16 @@ class SyncManager {
         if (this.config.onConflict) {
           console.log('🤔 Asking user to resolve conflict...')
           const conflictData: ConflictData = {
-            local: localData,
-            remote: remoteData
+            local: {
+              tables: localData.tables || [],
+              settings: localData.settings || {},
+              archivedTables: localData.archivedTables || []
+            },
+            remote: {
+              tables: remoteData.tables || [],
+              settings: remoteData.settings || {},
+              archivedTables: remoteData.archivedTables || []
+            }
           }
           
           const resolution = await this.config.onConflict(conflictData)
@@ -579,8 +708,10 @@ class SyncManager {
           if (resolution.resolution === 'local') {
             // User chose local, push it
             console.log('✅ User chose local, pushing...')
-            this.updateLocalVersion(remoteVersion.version + 1)
-            await api.saveWorkspace(encryptedData, this.localVersion)
+            const targetVersion = remoteVersion.version + 1
+            await api.saveWorkspace(encryptedData, targetVersion)
+            // Only update local version after successful push
+            this.updateLocalVersion(targetVersion)
             this.localModified = false
             this.config.onSyncSuccess?.()
           } else if (resolution.resolution === 'remote') {
@@ -598,8 +729,10 @@ class SyncManager {
               taskGroups: localData.taskGroups || []
             }
             const mergedEncrypted = await encryptWorkspace(mergedData, encryptionKey)
-            this.updateLocalVersion(remoteVersion.version + 1)
-            await api.saveWorkspace(mergedEncrypted, this.localVersion)
+            const targetVersion = remoteVersion.version + 1
+            await api.saveWorkspace(mergedEncrypted, targetVersion)
+            // Only update local version after successful push
+            this.updateLocalVersion(targetVersion)
             
             localStorage.setItem('tigement_tables', JSON.stringify(mergedData.tables))
             localStorage.setItem('tigement_settings', JSON.stringify(mergedData.settings))
@@ -631,19 +764,40 @@ class SyncManager {
         await this.pull()
         this.localModified = false
       } else {
-        // Safe to push: remote version matches our last sync
-        console.log('⬆️ Pushing local changes (remote:', remoteVersion.version, '→', remoteVersion.version + 1, ')')
-        this.updateLocalVersion(remoteVersion.version + 1)
-        const response = await api.saveWorkspace(encryptedData, this.localVersion)
-        console.log('✅ Push completed!')
-        this.localModified = false
-        this.lastSyncTime = new Date()
-        this.lastSyncDirection = 'uploaded'
-        this.config.onSyncSuccess?.()
+        // Versions match - only push if we have local changes
+        if (hasLocalChanges) {
+          const targetVersion = remoteVersion.version + 1
+          console.log('⬆️ Pushing local changes (remote:', remoteVersion.version, '→', targetVersion, ')')
+          console.log('📤 Attempting push to version:', targetVersion)
+          const response = await api.saveWorkspace(encryptedData, targetVersion)
+          // Only update local version after successful push
+          this.updateLocalVersion(targetVersion)
+          console.log('✅ Push completed!')
+          this.localModified = false
+          this.lastSyncTime = new Date()
+          this.lastSyncDirection = 'uploaded'
+          this.config.onSyncSuccess?.()
+        } else {
+          // No changes and versions match - nothing to sync
+          console.log('✅ Already in sync (no local changes, versions match)')
+          this.localModified = false
+          this.lastSyncTime = new Date()
+          this.lastSyncDirection = 'uploaded'
+          this.config.onSyncSuccess?.()
+        }
       }
     } catch (error: any) {
       console.error('❌ Sync failed:', error)
       console.error('Error details:', error.message, error.response?.data)
+      
+      // If version conflict and not already retrying, retry once with fresh remote version
+      if (error.message?.includes('Version conflict') && !isRetry) {
+        console.log('🔄 Version conflict detected, retrying with fresh remote version...')
+        // Reset syncing flag before retry
+        this.isSyncing = false
+        // Recursive call with retry flag
+        return this.sync(true)
+      }
       
       // Check if this is an auth error - stop auto-sync to prevent repeated failures
       if (error.message?.includes('Authentication failed') || 
@@ -691,6 +845,7 @@ class SyncManager {
     }
     
     this.updateLocalVersion(remoteWorkspace.version)
+    this.localModified = false  // Explicitly clear after pull
     console.log('✅ Remote data applied')
     
     // Update React state via callback instead of reloading
@@ -760,6 +915,14 @@ class SyncManager {
     localStorage.setItem('tigement_tables', JSON.stringify(decryptedData.tables || []))
     localStorage.setItem('tigement_settings', JSON.stringify(decryptedData.settings || {}))
     
+    // Handle AI config sync
+    if (decryptedData.aiConfig) {
+      console.log('🤖 Syncing AI config from server')
+      localStorage.setItem('tigement_ai_config', decryptedData.aiConfig)
+    } else {
+      console.log('🤖 No AI config in remote data (backward compatibility)')
+    }
+    
     // Handle taskGroups carefully:
     // - If server has taskGroups, use them (even if empty, but warn)
     // - If server data doesn't have taskGroups property at all, keep local ones
@@ -828,12 +991,14 @@ class SyncManager {
     const notebooks = localStorage.getItem('tigement_notebooks')
     const diaries = localStorage.getItem('tigement_diary_entries')
     const archives = localStorage.getItem('tigement_archived_tables')
+    const aiConfig = localStorage.getItem('tigement_ai_config')
     console.log('📦 localStorage.tigement_tables:', tables ? `${tables.length} chars` : 'NULL')
     console.log('⚙️ localStorage.tigement_settings:', settings ? `${settings.length} chars` : 'NULL')
     console.log('📁 localStorage.tigement_task_groups:', taskGroups ? `${taskGroups.length} chars` : 'NULL')
     console.log('📓 localStorage.tigement_notebooks:', notebooks ? `${notebooks.length} chars` : 'NULL')
     console.log('📔 localStorage.tigement_diary_entries:', diaries ? `${diaries.length} chars` : 'NULL')
     console.log('🗄️ localStorage.tigement_archived_tables:', archives ? `${archives.length} chars` : 'NULL')
+    console.log('🤖 localStorage.tigement_ai_config:', aiConfig ? `${aiConfig.length} chars` : 'NULL')
 
     if (!tables) {
       console.error('❌ No tables found in localStorage!')
@@ -846,9 +1011,10 @@ class SyncManager {
       taskGroups: taskGroups ? JSON.parse(taskGroups) : [],
       notebooks: notebooks ? JSON.parse(notebooks) : { workspace: '', tasks: {} },
       diaries: diaries ? JSON.parse(diaries) : {},
-      archivedTables: archives ? JSON.parse(archives) : []
+      archivedTables: archives ? JSON.parse(archives) : [],
+      aiConfig: aiConfig || null // AI config is already encrypted, store as-is
     }
-    console.log('✅ Parsed workspace data:', parsed.tables.length, 'tables', parsed.taskGroups?.length || 0, 'task groups', Object.keys(parsed.diaries).length, 'diary entries', parsed.archivedTables.length, 'archived tables')
+    console.log('✅ Parsed workspace data:', parsed.tables.length, 'tables', parsed.taskGroups?.length || 0, 'task groups', Object.keys(parsed.diaries).length, 'diary entries', parsed.archivedTables.length, 'archived tables', parsed.aiConfig ? 'AI config present' : 'no AI config')
     return parsed
   }
 

@@ -215,11 +215,11 @@ export function TableComponent({
           marginBottom: '1rem',
         } : {}),
       }}
-      className="bg-white shadow-lg rounded-lg overflow-hidden flex flex-col"
+      className="bg-white shadow-lg md:rounded-lg overflow-hidden flex flex-col"
     >
       {/* Table Header */}
       <div 
-        className="bg-[#4a6c7a] text-white px-4 py-3 rounded-t-lg flex justify-between items-center gap-3"
+        className="bg-[#4a6c7a] text-white px-4 py-3 md:rounded-t-lg flex justify-between items-center gap-3"
         onMouseDown={!isMobile ? (e) => handleTableDragStart(e, table.id) : undefined}
         style={{ cursor: !isMobile ? 'grab' : 'default' }}
       >
@@ -227,9 +227,11 @@ export function TableComponent({
           {table.type === 'day' && table.date ? (
             <>
               <div className="flex items-center gap-1">
-                <span className="text-white text-sm">
-                  {formatDate(table.date)}
-                </span>
+                {!isMobile && (
+                  <span className="text-white text-sm">
+                    {formatDate(table.date)}
+                  </span>
+                )}
                 <button
                   type="button"
                   onClick={() => document.getElementById(`date-picker-${table.id}`)?.showPicker?.()}
@@ -376,7 +378,7 @@ export function TableComponent({
       </div>
 
       {/* Table Controls Row */}
-      <div className="table-header bg-[#5a7c8a] text-white px-2 py-2 flex items-center gap-2 text-xs font-semibold">
+      <div className={`table-header bg-[#5a7c8a] text-white ${isMobile ? 'px-1 py-1' : 'px-2 py-2'} flex items-center ${isMobile ? 'gap-1' : 'gap-2'} text-xs font-semibold`}>
         {/* Select All Checkbox */}
         <input
           type="checkbox"
@@ -389,12 +391,12 @@ export function TableComponent({
         {!isMobile && <span className="text-center" style={{ width: '44px' }}>Up|Dn</span>}
         {table.type === 'day' && (
           <>
-            <span className="w-20 text-center">Start</span>
-            <span className="w-20 text-center">Finish</span>
+            <span className="text-center" style={{ width: isMobile ? '2.5rem' : '5rem' }}>Start</span>
+            <span className="text-center" style={{ width: isMobile ? '2.5rem' : '5rem' }}>Finish</span>
           </>
         )}
         <span className="flex-1 px-2">Job</span>
-        <span className={`${isMobile ? 'w-16' : 'w-20'} text-center`}>Duration</span>
+        <span className="text-center" style={{ width: isMobile ? '2.5rem' : '5rem' }}>Duration</span>
         {/* Add/Delete buttons column */}
         {!isMobile && <span className="text-center" style={{ width: '68px' }}>Add|Del</span>}
       </div>
@@ -462,7 +464,7 @@ export function TableComponent({
                 data-table-id={table.id}
                 data-task-index={index}
                 style={isMobile && touchDragStart?.taskId === task.id ? { touchAction: 'none' } : undefined}
-                className={`group flex items-center ${isMobile ? 'gap-1 px-1 min-w-0' : 'gap-2 px-2'} py-1 border-b hover:bg-gray-50 transition-all ${task.selected ? 'bg-blue-50' : ''} ${isDragging ? 'opacity-60 border-2 border-dashed !border-[#4fc3f7]' : 'border-gray-200'} ${isPast ? 'bg-gray-100' : timeMatchStatus === 'match' ? 'bg-green-200 text-green-900' : timeMatchStatus === 'mismatch' ? 'bg-red-200 text-red-900' : ''} ${isCurrent ? 'font-bold' : ''} ${highlightedTask === task.id ? 'task-highlight-pulse' : ''}`}
+                className={`group flex items-center ${isMobile ? 'gap-0.5 px-1 min-w-0' : 'gap-2 px-2'} py-1 border-b hover:bg-gray-50 transition-all ${task.selected ? 'bg-blue-50' : ''} ${isDragging ? 'opacity-60 border-2 border-dashed !border-[#4fc3f7]' : 'border-gray-200'} ${isPast ? 'bg-gray-100' : timeMatchStatus === 'match' ? 'bg-green-200 text-green-900' : timeMatchStatus === 'mismatch' ? 'bg-red-200 text-red-900' : ''} ${isCurrent ? 'font-bold' : ''} ${highlightedTask === task.id ? 'task-highlight-pulse' : ''}`}
               >
               {/* Checkbox */}
               <input
@@ -508,23 +510,25 @@ export function TableComponent({
                   : 'var(--color-text)' // Use theme color for normal rows
                 
                 return (
-                <>
+                <div style={{ display: 'flex', gap: 0, alignItems: 'center' }}>
                   {/* Start time - editable only for first task */}
                   {index === 0 ? (
                     settings.useTimePickers ? (
                       <div
                         onClick={() => setTimePickerTable(table.id)}
-                        className="cursor-pointer hover:bg-gray-100 active:bg-gray-200 rounded px-1"
+                        className="cursor-pointer hover:bg-gray-100 active:bg-gray-200"
                         style={{
-                          minWidth: isMobile ? '3.5rem' : '5rem',
+                          width: isMobile ? '2.5rem' : '5rem',
                           height: '1.5rem',
                           lineHeight: '1.5rem',
                           textAlign: 'center',
                           fontSize: isMobile ? '0.75rem' : '0.875rem',
                           color: timeColor,
-                          display: 'inline-block',
-                          verticalAlign: 'middle',
-                          flexShrink: 0
+                          display: 'block',
+                          flexShrink: 0,
+                          padding: 0,
+                          margin: 0,
+                          boxSizing: 'border-box'
                         }}
                       >
                         {formatTime(table.startTime || '08:00')}
@@ -540,7 +544,7 @@ export function TableComponent({
                           e.target.value = formatTime(time24)
                         }}
                         style={{
-                          width: isMobile ? '3.5rem' : '5rem',
+                          width: isMobile ? '2.5rem' : '5rem',
                           height: '1.5rem',
                           lineHeight: '1.5rem',
                           padding: '0',
@@ -552,8 +556,7 @@ export function TableComponent({
                           fontSize: isMobile ? '0.75rem' : '0.875rem',
                           color: timeColor,
                           boxSizing: 'border-box',
-                          display: 'inline-block',
-                          verticalAlign: 'middle',
+                          display: 'block',
                           flexShrink: 0
                         }}
                         placeholder={settings.timeFormat === 12 ? '08:00 AM' : '08:00'}
@@ -562,7 +565,7 @@ export function TableComponent({
                   ) : (
                     <span
                       style={{
-                        width: isMobile ? '3.5rem' : '5rem',
+                        width: isMobile ? '2.5rem' : '5rem',
                         height: '1.5rem',
                         lineHeight: '1.5rem',
                         padding: '0',
@@ -571,8 +574,7 @@ export function TableComponent({
                         fontSize: isMobile ? '0.75rem' : '0.875rem',
                         color: timeColor,
                         boxSizing: 'border-box',
-                        display: 'inline-block',
-                        verticalAlign: 'middle',
+                        display: 'block',
                         flexShrink: 0
                       }}>
                       {formatTime(taskTimes.start)}
@@ -582,7 +584,7 @@ export function TableComponent({
                   {/* End time - always read-only */}
                   <span
                     style={{
-                      width: isMobile ? '3.5rem' : '5rem',
+                      width: isMobile ? '2.5rem' : '5rem',
                       height: '1.5rem',
                       lineHeight: '1.5rem',
                         padding: '0',
@@ -591,13 +593,12 @@ export function TableComponent({
                         fontSize: isMobile ? '0.75rem' : '0.875rem',
                         color: timeColor,
                         boxSizing: 'border-box',
-                        display: 'inline-block',
-                        verticalAlign: 'middle',
+                        display: 'block',
                         flexShrink: 0
                       }}>
                     {formatTime(taskTimes.end)}
                   </span>
-                </>
+                </div>
                 )
               })()}
 
@@ -684,9 +685,11 @@ export function TableComponent({
                     // If no group color and no row state color applies, use theme foreground for contrast
                     color: (getTaskGroup(task.group)?.color || timeMatchStatus !== null || task.selected)
                       ? (task.selected ? '#1f2937' : getContrastColor(getTaskGroup(task.group)?.color || '#ffffff'))
-                      : 'var(--color-text)'
+                      : 'var(--color-text)',
+                    fontSize: isMobile ? '0.75rem' : undefined,
+                    touchAction: 'manipulation'
                   }}
-                  className={`w-full ${isMobile ? 'px-1' : 'px-2'} py-1 border-none outline-none ${isMobile ? 'text-xs' : 'text-sm'} ${isCurrent ? 'font-bold' : ''} ${task.selected ? '' : 'group-hover:!bg-transparent'}`}
+                  className={`w-full ${isMobile ? 'px-1 text-sm' : 'px-2'} py-1 border-none outline-none ${isCurrent ? 'font-bold' : ''} ${task.selected ? '' : 'group-hover:!bg-transparent'}`}
                   placeholder="Task name..."
                 />
                 {hoveredTask === task.id && task.title && (
@@ -746,8 +749,13 @@ export function TableComponent({
                       const next = Math.max(0, current + delta)
                       updateTask(table.id, task.id, 'duration', next)
                     } : undefined}
-                    className={`${isMobile ? 'w-16 text-xs px-1' : 'w-20 px-2'} py-1 border border-gray-300 rounded text-sm text-center flex-shrink-0 cursor-pointer hover:bg-gray-50 active:bg-gray-100`}
-                    style={{ color: durationColor, minWidth: isMobile ? '4rem' : undefined }}
+                    className="py-1 border border-gray-300 rounded text-sm text-center flex-shrink-0 cursor-pointer hover:bg-gray-50 active:bg-gray-100"
+                    style={{ 
+                      color: durationColor, 
+                      width: isMobile ? '2.5rem' : '5rem',
+                      padding: '0.25rem 0',
+                      boxSizing: 'border-box'
+                    }}
                   >
                     {formatDuration(task.duration)}
                   </div>
@@ -763,8 +771,13 @@ export function TableComponent({
                       }
                       e.target.value = formatDuration(minutes || task.duration)
                     }}
-                    className={`${isMobile ? 'w-16 text-xs px-1' : 'w-20 px-2'} py-1 border border-gray-300 rounded text-sm text-center flex-shrink-0`}
-                    style={{ color: durationColor, minWidth: isMobile ? '4rem' : undefined }}
+                    className="py-1 border border-gray-300 rounded text-sm text-center flex-shrink-0"
+                    style={{ 
+                      color: durationColor, 
+                      width: isMobile ? '2.5rem' : '5rem',
+                      padding: '0.25rem 0',
+                      boxSizing: 'border-box'
+                    }}
                     placeholder="00:00"
                   />
                 )

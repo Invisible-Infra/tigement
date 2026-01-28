@@ -45,6 +45,8 @@ function AppContent() {
   const [oauthPassphraseDialog, setOauthPassphraseDialog] = useState<{ token: string; isNew: boolean } | null>(null)
   const [showMigrationDialog, setShowMigrationDialog] = useState(false)
   const [migrationStatus, setMigrationStatus] = useState<any>(null)
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768)
+  const [avatarLoadFailed, setAvatarLoadFailed] = useState(false)
 
   // Calculate days until premium expires
   const getDaysUntilExpiry = (expiresAt?: string): number | null => {
@@ -62,6 +64,19 @@ function AppContent() {
       setShowProfile(true)
     }
   }, [decryptionFailure.hasFailure, isAuthenticated, showProfile])
+
+  // Detect mobile viewport
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768)
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
+
+  // Reset avatar load state when user changes
+  useEffect(() => {
+    setAvatarLoadFailed(false)
+  }, [user?.profile_picture_url])
 
   // Check for reset token in URL on mount
   useEffect(() => {
@@ -403,14 +418,17 @@ function AppContent() {
 
   return (
     <div className="h-screen overflow-hidden bg-gray-50 flex flex-col">
-      <nav className="flex-shrink-0 bg-[#4a6c7a] text-white p-4 md:pr-4 pr-16">
+      <nav className={`flex-shrink-0 bg-[#4a6c7a] text-white ${isMobile ? 'p-2' : 'p-4'} md:pr-4 pr-16`}>
         <div className="flex items-center justify-between max-w-full">
           <div className="logo relative inline-block flex-shrink-0">
             <div className="relative inline-block bg-[#2d4a56] px-3 py-1" style={{ transform: 'skewX(-12deg)' }}>
-              <span className="text-2xl font-bold italic inline-block text-white">
+              <span 
+                className="font-bold italic inline-block text-white"
+                style={{ fontSize: isMobile ? '14px' : '24px' }}
+              >
                 Tig<span className="text-[#4fc3f7] inline-block" style={{ verticalAlign: '-0.1em' }}>≡</span>ment
               </span>
-              <span className="text-[10px] absolute -bottom-2 right-3 !bg-white text-[#2d4a56] px-1.5 py-0.6 font-medium">{version}</span>
+              <span className="text-[10px] absolute -bottom-2 right-3 !bg-white text-[#2d4a56] px-1.5 py-0.6 font-medium hidden md:block">{version}</span>
             </div>
           </div>
           
@@ -419,21 +437,28 @@ function AppContent() {
               <>
                 <button
                   onClick={() => setShowProfile(true)}
-                  className="px-4 py-2 bg-[#4a6c7a] hover:bg-[#3a5c6a] rounded text-sm transition border border-white/20 flex items-center gap-2"
+                  className={`${isMobile ? 'px-2 py-1' : 'px-4 py-2'} bg-[#4a6c7a] hover:bg-[#3a5c6a] rounded text-sm transition border border-white/20 flex items-center`}
+                  style={{ gap: isMobile ? 0 : '0.5rem' }}
                 >
-                  {user?.profile_picture_url ? (
+                  {user?.profile_picture_url && !avatarLoadFailed ? (
                     <img 
                       src={user.profile_picture_url} 
                       alt="Profile" 
                       className="w-6 h-6 rounded-full object-cover"
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none'
-                      }}
+                      onError={() => setAvatarLoadFailed(true)}
                     />
                   ) : (
-                    <span>👤</span>
+                    <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center">
+                      <svg 
+                        className="w-4 h-4" 
+                        viewBox="0 0 24 24" 
+                        fill="currentColor"
+                      >
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
+                      </svg>
+                    </div>
                   )}
-                  <span>{user?.username || user?.email}</span>
+                  {!isMobile && <span>{user?.username || user?.email}</span>}
                 </button>
                 {user?.plan === 'premium' && user?.subscription_status === 'expired' ? (
                   <button
@@ -522,7 +547,7 @@ function AppContent() {
         </div>
       </nav>
 
-      <AdminAnnouncement />
+      <AdminAnnouncement isMobile={isMobile} />
 
       <div className="flex-1 overflow-hidden">
         <Workspace onShowPremium={() => setShowPremium(true)} />

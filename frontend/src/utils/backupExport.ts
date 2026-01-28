@@ -34,23 +34,21 @@ export async function generateBackup(
 ): Promise<BackupData> {
   try {
     // Fetch diaries from server
-    const diariesResponse = await api.get('/api/diary/entries')
-    const diaryList = diariesResponse.data || []
+    const diaryList = await api.getDiaryEntries()
     
     // Fetch full content for each diary entry
     const diaries = await Promise.all(
       diaryList.map(async (entry: { date: string }) => {
-        const response = await api.get(`/api/diary/entry/${entry.date}`)
+        const response = await api.getDiaryEntry(entry.date)
         return {
           date: entry.date,
-          content: response.data.content || ''
+          content: response.content || ''
         }
       })
     )
 
     // Fetch archived tables from server
-    const archivedResponse = await api.get('/api/archives')
-    const archived_tables = archivedResponse.data || []
+    const archived_tables = await api.listArchivedTables()
 
     const backup: BackupData = {
       backup_date: new Date().toISOString(),

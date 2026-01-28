@@ -118,6 +118,7 @@ Tip: Potřebujete pevný začátek? Nastavte čas začátku tabulky; ostatní se
   - Pokud zapomenete heslo, vaše zašifrovaná data nelze obnovit (používejte správce hesel)
   - V pokročilých nastaveních můžete nastavit vlastní šifrovací klíč pro dodatečnou bezpečnost
 - Nastavení obsahuje preference workspace (téma, formáty času/data, časovače, volba timepickerů).
+- **Témata**: Vyberte si z Light (Moderní), Classic (Retro), Dark (Tmavý), Terminal (Hacker) nebo ZX Spectrum (autentická 8-bitová estetika Sinclair ZX Spectrum s jasně azurovou a černou).
 - **Předvolby délky**: Nastavte rychlé tlačítka ve výběru délky. Zadejte minuty oddělené čárkou (např. "15, 30, 60, 120"). Kliknutí na předvolbu nastaví délku okamžitě bez nutnosti stisknout "Hotovo".
 
 <a id="zaloha"></a>

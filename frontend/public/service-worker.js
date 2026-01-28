@@ -1,5 +1,5 @@
 // Service Worker for Tigement PWA
-const CACHE_NAME = 'tigement-v3'
+const CACHE_NAME = 'tigement-v4'
 const urlsToCache = [
   '/',
   '/index.html',
@@ -29,11 +29,47 @@ self.addEventListener('fetch', (event) => {
   if (
     url.pathname.startsWith('/@') ||           // Vite special routes
     url.pathname.startsWith('/src/') ||        // Source files in dev
-    url.pathname.startsWith('/node_modules/') || // Vite dependencies
+    url.pathname.startsWith('/node_modules/') || // Vite dependencies (dev mode)
+    url.pathname.includes('/.vite/') ||        // Vite internal paths
     url.pathname.startsWith('/api/') ||        // API calls
     event.request.method !== 'GET'             // Non-GET requests
   ) {
-    event.respondWith(fetch(event.request))
+    // Don't cache dev-mode resources
+    return fetch(event.request)
+  }
+  
+  // Network-first for HTML files - always get fresh HTML with correct chunk references
+  if (
+    url.pathname.endsWith('.html') ||
+    url.pathname === '/' ||
+    url.pathname === '/index.html'
+  ) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          // Cache the new HTML version
+          const responseToCache = response.clone()
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseToCache)
+          })
+          return response
+        })
+        .catch((error) => {
+          console.error('SW: Network fetch failed for HTML:', error)
+          // Fall back to cached HTML if offline
+          return caches.match(event.request).then(cachedResponse => {
+            if (cachedResponse) {
+              console.log('SW: Serving cached HTML (offline)')
+              return cachedResponse
+            }
+            // Last resort: return error
+            return new Response('Offline and no cached version', { 
+              status: 503,
+              headers: { 'Content-Type': 'text/html' }
+            })
+          })
+        })
+    )
     return
   }
   
@@ -45,11 +81,11 @@ self.addEventListener('fetch', (event) => {
     url.search.includes('?t=')                 // Timestamped assets
   ) {
     event.respondWith(
-      fetch(event.request)
-        .then((response) => {
+      (async () => {
+        try {
+          const response = await fetch(event.request)
           if (!response.ok) {
             console.error('SW: Fetch returned non-OK status:', response.status, event.request.url)
-            // Still try to cache it for offline use
           }
           // Cache the new version
           const responseToCache = response.clone()
@@ -57,22 +93,22 @@ self.addEventListener('fetch', (event) => {
             cache.put(event.request, responseToCache)
           })
           return response
-        })
-        .catch((error) => {
+        } catch (error) {
           console.error('SW: Network fetch failed:', error, event.request.url)
           // Try cache fallback
-          return caches.match(event.request).then(cachedResponse => {
-            if (cachedResponse) {
-              return cachedResponse
-            }
-            // If critical resource fails, return error that won't break the page
-            console.error('SW: No cache available for:', event.request.url)
-            return new Response(
-              JSON.stringify({ error: 'Resource unavailable' }),
-              { status: 503, headers: { 'Content-Type': 'application/json' } }
-            )
-          })
-        })
+          const cachedResponse = await caches.match(event.request)
+          if (cachedResponse) {
+            console.log('SW: Serving cached version of:', event.request.url)
+            return cachedResponse
+          }
+          // If critical resource fails, return error
+          console.error('SW: No cache available for:', event.request.url)
+          return new Response(
+            JSON.stringify({ error: 'Resource unavailable' }),
+            { status: 503, headers: { 'Content-Type': 'application/json' } }
+          )
+        }
+      })()
     )
     return
   }

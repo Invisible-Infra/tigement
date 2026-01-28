@@ -27,6 +27,13 @@ export function SpaceTabs({
   onDeleteSpace,
   iconMap
 }: SpaceTabsProps) {
+  console.log('📑 SpaceTabs rendering:', { spacesCount: spaces.length, spaces, activeSpaceId })
+  
+  if (!spaces || spaces.length === 0) {
+    console.warn('⚠️ SpaceTabs: No spaces provided!')
+    return null
+  }
+  
   return (
     <div className="relative z-10 flex items-center gap-3 bg-gray-100 p-4 border-b overflow-x-auto overflow-y-visible">
       {spaces.map((space) => (

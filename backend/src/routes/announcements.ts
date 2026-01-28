@@ -31,5 +31,22 @@ router.get('/current', async (req: Request, res: Response) => {
   }
 })
 
+/**
+ * Get debug settings
+ * GET /api/announcements/debug-settings
+ * Public endpoint - no authentication required
+ */
+router.get('/debug-settings', async (req: Request, res: Response) => {
+  try {
+    const result = await query('SELECT debug_button_enabled FROM payment_settings WHERE id = 1')
+    res.json({ 
+      debug_button_enabled: result.rows[0]?.debug_button_enabled || false 
+    })
+  } catch (error: any) {
+    console.error('Error fetching debug settings:', error)
+    res.json({ debug_button_enabled: false }) // Fail safe to false
+  }
+})
+
 export default router
 

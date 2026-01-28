@@ -14,7 +14,11 @@ interface AnnouncementData {
   enabled: boolean
 }
 
-export function AdminAnnouncement() {
+interface AdminAnnouncementProps {
+  isMobile: boolean
+}
+
+export function AdminAnnouncement({ isMobile }: AdminAnnouncementProps) {
   const [announcement, setAnnouncement] = useState<AnnouncementData | null>(null)
 
   const fetchAnnouncement = async () => {
@@ -45,8 +49,10 @@ export function AdminAnnouncement() {
 
   return (
     <div 
-      className="px-4 py-3 text-sm text-center font-medium border-b"
+      className="px-4 text-sm text-center font-medium border-b"
       style={{
+        paddingTop: isMobile ? '0.25rem' : '0.75rem',
+        paddingBottom: isMobile ? '0.25rem' : '0.75rem',
         color: announcement.text_color,
         backgroundColor: announcement.background_color
       }}
