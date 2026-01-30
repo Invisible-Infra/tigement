@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
+import crypto from 'crypto';
 import { query } from '../db';
 
 export interface AuthRequest extends Request {
@@ -37,26 +38,54 @@ async function verifyApiToken(tokenString: string): Promise<{
       return null;
     }
     
-    // Query all active tokens to check hashes
+    const lookupHash = crypto.createHash('sha256').update(tokenPrefix, 'utf8').digest('hex');
+    
+    // O(1) lookup: find row by token_lookup_hash (new tokens)
     const result = await query(
-      `SELECT t.id, t.token_hash, t.user_id, t.scopes, t.wrapped_dek, t.revoked_at, t.expires_at, u.email
+      `SELECT t.id, t.token_hash, t.user_id, t.scopes, t.wrapped_dek, u.email
        FROM api_tokens t
        JOIN users u ON t.user_id = u.id
-       WHERE t.revoked_at IS NULL 
-       AND (t.expires_at IS NULL OR t.expires_at > NOW())`,
-      []
+       WHERE t.token_lookup_hash = $1 AND t.revoked_at IS NULL
+       AND (t.expires_at IS NULL OR t.expires_at > NOW())
+       LIMIT 1`,
+      [lookupHash]
     );
     
-    // Find matching token by comparing hashes
-    for (const row of result.rows) {
+    if (result.rows.length > 0) {
+      const row = result.rows[0];
       const isMatch = await bcrypt.compare(tokenPrefix, row.token_hash);
       if (isMatch) {
-        // Update last_used_at
         await query(
           'UPDATE api_tokens SET last_used_at = NOW() WHERE id = $1',
           [row.id]
         );
-        
+        return {
+          user: { id: row.user_id, email: row.email },
+          apiToken: {
+            id: row.id,
+            scopes: row.scopes,
+            wrappedDek: row.wrapped_dek
+          }
+        };
+      }
+    }
+    
+    // Fallback: legacy tokens without token_lookup_hash (O(n))
+    const legacyResult = await query(
+      `SELECT t.id, t.token_hash, t.user_id, t.scopes, t.wrapped_dek, u.email
+       FROM api_tokens t
+       JOIN users u ON t.user_id = u.id
+       WHERE t.token_lookup_hash IS NULL AND t.revoked_at IS NULL
+       AND (t.expires_at IS NULL OR t.expires_at > NOW())`,
+      []
+    );
+    for (const row of legacyResult.rows) {
+      const isMatch = await bcrypt.compare(tokenPrefix, row.token_hash);
+      if (isMatch) {
+        await query(
+          'UPDATE api_tokens SET last_used_at = NOW() WHERE id = $1',
+          [row.id]
+        );
         return {
           user: { id: row.user_id, email: row.email },
           apiToken: {
@@ -101,7 +130,7 @@ export const authMiddleware = async (req: AuthRequest, res: Response, next: Next
     }
     
     // Otherwise, treat as JWT
-    const secret = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
+    const secret = process.env.JWT_SECRET!;
     const decoded = jwt.verify(token, secret) as { id: number; email: string };
     req.user = decoded;
     req.authType = 'jwt';
@@ -129,7 +158,7 @@ export const optionalAuthMiddleware = async (req: AuthRequest, res: Response, ne
         }
       } else {
         // JWT token
-        const secret = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
+        const secret = process.env.JWT_SECRET!;
         const decoded = jwt.verify(token, secret) as { id: number; email: string };
         req.user = decoded;
         req.authType = 'jwt';

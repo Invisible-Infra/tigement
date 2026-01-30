@@ -31,6 +31,20 @@ import { configureOAuth } from './services/oauth';
 
 dotenv.config();
 
+function validateJwtSecrets(): void {
+  const jwtSecret = process.env.JWT_SECRET;
+  const refreshSecret = process.env.JWT_REFRESH_SECRET;
+  if (!jwtSecret || !jwtSecret.trim()) {
+    console.error('FATAL: JWT_SECRET is required and must be non-empty. Set it in .env or environment.');
+    process.exit(1);
+  }
+  if (!refreshSecret || !refreshSecret.trim()) {
+    console.error('FATAL: JWT_REFRESH_SECRET is required and must be non-empty. Set it in .env or environment.');
+    process.exit(1);
+  }
+}
+validateJwtSecrets();
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -61,6 +75,11 @@ app.use((req, res, next) => {
     express.json({ limit: '10mb' })(req, res, next);
   }
 });
+
+// Trust proxy in production so X-Forwarded-Proto is honored (secure cookies behind TLS termination)
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
 
 // Session middleware for OAuth
 app.use(session({

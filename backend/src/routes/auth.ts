@@ -67,8 +67,8 @@ router.post('/register', async (req, res) => {
     );
     
     // Generate tokens
-    const secret = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
-    const refreshSecret = process.env.JWT_REFRESH_SECRET || 'your-super-secret-refresh-key-change-in-production';
+    const secret = process.env.JWT_SECRET!;
+    const refreshSecret = process.env.JWT_REFRESH_SECRET!;
     
     // Use user-defined session duration or default to 7 days (register)
     const daysRegister = sessionDays && sessionDays >= 1 && sessionDays <= 90 ? sessionDays : 7;
@@ -193,8 +193,8 @@ router.post('/login', async (req, res) => {
     }
     
     // Generate tokens
-    const secret = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
-    const refreshSecret = process.env.JWT_REFRESH_SECRET || 'your-super-secret-refresh-key-change-in-production';
+    const secret = process.env.JWT_SECRET!;
+    const refreshSecret = process.env.JWT_REFRESH_SECRET!;
     
     // Use user-defined session duration or default to 7 days (login)
     const daysLogin = sessionDays && sessionDays >= 1 && sessionDays <= 90 ? sessionDays : 7;
@@ -280,7 +280,7 @@ router.post('/refresh', async (req, res) => {
     }
     
     // Verify refresh token
-    const refreshSecret = process.env.JWT_REFRESH_SECRET || 'your-super-secret-refresh-key-change-in-production';
+    const refreshSecret = process.env.JWT_REFRESH_SECRET!;
     const decoded = jwt.verify(refreshToken, refreshSecret) as { id: number };
     
     // Check if token exists in database
@@ -307,7 +307,7 @@ router.post('/refresh', async (req, res) => {
     const user = userResult.rows[0];
     
     // Generate new access token
-    const secret = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
+    const secret = process.env.JWT_SECRET!;
     const accessToken = jwt.sign({ id: user.id, email: user.email }, secret, { expiresIn: '2h' });
     
     console.log('✅ Token refreshed successfully', { userId: user.id, email: user.email });
@@ -410,7 +410,7 @@ router.post('/forgot-password', async (req, res) => {
       const user = userResult.rows[0];
       
       // Generate JWT token for password reset (expires in 1 hour)
-      const secret = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
+      const secret = process.env.JWT_SECRET!;
       const resetToken = jwt.sign(
         { email: user.email, type: 'password-reset' },
         secret,
@@ -449,7 +449,7 @@ router.post('/reset-password', async (req, res) => {
     const { token, newPassword } = resetPasswordSchema.parse(req.body);
     
     // Verify JWT token
-    const secret = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
+    const secret = process.env.JWT_SECRET!;
     let decoded: any;
     
     try {

@@ -92,7 +92,7 @@ router.get('/oauth/:provider/callback', (req: Request, res: Response, next) => {
       console.log(`OAuth callback successful for user ${user.id}, has passphrase: ${hasPassphrase}`);
 
       // Generate temporary OAuth token (short-lived for passphrase setup)
-      const secret = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
+      const secret = process.env.JWT_SECRET!;
       const oauthToken = jwt.sign(
         { 
           id: user.id, 
@@ -127,8 +127,8 @@ router.post('/oauth/passphrase', async (req: Request, res: Response) => {
   try {
     const { oauthToken, passphrase, isNew } = passphraseSchema.parse(req.body);
 
-    const secret = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
-    const refreshSecret = process.env.JWT_REFRESH_SECRET || 'your-super-secret-refresh-key-change-in-production';
+    const secret = process.env.JWT_SECRET!;
+    const refreshSecret = process.env.JWT_REFRESH_SECRET!;
 
     // Verify OAuth token
     let decoded: any;
@@ -263,7 +263,7 @@ router.post('/oauth/reset-passphrase', async (req: Request, res: Response) => {
   try {
     const { oauthToken } = resetPassphraseSchema.parse(req.body);
 
-    const secret = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
+    const secret = process.env.JWT_SECRET!;
 
     // Verify OAuth token
     let decoded: any;

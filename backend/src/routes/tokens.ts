@@ -66,6 +66,7 @@ router.post('/generate', authMiddleware, async (req: AuthRequest, res) => {
     // Generate token components
     const tokenPrefix = generateTokenPrefix();
     const tokenHash = await bcrypt.hash(tokenPrefix, 10);
+    const tokenLookupHash = crypto.createHash('sha256').update(tokenPrefix, 'utf8').digest('hex');
     
     let wrappedDek: string | null = null;
     let tek: Buffer | null = null;
@@ -86,10 +87,10 @@ router.post('/generate', authMiddleware, async (req: AuthRequest, res) => {
     
     // Store token in database
     const result = await query(
-      `INSERT INTO api_tokens (user_id, name, token_hash, scopes, wrapped_dek, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO api_tokens (user_id, name, token_hash, token_lookup_hash, scopes, wrapped_dek, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING id, name, scopes, expires_at, created_at`,
-      [req.user!.id, name, tokenHash, scopes, wrappedDek, expiresAt]
+      [req.user!.id, name, tokenHash, tokenLookupHash, scopes, wrappedDek, expiresAt]
     );
     
     const tokenRecord = result.rows[0];

@@ -97,7 +97,7 @@ router.post('/workspace', authMiddleware, rateLimitApiToken('write'), requireSco
 
 // Helper function to get and decrypt workspace (client-side operation)
 // This endpoint returns data for client-side processing
-router.get('/workspace/for-edit', authMiddleware, requireScopes('workspace:read'), async (req: AuthRequest, res) => {
+router.get('/workspace/for-edit', authMiddleware, rateLimitApiToken('read'), requireScopes('workspace:read'), async (req: AuthRequest, res) => {
   try {
     const result = await query(
       'SELECT encrypted_data, version FROM workspaces WHERE user_id = $1',

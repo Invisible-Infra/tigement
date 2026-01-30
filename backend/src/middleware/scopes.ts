@@ -8,8 +8,8 @@ import { AuthRequest } from './auth';
  */
 export const requireScopes = (...requiredScopes: string[]) => {
   return (req: AuthRequest, res: Response, next: NextFunction) => {
-    // JWT sessions have full access
-    if (req.authType === 'jwt' || !req.authType) {
+    // JWT sessions have full access (strict: only explicit jwt, not missing authType)
+    if (req.authType === 'jwt') {
       return next();
     }
     
@@ -59,8 +59,8 @@ export const requireScopes = (...requiredScopes: string[]) => {
  * Helper to check if user has specific scope (for conditional logic)
  */
 export const hasScope = (req: AuthRequest, scope: string): boolean => {
-  // JWT sessions have all scopes
-  if (req.authType === 'jwt' || !req.authType) {
+  // JWT sessions have all scopes (strict: only explicit jwt, not missing authType)
+  if (req.authType === 'jwt') {
     return true;
   }
   

@@ -214,6 +214,12 @@ router.put('/profile', async (req: AuthRequest, res) => {
 
       // Invalidate all refresh tokens
       await query('DELETE FROM refresh_tokens WHERE user_id = $1', [req.user!.id]);
+
+      // Revoke all API tokens (same as rotate-encryption-key)
+      await query(
+        'UPDATE api_tokens SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL',
+        [req.user!.id]
+      );
     }
 
     res.json({ success: true, message: 'Profile updated successfully' });
