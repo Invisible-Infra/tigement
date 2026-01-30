@@ -7,10 +7,31 @@ import { authMiddleware, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 
+// Allowed API token scopes (must match middleware/scopes.ts)
+const ALLOWED_SCOPES = new Set([
+  'workspace:read', 'workspace:write', 'tables:read', 'tables:write',
+  'tasks:read', 'tasks:write', 'notebooks:read', 'notebooks:write',
+  'diaries:read', 'diaries:write', 'archives:read', 'archives:write',
+  'settings:read', 'settings:write', '*:*'
+]);
+const ALLOWED_WILDCARD_PREFIXES = ['workspace', 'tables', 'tasks', 'notebooks', 'diaries', 'archives', 'settings'];
+
+function isAllowedScope(scope: string): boolean {
+  if (ALLOWED_SCOPES.has(scope)) return true;
+  if (scope.endsWith(':*') && ALLOWED_WILDCARD_PREFIXES.includes(scope.slice(0, -2))) return true;
+  return false;
+}
+
+// Admin-only scopes (non-admin users cannot request these); empty for now
+const ADMIN_ONLY_SCOPES: string[] = [];
+
 // Schema for token generation
 const generateTokenSchema = z.object({
   name: z.string().min(1).max(255),
-  scopes: z.array(z.string()).min(1),
+  scopes: z.array(z.string().min(1)).min(1).refine(
+    (arr) => arr.every((s) => isAllowedScope(s)),
+    { message: 'One or more scopes are invalid; use workspace:read, tables:write, *:* etc.' }
+  ),
   enableDecryption: z.boolean().default(false),
   expiresInDays: z.number().min(1).max(365).nullable().optional(),
   encryptionKey: z.string().optional(), // Encryption key from frontend (for wrapping DEK)
@@ -56,6 +77,16 @@ async function deriveDEK(encryptionKey: string): Promise<Buffer> {
 router.post('/generate', authMiddleware, async (req: AuthRequest, res) => {
   try {
     const { name, scopes, enableDecryption, expiresInDays, encryptionKey } = generateTokenSchema.parse(req.body);
+    
+    // Reject non-admin users requesting admin-only scopes
+    const requestedAdminScopes = scopes.filter((s) => ADMIN_ONLY_SCOPES.includes(s));
+    if (requestedAdminScopes.length > 0) {
+      const isAdminResult = await query('SELECT is_admin FROM users WHERE id = $1', [req.user!.id]);
+      const isAdmin = isAdminResult.rows.length > 0 && isAdminResult.rows[0].is_admin === true;
+      if (!isAdmin) {
+        return res.status(403).json({ error: 'Insufficient permissions for requested scopes' });
+      }
+    }
     
     if (enableDecryption && !encryptionKey) {
       return res.status(400).json({ 

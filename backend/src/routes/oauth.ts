@@ -8,7 +8,7 @@ import passport from 'passport';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import { z } from 'zod';
-import { query } from '../db';
+import pool, { query } from '../db';
 
 const router = Router();
 
@@ -281,23 +281,28 @@ router.post('/oauth/reset-passphrase', async (req: Request, res: Response) => {
 
     console.log(`🗑️ Resetting encryption passphrase for user ${userId} - all encrypted data will be deleted`);
 
-    // Clear encryption passphrase hash
-    await query(
-      'UPDATE users SET encryption_passphrase_hash = NULL WHERE id = $1',
-      [userId]
-    );
-    console.log(`  ✅ Cleared passphrase hash for user ${userId}`);
-
-    // Delete encrypted workspace data
-    await query(
-      'DELETE FROM workspaces WHERE user_id = $1',
-      [userId]
-    );
-    console.log(`  ✅ Deleted encrypted workspace for user ${userId}`);
-
-    console.log(`✅ Passphrase reset complete for user ${userId}`);
-
-    res.json({ success: true });
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        'UPDATE users SET encryption_passphrase_hash = NULL WHERE id = $1',
+        [userId]
+      );
+      await client.query(
+        'DELETE FROM workspaces WHERE user_id = $1',
+        [userId]
+      );
+      await client.query('COMMIT');
+      console.log(`  ✅ Cleared passphrase hash for user ${userId}`);
+      console.log(`  ✅ Deleted encrypted workspace for user ${userId}`);
+      console.log(`✅ Passphrase reset complete for user ${userId}`);
+      res.json({ success: true });
+    } catch (txError) {
+      await client.query('ROLLBACK');
+      throw txError;
+    } finally {
+      client.release();
+    }
   } catch (error) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: 'Invalid input', details: error.errors });

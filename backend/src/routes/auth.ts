@@ -480,6 +480,9 @@ router.post('/reset-password', async (req, res) => {
     
     // Invalidate all refresh tokens for security (force re-login on all devices)
     await query('DELETE FROM refresh_tokens WHERE user_id = $1', [user.id]);
+
+    // Revoke all API tokens so they cannot be used after reset
+    await query('UPDATE api_tokens SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL', [user.id]);
     
     console.log(`✅ Password reset successful for user: ${user.email}`);
     

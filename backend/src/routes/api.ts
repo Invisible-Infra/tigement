@@ -68,10 +68,17 @@ router.post('/workspace', authMiddleware, rateLimitApiToken('write'), requireSco
         });
       }
       
-      await query(
-        'UPDATE workspaces SET encrypted_data = $1, version = $2, updated_at = NOW() WHERE user_id = $3',
-        [encryptedData, version, req.user!.id]
+      const updateResult = await query(
+        'UPDATE workspaces SET encrypted_data = $1, version = $2, updated_at = NOW() WHERE user_id = $3 AND version = $4',
+        [encryptedData, version, req.user!.id, currentVersion]
       );
+      if (updateResult.rowCount === 0) {
+        return res.status(409).json({ 
+          error: 'Version conflict',
+          currentVersion,
+          message: 'Your local data is outdated. Please sync first.',
+        });
+      }
     } else {
       await query(
         'INSERT INTO workspaces (user_id, encrypted_data, version) VALUES ($1, $2, $3)',
