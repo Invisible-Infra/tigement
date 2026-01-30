@@ -8,6 +8,9 @@ interface AIChatProps {
   workspace: any;
   onWorkspaceUpdate: (workspace: any) => void;
   onClose: () => void;
+  /** When provided with onPositionChange, modal is draggable and positioned at (x,y). Omit for centered behavior. */
+  position?: { x: number; y: number };
+  onPositionChange?: (pos: { x: number; y: number }) => void;
 }
 
 interface Message {
@@ -145,7 +148,7 @@ function formatChangePreview(change: any, workspace: any): string {
   }
 }
 
-export function AIChat({ workspace, onWorkspaceUpdate, onClose }: AIChatProps) {
+export function AIChat({ workspace, onWorkspaceUpdate, onClose, position, onPositionChange }: AIChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -156,6 +159,50 @@ export function AIChat({ workspace, onWorkspaceUpdate, onClose }: AIChatProps) {
     appliedAt: number;
   } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [isMobile, setIsMobile] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  const draggable = position != null && onPositionChange != null && !isMobile;
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth <= 1024);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (!draggable || !position) return;
+    if ((e.target as HTMLElement).closest('button')) return;
+    setIsDragging(true);
+    setDragOffset({ x: e.clientX - position.x, y: e.clientY - position.y });
+  };
+
+  const handleMouseMove = (e: MouseEvent) => {
+    if (isDragging && onPositionChange) {
+      onPositionChange({
+        x: e.clientX - dragOffset.x,
+        y: e.clientY - dragOffset.y
+      });
+    }
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  useEffect(() => {
+    if (isDragging) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+      return () => {
+        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  }, [isDragging, dragOffset]);
 
   useEffect(() => {
     loadConfig();
@@ -436,10 +483,29 @@ export function AIChat({ workspace, onWorkspaceUpdate, onClose }: AIChatProps) {
     return null;
   }
 
+  const innerStyle = draggable && position
+    ? {
+        position: 'fixed' as const,
+        left: position.x,
+        top: position.y,
+        width: 'min(56rem, calc(100vw - 2rem))',
+        height: '80vh',
+        maxWidth: '56rem',
+        zIndex: 9999
+      }
+    : undefined;
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-4xl h-[80vh] flex flex-col">
-        <div className="p-4 border-b dark:border-gray-700 flex items-center justify-between">
+    <div className={`fixed inset-0 bg-black/50 z-50 p-4 ${draggable ? '' : 'flex items-center justify-center'}`}>
+      <div
+        ref={panelRef}
+        className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-4xl h-[80vh] flex flex-col"
+        style={innerStyle}
+      >
+        <div
+          className={`p-4 border-b dark:border-gray-700 flex items-center justify-between ${draggable ? 'cursor-move' : ''}`}
+          onMouseDown={draggable ? handleMouseDown : undefined}
+        >
           <div>
             <h2 className="text-xl font-bold text-gray-900 dark:text-white">
               AI Assistant

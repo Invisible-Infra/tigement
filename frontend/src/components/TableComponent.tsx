@@ -1,4 +1,5 @@
-import React, { useState } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faBookOpen } from '@fortawesome/free-solid-svg-icons'
 
@@ -203,6 +204,15 @@ export function TableComponent({
   tables
 }: TableComponentProps) {
   const [spaceDropdownOpen, setSpaceDropdownOpen] = useState(false)
+  const spaceDropdownTriggerRef = useRef<HTMLButtonElement>(null)
+  const [spaceDropdownRect, setSpaceDropdownRect] = useState<DOMRect | null>(null)
+  useEffect(() => {
+    if (spaceDropdownOpen && spaceDropdownTriggerRef.current) {
+      setSpaceDropdownRect(spaceDropdownTriggerRef.current.getBoundingClientRect())
+    } else {
+      setSpaceDropdownRect(null)
+    }
+  }, [spaceDropdownOpen])
   
   return (
     <div
@@ -276,10 +286,11 @@ export function TableComponent({
             </div>
           )}
           
-          {/* Space assignment dropdown - only in spaces view for TODO tables */}
+          {/* Space assignment dropdown - only in spaces view for TODO tables. Rendered in portal so it is not clipped by overflow. */}
           {table.type === 'todo' && spaces && handleAssignTableToSpace && (
             <div className="relative">
               <button
+                ref={spaceDropdownTriggerRef}
                 onClick={(e) => {
                   e.stopPropagation()
                   setSpaceDropdownOpen(!spaceDropdownOpen)
@@ -303,17 +314,24 @@ export function TableComponent({
                 })()}
               </button>
               
-              {spaceDropdownOpen && (
+              {spaceDropdownOpen && spaceDropdownRect && createPortal(
                 <>
-                  <div 
-                    className="fixed inset-0 z-10" 
+                  <div
+                    className="fixed inset-0 z-40"
                     onClick={(e) => {
                       e.stopPropagation()
                       setSpaceDropdownOpen(false)
                     }}
                   />
-                  <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded shadow-lg z-20 min-w-[150px]">
+                  <div
+                    className="fixed z-50 mt-1 bg-white border border-gray-300 rounded shadow-lg min-w-[150px] max-h-[70vh] overflow-y-auto"
+                    style={{
+                      top: spaceDropdownRect.bottom + 4,
+                      left: spaceDropdownRect.left,
+                    }}
+                  >
                     <button
+                      type="button"
                       onClick={(e) => {
                         e.stopPropagation()
                         handleAssignTableToSpace(table.id, null)
@@ -325,6 +343,7 @@ export function TableComponent({
                     </button>
                     {spaces.map((space) => (
                       <button
+                        type="button"
                         key={space.id}
                         onClick={(e) => {
                           e.stopPropagation()
@@ -340,7 +359,8 @@ export function TableComponent({
                       </button>
                     ))}
                   </div>
-                </>
+                </>,
+                document.body
               )}
             </div>
           )}

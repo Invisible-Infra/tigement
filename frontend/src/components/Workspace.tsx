@@ -441,6 +441,7 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
   const isApplyingSyncUpdate = useRef(false)
   const hasLoadedTables = useRef(false)
   const prevTablesHash = useRef<string>('')
+  const spacesUpdateFromSettingsRef = useRef(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showTimer, setShowTimer] = useState(false)
   const [timerPosition, setTimerPosition] = useState(() => {
@@ -458,6 +459,24 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
   const [showBugReport, setShowBugReport] = useState(false)
   const [showFeatureRequest, setShowFeatureRequest] = useState(false)
   const [showAIChat, setShowAIChat] = useState(false)
+  const [aiChatPosition, setAiChatPosition] = useState<{ x: number; y: number }>(() => {
+    try {
+      const saved = localStorage.getItem('tigement_ai_chat_position')
+      if (saved) {
+        const p = JSON.parse(saved)
+        if (typeof p?.x === 'number' && typeof p?.y === 'number') return p
+      }
+    } catch {}
+    if (typeof window !== 'undefined') {
+      const w = 896
+      const h = 600
+      return {
+        x: Math.max(20, (window.innerWidth - w) / 2),
+        y: Math.max(20, (window.innerHeight - h) / 2)
+      }
+    }
+    return { x: 100, y: 100 }
+  })
   const [showAIHistory, setShowAIHistory] = useState(false)
   const [showGroupsEditor, setShowGroupsEditor] = useState(false)
   const [showConflict, setShowConflict] = useState(false)
@@ -520,6 +539,10 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
   const [bulkGroupSelectorTable, setBulkGroupSelectorTable] = useState<string | null>(null)
   const [archivedTables, setArchivedTables] = useState<ArchivedTable[]>([])
   const [showArchivedMenu, setShowArchivedMenu] = useState(false)
+  const [archivedSortOrder, setArchivedSortOrder] = useState<'newest' | 'oldest'>(() => {
+    const saved = localStorage.getItem('tigement_archived_sort_order')
+    return (saved === 'oldest' || saved === 'newest') ? saved : 'newest'
+  })
   const [tableActionMenu, setTableActionMenu] = useState<string | null>(null)
   const [showManual, setShowManual] = useState(false)
   const [openNotebooks, setOpenNotebooks] = useState<Array<{ 
@@ -566,6 +589,15 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
   useEffect(() => {
     localStorage.setItem('tigement_pinned_items', JSON.stringify(pinnedItems))
   }, [pinnedItems])
+
+  // Persist AI chat position
+  useEffect(() => {
+    try {
+      localStorage.setItem('tigement_ai_chat_position', JSON.stringify(aiChatPosition))
+    } catch (e) {
+      console.warn('Failed to save AI chat position', e)
+    }
+  }, [aiChatPosition])
 
   // Track mouse movement during drag to update ghost position
   useEffect(() => {
@@ -989,9 +1021,9 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
       if (data.tables) {
         setTables(data.tables)
       }
-      // Update settings
+      // Update settings (merge so visibleSpaceIds is preserved when remote omits it)
       if (data.settings) {
-        setSettings(data.settings)
+        setSettings(prev => ({ ...data.settings, visibleSpaceIds: data.settings.visibleSpaceIds ?? prev.visibleSpaceIds }))
       }
       // Update task groups only if server has them (don't clear local groups if server doesn't have any)
       if (data.taskGroups && data.taskGroups.length > 0) {
@@ -1201,6 +1233,7 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
         spaces: saved.spaces ?? defaultSpaces,
         spacesSplitPosition: saved.spacesSplitPosition ?? 40,
         activeSpaceId: saved.activeSpaceId ?? defaultSpaces[0].id,
+        visibleSpaceIds: saved.visibleSpaceIds,
         snapToGrid: saved.snapToGrid,
         gridSize: saved.gridSize
       }
@@ -1221,7 +1254,8 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
       viewMode: 'all-in-one' as 'all-in-one' | 'spaces',
       spaces: defaultSpaces,
       spacesSplitPosition: 40,
-      activeSpaceId: defaultSpaces[0].id
+      activeSpaceId: defaultSpaces[0].id,
+      visibleSpaceIds: undefined
     }
   })
   
@@ -1261,10 +1295,14 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     return settings.spacesSplitPosition || 40 // 40% for left side
   })
 
-  // Spaces visibility filter (for all-in-one view)
-  const [visibleSpaces, setVisibleSpaces] = useState<Set<string>>(() => 
-    new Set(spaces.map(s => s.id))
-  )
+  // Spaces visibility filter (for all-in-one view). Persisted in settings.visibleSpaceIds.
+  const [visibleSpaces, setVisibleSpaces] = useState<Set<string>>(() => {
+    const ids = settings.visibleSpaceIds
+    if (ids && Array.isArray(ids) && ids.length > 0) {
+      return new Set(ids)
+    }
+    return new Set(spaces.map(s => s.id))
+  })
 
   const toggleSpaceVisibility = (spaceId: string) => {
     setVisibleSpaces(prev => {
@@ -1280,30 +1318,52 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
 
   // Sync spaces state when settings.spaces changes (e.g., after sync from server).
   // Only update state when values actually differ to avoid feedback loop with the effect that writes state → settings.
+  // When we do update state, set a ref so the state→settings effect skips one tick and does not echo back.
+  // Skip one run when the change came from local space add/edit/delete (ref set in saveSpace/handleDeleteSpace).
   useEffect(() => {
+    if (spacesUpdateFromSettingsRef.current) {
+      spacesUpdateFromSettingsRef.current = false
+      return
+    }
+    let didUpdate = false
     if (settings.spaces && Array.isArray(settings.spaces) && settings.spaces.length > 0) {
       if (!areSpacesEqual(settings.spaces, spaces)) {
         setSpaces(settings.spaces)
+        didUpdate = true
       }
       const currentSpaceExists = settings.spaces.some(s => s.id === activeSpaceId)
       if (!currentSpaceExists && settings.activeSpaceId && settings.activeSpaceId !== activeSpaceId) {
         setActiveSpaceId(settings.activeSpaceId)
+        didUpdate = true
       }
     } else if (!settings.spaces || (Array.isArray(settings.spaces) && settings.spaces.length === 0)) {
       if (!areSpacesEqual(defaultSpaces, spaces)) {
         setSpaces(defaultSpaces)
+        didUpdate = true
       }
       if (!activeSpaceId || !defaultSpaces.some(s => s.id === activeSpaceId)) {
         setActiveSpaceId(defaultSpaces[0].id)
+        didUpdate = true
       }
     }
     if (settings.viewMode && settings.viewMode !== viewMode) {
       setViewMode(settings.viewMode)
+      didUpdate = true
     }
     if (settings.spacesSplitPosition !== undefined && settings.spacesSplitPosition !== spacesSplitPosition) {
       setSpacesSplitPosition(settings.spacesSplitPosition)
+      didUpdate = true
     }
-  }, [settings.spaces, settings.activeSpaceId, settings.viewMode, settings.spacesSplitPosition, activeSpaceId, spacesSplitPosition])
+    if (settings.visibleSpaceIds && Array.isArray(settings.visibleSpaceIds)) {
+      setVisibleSpaces(prev => {
+        const next = new Set(settings.visibleSpaceIds)
+        if (prev.size === next.size && [...prev].every(id => next.has(id))) return prev
+        return next
+      })
+      didUpdate = true
+    }
+    if (didUpdate) spacesUpdateFromSettingsRef.current = true
+  }, [settings.spaces, settings.activeSpaceId, settings.viewMode, settings.spacesSplitPosition, settings.visibleSpaceIds, activeSpaceId, spacesSplitPosition])
 
   // Helper functions for duration formatting
   const formatDuration = (minutes: number): string => {
@@ -1572,22 +1632,34 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     }
   }, [timerPosition])
 
-  // Update settings when spaces state changes. Only write when something actually changed to avoid loop with the effect that syncs settings → state.
+  // Update settings when spaces state or visibility changes. Only write when something actually changed to avoid loop with the effect that syncs settings → state.
+  // Skip one tick when the change came from settings→spaces (ref) so we don't echo back and cause max update depth.
   useEffect(() => {
+    if (spacesUpdateFromSettingsRef.current) {
+      spacesUpdateFromSettingsRef.current = false
+      return
+    }
+    const visibleIds = Array.from(visibleSpaces).sort()
+    const savedVisibleIds = (settings.visibleSpaceIds && Array.isArray(settings.visibleSpaceIds))
+      ? [...settings.visibleSpaceIds].sort()
+      : []
+    const visibleSame = visibleIds.length === savedVisibleIds.length && visibleIds.every((id, i) => id === savedVisibleIds[i])
     const same =
       settings.viewMode === viewMode &&
       settings.activeSpaceId === activeSpaceId &&
       (settings.spacesSplitPosition ?? 40) === spacesSplitPosition &&
-      areSpacesEqual(settings.spaces, spaces)
+      areSpacesEqual(settings.spaces, spaces) &&
+      visibleSame
     if (same) return
     setSettings({
       ...settings,
       viewMode,
       spaces,
       spacesSplitPosition,
-      activeSpaceId
+      activeSpaceId,
+      visibleSpaceIds: visibleIds
     })
-  }, [viewMode, spaces, spacesSplitPosition, activeSpaceId])
+  }, [viewMode, spaces, spacesSplitPosition, activeSpaceId, visibleSpaces])
 
   const addMinutes = (time: string, minutes: number): string => {
     const [h, m] = time.split(':').map(Number)
@@ -2316,6 +2388,7 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     // Remove from archived
     const archives = archivedTables.filter(a => a.id !== archivedTable.id)
     saveArchivedTables(archives)
+    syncManager.markLocalModified()
     setArchivedTables(archives)
     
     // Add to workspace
@@ -2324,6 +2397,14 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     
     // Note: Sync is automatically triggered by setTables() above via useEffect monitoring
     console.log('🗄️ Table restored - will sync via encrypted workspace')
+  }
+
+  const deleteArchivedTable = (archivedId: string) => {
+    if (!confirm('Permanently delete this archived table? This cannot be undone.')) return
+    const archives = archivedTables.filter(a => a.id !== archivedId)
+    saveArchivedTables(archives)
+    setArchivedTables(archives)
+    syncManager.markLocalModified()
   }
 
   // Notebook handlers
@@ -3114,6 +3195,7 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     
     if (editingSpace) {
       // Update existing space
+      spacesUpdateFromSettingsRef.current = true
       setSpaces(spaces.map((s) => 
         s.id === editingSpace.id 
           ? { ...s, name: newSpaceName.trim(), icon: newSpaceIcon, color: newSpaceColor } 
@@ -3127,10 +3209,11 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
         icon: newSpaceIcon,
         color: newSpaceColor,
       }
+      spacesUpdateFromSettingsRef.current = true
       setSpaces([...spaces, newSpace])
       setActiveSpaceId(newSpace.id)
     }
-    
+    syncManager.markLocalModified()
     setShowSpaceEditor(false)
     setEditingSpace(null)
   }
@@ -3147,6 +3230,7 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     
     // Remove space
     const newSpaces = spaces.filter((s) => s.id !== spaceId)
+    spacesUpdateFromSettingsRef.current = true
     setSpaces(newSpaces)
     
     // Clear spaceId from tables assigned to this space
@@ -3158,6 +3242,7 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     if (activeSpaceId === spaceId) {
       setActiveSpaceId(newSpaces[0].id)
     }
+    syncManager.markLocalModified()
   }
 
   const handleAssignTableToSpace = (tableId: string, spaceId: string | null) => {
@@ -4004,6 +4089,7 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
                         cancelMoveLongPress={cancelMoveLongPress}
                         openTaskNotebook={openTaskNotebook}
                         addTask={addTask}
+                        duplicateTask={duplicateTask}
                         deleteTask={deleteTask}
                         deleteSelected={deleteSelected}
                         exportTableToMarkdown={exportTableToMarkdown}
@@ -4131,6 +4217,7 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
                           cancelMoveLongPress={cancelMoveLongPress}
                           openTaskNotebook={openTaskNotebook}
                           addTask={addTask}
+                          duplicateTask={duplicateTask}
                           deleteTask={deleteTask}
                           deleteSelected={deleteSelected}
                           exportTableToMarkdown={exportTableToMarkdown}
@@ -4484,19 +4571,39 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
           <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] overflow-y-auto">
             <div className="sticky top-0 bg-white border-b border-gray-200 px-4 py-3 rounded-t-lg flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-800">Archived Tables</h3>
-              <button 
-                onClick={() => setShowArchivedMenu(false)}
-                className="text-2xl text-gray-500 hover:text-gray-800"
-              >
-                ×
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    const next = archivedSortOrder === 'newest' ? 'oldest' : 'newest'
+                    setArchivedSortOrder(next)
+                    localStorage.setItem('tigement_archived_sort_order', next)
+                  }}
+                  className="text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-gray-700"
+                  title={archivedSortOrder === 'newest' ? 'Show oldest first' : 'Show newest first'}
+                >
+                  {archivedSortOrder === 'newest' ? 'Newest first' : 'Oldest first'}
+                </button>
+                <button 
+                  onClick={() => setShowArchivedMenu(false)}
+                  className="text-2xl text-gray-500 hover:text-gray-800"
+                >
+                  ×
+                </button>
+              </div>
             </div>
             <div className="p-4">
               {archivedTables.length === 0 ? (
                 <p className="text-gray-500 text-center py-8">No archived tables</p>
               ) : (
                 <div className="space-y-2">
-                  {archivedTables.map(archived => (
+                  {[...archivedTables]
+                    .sort((a, b) => {
+                      const at = a.archived_at || a.table_date || a.id
+                      const bt = b.archived_at || b.table_date || b.id
+                      const cmp = at.localeCompare(bt)
+                      return archivedSortOrder === 'newest' ? -cmp : cmp
+                    })
+                    .map(archived => (
                     <div key={archived.id} className="flex items-center justify-between p-3 border border-gray-200 rounded hover:bg-gray-50">
                       <div className="flex-1">
                         <div className="font-medium text-gray-800">
@@ -4507,12 +4614,21 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
                         )}
                         <div className="text-xs text-gray-500">{archived.task_count} tasks</div>
                       </div>
-                      <button
-                        onClick={() => { restoreTable(archived); setShowArchivedMenu(false); }}
-                        className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
-                      >
-                        Restore
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => { restoreTable(archived); setShowArchivedMenu(false); }}
+                          className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
+                        >
+                          Restore
+                        </button>
+                        <button
+                          onClick={() => { deleteArchivedTable(archived.id); setShowArchivedMenu(false); }}
+                          className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
+                          title="Permanently delete from archive"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -4571,6 +4687,8 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
       {showAIChat && (
         <AIChat 
           workspace={{ tables, taskGroups, settings }}
+          position={aiChatPosition}
+          onPositionChange={setAiChatPosition}
           onWorkspaceUpdate={(updatedWorkspace) => {
             console.log('🔄 Workspace: onWorkspaceUpdate called from AI', {
               hasTables: !!updatedWorkspace.tables,

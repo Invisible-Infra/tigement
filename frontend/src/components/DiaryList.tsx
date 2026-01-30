@@ -35,6 +35,10 @@ export function DiaryList({
     return today.toISOString().split('T')[0]
   })
   const listRef = useRef<HTMLDivElement>(null)
+  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>(() => {
+    const saved = localStorage.getItem('tigement_diary_sort_order')
+    return (saved === 'oldest' || saved === 'newest') ? saved : 'newest'
+  })
 
   // Detect mobile viewport
   useEffect(() => {
@@ -93,9 +97,10 @@ export function DiaryList({
     }
   }
 
-  // Sort entries by date (newest first)
+  // Sort entries by date (newest or oldest first per preference)
   const sortedEntries = [...entries].sort((a, b) => {
-    return b.date.localeCompare(a.date)
+    const cmp = a.date.localeCompare(b.date)
+    return sortOrder === 'newest' ? -cmp : cmp
   })
 
   // Calculate responsive dimensions
@@ -128,12 +133,26 @@ export function DiaryList({
         onMouseDown={handleMouseDown}
       >
         <h3 className="text-sm font-bold">Diary Entries</h3>
-        <button
-          onClick={onClose}
-          className="text-xl hover:text-gray-300 px-1"
-        >
-          ×
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              const next = sortOrder === 'newest' ? 'oldest' : 'newest'
+              setSortOrder(next)
+              localStorage.setItem('tigement_diary_sort_order', next)
+            }}
+            className="text-xs px-2 py-0.5 rounded bg-white/20 hover:bg-white/30"
+            title={sortOrder === 'newest' ? 'Show oldest first' : 'Show newest first'}
+          >
+            {sortOrder === 'newest' ? 'Newest first' : 'Oldest first'}
+          </button>
+          <button
+            onClick={onClose}
+            className="text-xl hover:text-gray-300 px-1"
+          >
+            ×
+          </button>
+        </div>
       </div>
 
       {/* Content */}

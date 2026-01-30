@@ -19,6 +19,7 @@ export interface StorageSettings {
   sessionDuration: number // days before auto-logout
   useTimePickers?: boolean
   durationPresets?: number[]
+  visibleSpaceIds?: string[]
 }
 
 export function saveTables(tables: any[]): void {
