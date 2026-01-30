@@ -13,18 +13,24 @@ const router = Router()
  * Get current active announcement
  * GET /api/announcements/current
  * Public endpoint - no authentication required
+ * Returns the single latest row by id; only shown if that row has enabled = true (so disabling hides it).
  */
 router.get('/current', async (req: Request, res: Response) => {
   try {
     const result = await query(
-      'SELECT message, text_color, background_color FROM admin_announcements WHERE enabled = true ORDER BY id DESC LIMIT 1'
+      'SELECT id, message, text_color, background_color, enabled FROM admin_announcements ORDER BY id DESC LIMIT 1'
     )
     
     if (result.rows.length === 0) {
       return res.json({ enabled: false })
     }
     
-    res.json({ ...result.rows[0], enabled: true })
+    const row = result.rows[0]
+    if (!row.enabled) {
+      return res.json({ enabled: false })
+    }
+    
+    res.json({ id: row.id, message: row.message, text_color: row.text_color, background_color: row.background_color, enabled: true })
   } catch (error) {
     console.error('Get announcement error:', error)
     res.status(500).json({ error: 'Failed to get announcement' })
