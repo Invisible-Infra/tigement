@@ -126,8 +126,9 @@ app.use('/api/2fa', twoFactorRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/tokens', tokensRoutes);
 app.use('/api/v1', apiRoutes);
-// iCal and CalDAV routes disabled - replaced with client-side .ics export for privacy
-// app.use('/api/ical', icalRoutes);
+// iCal routes re-enabled as opt-in for premium users with E2EE warnings
+app.use('/api/ical', icalRoutes);
+// CalDAV routes remain disabled
 // app.use('/caldav', caldavRoutes);
 app.use('/api/notebooks', notebooksRoutes);
 app.use('/api/archives', archivesRoutes);

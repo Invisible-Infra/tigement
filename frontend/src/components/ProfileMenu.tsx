@@ -43,6 +43,9 @@ export function ProfileMenu({ onClose, showDecryptionWarning }: ProfileMenuProps
   const [showReferralCoupons, setShowReferralCoupons] = useState(false)
   const [showTokenManagement, setShowTokenManagement] = useState(false)
   const [showAIConfig, setShowAIConfig] = useState(false)
+  const [icalEnabled, setIcalEnabled] = useState(false)
+  const [icalUrl, setIcalUrl] = useState<string | null>(null)
+  const [icalLoading, setIcalLoading] = useState(false)
   const customKeyInputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   
@@ -411,6 +414,62 @@ export function ProfileMenu({ onClose, showDecryptionWarning }: ProfileMenuProps
       setEncryptionMessage({ type: 'success', text: '✅ Reverted to default encryption (login password)' })
     } catch (error: any) {
       setEncryptionMessage({ type: 'error', text: error.message || 'Failed to revert encryption' })
+    }
+  }
+
+  const handleEnableIcal = async () => {
+    // Show warning and get confirmation
+    const confirmed = confirm(
+      '⚠️ PRIVACY NOTICE:\n\n' +
+      'iCal export requires storing your task data UNENCRYPTED on the server so external calendar applications (Google Calendar, Apple Calendar, Outlook, etc.) can access it.\n\n' +
+      'While this feature is enabled, your calendar data will NOT be end-to-end encrypted.\n\n' +
+      'Only enable this if you need calendar integration and accept this limitation.\n\n' +
+      'Continue?'
+    )
+
+    if (!confirmed) return
+
+    setIcalLoading(true)
+    try {
+      const response = await api.generateICalToken()
+      setIcalUrl(response.url)
+      setIcalEnabled(true)
+      alert('✅ iCal export enabled! Copy the subscription URL below to add to your calendar app.')
+    } catch (error: any) {
+      alert('Failed to enable iCal export: ' + (error.message || 'Unknown error'))
+    } finally {
+      setIcalLoading(false)
+    }
+  }
+
+  const handleDisableIcal = async () => {
+    const confirmed = confirm(
+      '⚠️ This will:\n' +
+      '• Delete all your calendar data from the server\n' +
+      '• Invalidate your subscription URL\n' +
+      '• Stop syncing calendar events\n\n' +
+      'Continue?'
+    )
+
+    if (!confirmed) return
+
+    setIcalLoading(true)
+    try {
+      await api.disableICalExport()
+      setIcalEnabled(false)
+      setIcalUrl(null)
+      alert('✅ iCal export disabled and all calendar data deleted from server.')
+    } catch (error: any) {
+      alert('Failed to disable iCal export: ' + (error.message || 'Unknown error'))
+    } finally {
+      setIcalLoading(false)
+    }
+  }
+
+  const handleCopyIcalUrl = () => {
+    if (icalUrl) {
+      navigator.clipboard.writeText(icalUrl)
+      alert('✅ Subscription URL copied to clipboard!')
     }
   }
 
@@ -796,7 +855,81 @@ export function ProfileMenu({ onClose, showDecryptionWarning }: ProfileMenuProps
               </div>
             )}
 
-            {/* iCal removed for privacy - use Data menu > Export Calendar (.ics) instead */}
+            {/* iCal Export (Premium Only) */}
+            {user?.plan === 'premium' && user?.subscription_status === 'active' && (
+              <div className="border-t pt-4">
+                <h3 className="text-lg font-semibold text-gray-800 mb-3">📅 iCal Calendar Export</h3>
+                
+                <div className="bg-yellow-50 p-4 rounded border border-yellow-300">
+                  {/* Warning Banner */}
+                  <div className="bg-yellow-100 border-l-4 border-yellow-500 p-3 mb-4">
+                    <p className="text-sm font-semibold text-yellow-900 mb-1">⚠️ Privacy Notice</p>
+                    <p className="text-xs text-yellow-800">
+                      iCal export stores your task data <strong>unencrypted</strong> on the server for external calendar apps to access. 
+                      Your data will <strong>NOT be end-to-end encrypted</strong> while this feature is enabled.
+                    </p>
+                  </div>
+
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <h4 className="font-semibold text-yellow-900 mb-1">Calendar Subscription</h4>
+                      <p className="text-sm text-yellow-800">
+                        Subscribe to your tasks in Google Calendar, Apple Calendar, Outlook, and other calendar apps.
+                      </p>
+                    </div>
+                    <div className="text-3xl">📅</div>
+                  </div>
+
+                  {/* Toggle */}
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm font-medium text-yellow-900">
+                      {icalEnabled ? '✅ Enabled' : '⭕ Disabled'}
+                    </span>
+                    <button
+                      onClick={icalEnabled ? handleDisableIcal : handleEnableIcal}
+                      disabled={icalLoading}
+                      className={`px-4 py-2 rounded transition ${
+                        icalEnabled 
+                          ? 'bg-red-600 text-white hover:bg-red-700' 
+                          : 'bg-green-600 text-white hover:bg-green-700'
+                      } ${icalLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      {icalLoading ? '⏳ Processing...' : (icalEnabled ? '🚫 Disable & Delete Data' : '✅ Enable iCal Export')}
+                    </button>
+                  </div>
+
+                  {/* Subscription URL */}
+                  {icalEnabled && icalUrl && (
+                    <div className="mt-4 p-3 bg-white rounded border border-yellow-300">
+                      <p className="text-xs font-semibold text-yellow-900 mb-2">📋 Subscription URL:</p>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={icalUrl}
+                          readOnly
+                          className="flex-1 px-3 py-2 text-xs border border-gray-300 rounded bg-gray-50 font-mono"
+                        />
+                        <button
+                          onClick={handleCopyIcalUrl}
+                          className="px-3 py-2 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition whitespace-nowrap"
+                        >
+                          📋 Copy
+                        </button>
+                      </div>
+                      <p className="text-xs text-yellow-700 mt-2">
+                        ℹ️ Add this URL to your calendar app as a "subscription" or "webcal" feed. It will update automatically.
+                      </p>
+                    </div>
+                  )}
+
+                  {!icalEnabled && (
+                    <p className="text-xs text-yellow-700 mt-2">
+                      ℹ️ Alternative: Use <strong>Data menu → Export Calendar (.ics)</strong> for a privacy-friendly one-time export.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* API Tokens Section */}
             <div className="border-t pt-4">

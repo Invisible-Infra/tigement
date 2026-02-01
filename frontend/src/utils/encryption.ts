@@ -73,8 +73,14 @@ export async function encryptWorkspace(data: any, password: string): Promise<str
     combined.set(iv, SALT_LENGTH)
     combined.set(new Uint8Array(encrypted), SALT_LENGTH + IV_LENGTH)
 
-    // Convert to base64
-    return btoa(String.fromCharCode(...combined))
+    // Build binary string in chunks to avoid "too many function arguments" (engine limit ~65536)
+    const CHUNK = 32768
+    let binary = ''
+    for (let i = 0; i < combined.length; i += CHUNK) {
+      const chunk = combined.subarray(i, i + CHUNK)
+      binary += String.fromCharCode.apply(null, Array.from(chunk))
+    }
+    return btoa(binary)
   } catch (error) {
     console.error('Encryption error:', error)
     throw new Error('Failed to encrypt workspace data')

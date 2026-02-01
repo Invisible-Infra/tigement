@@ -437,6 +437,12 @@ class ApiClient {
     })
   }
 
+  async disableICalExport(): Promise<{ success: boolean, message: string }> {
+    return this.request('/ical/disable', {
+      method: 'DELETE',
+    })
+  }
+
   // Notebook endpoints
   async getWorkspaceNotebook(): Promise<{ content: string }> {
     return this.request('/notebooks/workspace', {

@@ -213,7 +213,16 @@ export function TableComponent({
       setSpaceDropdownRect(null)
     }
   }, [spaceDropdownOpen])
-  
+
+  // Prevent page scroll when wheel over duration cell (passive: false so preventDefault works)
+  useEffect(() => {
+    const handler = (e: WheelEvent) => {
+      if ((e.target as Element).closest?.('[data-duration-wheel]')) e.preventDefault()
+    }
+    document.addEventListener('wheel', handler, { capture: true, passive: false })
+    return () => document.removeEventListener('wheel', handler, { capture: true })
+  }, [])
+
   return (
     <div
       id={`table-${table.id}`}
@@ -759,6 +768,7 @@ export function TableComponent({
                 
                 return settings.useTimePickers ? (
                   <div
+                    data-duration-wheel
                     onClick={() => setDurationPickerTask({ tableId: table.id, taskId: task.id })}
                     onWheel={!isMobile ? (e) => {
                       e.preventDefault()

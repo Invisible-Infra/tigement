@@ -48,31 +48,73 @@ function deepEqual(a: any, b: any): boolean {
   return true
 }
 
-// Normalize workspace data for comparison (remove UI-specific fields like position)
+// Client-only settings keys that must not affect conflict comparison (e.g. visibility per device)
+const CLIENT_ONLY_SETTINGS_KEYS = ['visibleSpaceIds']
+
+// Normalize workspace data for comparison (remove UI-specific fields, trim strings, coerce numbers)
 function normalizeWorkspaceData(data: any): any {
   if (!data) return null
   
+  const rawSettings = data.settings || {}
+  const settingsForCompare = { ...rawSettings }
+  for (const k of CLIENT_ONLY_SETTINGS_KEYS) {
+    delete settingsForCompare[k]
+  }
+
   const normalized = {
-    tables: (data.tables || []).map((table: any) => ({
-      id: table.id,
-      type: table.type,
-      title: table.title,
-      date: table.date,
-      startTime: table.startTime,
-      spaceId: table.spaceId, // Include space assignment
-      tasks: (table.tasks || []).map((task: any) => ({
-        id: task.id,
-        title: task.title, // Fixed: was 'name', should be 'title'
-        duration: task.duration,
-        selected: task.selected || false,
-        group: task.group // Include task group assignments
-      })).sort((a: any, b: any) => a.id.localeCompare(b.id)) // Sort for consistent comparison
-    })).sort((a: any, b: any) => a.id.localeCompare(b.id)), // Sort tables too
-    settings: data.settings || {},
-    taskGroups: (data.taskGroups || []).sort((a: any, b: any) => a.id.localeCompare(b.id)) // Include taskGroups for sync
+    tables: (data.tables || []).map((table: any) => {
+      const t: any = {
+        id: table.id,
+        type: table.type,
+        title: (table.title ?? '').toString().trim(),
+        date: table.date,
+        startTime: (table.startTime ?? '').toString().trim(),
+        tasks: (table.tasks || []).map((task: any) => {
+          const taskNorm: any = {
+            id: task.id,
+            title: (task.title ?? '').toString().trim(),
+            duration: Number(task.duration) || 0,
+            selected: !!task.selected
+          }
+          if (task.group != null && task.group !== '') taskNorm.group = task.group
+          return taskNorm
+        }).sort((a: any, b: any) => a.id.localeCompare(b.id))
+      }
+      if (table.spaceId != null && table.spaceId !== '') t.spaceId = table.spaceId
+      return t
+    }).sort((a: any, b: any) => a.id.localeCompare(b.id)),
+    settings: settingsForCompare,
+    taskGroups: (data.taskGroups || []).sort((a: any, b: any) => a.id.localeCompare(b.id))
   }
   
   return normalized
+}
+
+/**
+ * True if the only differences between local and remote (normalized) are task titles
+ * where remote is empty and local is non-empty (user typed locally; remote had empty from earlier sync).
+ */
+function isOnlyEmptyRemoteVsNonEmptyLocal(normLocal: any, normRemote: any): boolean {
+  if (!normLocal?.tables || !normRemote?.tables) return false
+  if (normLocal.tables.length !== normRemote.tables.length) return false
+  const localById = new Map((normLocal.tables as any[]).map((t: any) => [t.id, t]))
+  const remoteById = new Map((normRemote.tables as any[]).map((t: any) => [t.id, t]))
+  for (const [id, localTable] of localById) {
+    const remoteTable = remoteById.get(id)
+    if (!remoteTable || !localTable.tasks || !remoteTable.tasks) return false
+    if (localTable.tasks.length !== remoteTable.tasks.length) return false
+    const localTasks = new Map((localTable.tasks as any[]).map((t: any) => [t.id, t]))
+    const remoteTasks = new Map((remoteTable.tasks as any[]).map((t: any) => [t.id, t]))
+    for (const [tid, localTask] of localTasks) {
+      const remoteTask = remoteTasks.get(tid)
+      if (!remoteTask) return false
+      const rTitle = (remoteTask.title ?? '').toString().trim()
+      const lTitle = (localTask.title ?? '').toString().trim()
+      if (rTitle === lTitle) continue
+      if (rTitle !== '' || lTitle === '') return false
+    }
+  }
+  return true
 }
 
 // Custom error class for decryption failures
@@ -535,6 +577,16 @@ class SyncManager {
 
     this.isSyncing = true
 
+    // Re-read local version from storage so we pick up updates from applyRemoteWorkspace or other tabs
+    const savedVersion = localStorage.getItem(this.VERSION_STORAGE_KEY)
+    if (savedVersion !== null) {
+      const v = parseInt(savedVersion, 10)
+      if (!isNaN(v) && v !== this.localVersion) {
+        this.localVersion = v
+        console.log('📌 Refreshed local version from storage:', this.localVersion)
+      }
+    }
+
     // Clear any pending debounce timer to prevent race conditions
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer)
@@ -543,7 +595,7 @@ class SyncManager {
     }
 
     try {
-      // Get local workspace data
+      // Get local workspace data (always fresh from localStorage)
       console.log('📂 Getting local workspace data...')
       const localData = this.getLocalWorkspace()
       if (!localData) {
@@ -679,6 +731,19 @@ class SyncManager {
           // This handles cases where only UI fields (position) differ
           await this.applyRemoteWorkspace(remoteWorkspace)
           this.localModified = false
+          this.config.onSyncSuccess?.()
+          return
+        }
+
+        // Auto-resolve: only diff is "remote task title empty, local non-empty" (user typed; remote had empty)
+        if (isOnlyEmptyRemoteVsNonEmptyLocal(normalizedLocal, normalizedRemote)) {
+          console.log('✅ Auto-resolve: only empty remote vs non-empty local task titles - pushing local')
+          const targetVersion = remoteVersion.version + 1
+          await api.saveWorkspace(encryptedData, targetVersion)
+          this.updateLocalVersion(targetVersion)
+          this.localModified = false
+          this.lastSyncTime = new Date()
+          this.lastSyncDirection = 'uploaded'
           this.config.onSyncSuccess?.()
           return
         }

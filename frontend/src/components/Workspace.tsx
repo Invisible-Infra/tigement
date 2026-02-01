@@ -442,6 +442,7 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
   const hasLoadedTables = useRef(false)
   const prevTablesHash = useRef<string>('')
   const spacesUpdateFromSettingsRef = useRef(false)
+  const icalEnabledCache = useRef<boolean | null>(null) // null = unknown, true = enabled, false = disabled
   const [showSettings, setShowSettings] = useState(false)
   const [showTimer, setShowTimer] = useState(false)
   const [timerPosition, setTimerPosition] = useState(() => {
@@ -818,7 +819,7 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
   }, [user, hasLoadedUser, loading])
 
   // Initialize tables for anonymous users on first load.
-  // If there is existing anonymous data in localStorage, load it.
+  // If there is existing anonymous data in localStorage, load it (including diary/notebook for offline).
   // Otherwise, create the default day + TODO tables.
   useEffect(() => {
     if (!hasLoadedUser || loading || user || wasAuthenticatedRef.current) return
@@ -829,6 +830,18 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
       setTables(savedTables)
       hasLoadedTables.current = true
       console.log(`✅ Loaded ${savedTables.length} anonymous tables into React state`)
+      const savedNotebooks = loadNotebooks()
+      if (savedNotebooks) {
+        setWorkspaceNotebook(savedNotebooks.workspace || '')
+      }
+      const savedDiaryEntries = loadDiaryEntries()
+      if (savedDiaryEntries && Object.keys(savedDiaryEntries).length > 0) {
+        setDiaryEntries(savedDiaryEntries)
+        setDiaryEntriesList(Object.keys(savedDiaryEntries).map(date => ({
+          date,
+          preview: savedDiaryEntries[date].substring(0, 50)
+        })))
+      }
       return
     }
 
@@ -837,6 +850,18 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
       const defaults = getDefaultTables()
       setTables(defaults)
       hasLoadedTables.current = true
+      const savedNotebooks = loadNotebooks()
+      if (savedNotebooks) {
+        setWorkspaceNotebook(savedNotebooks.workspace || '')
+      }
+      const savedDiaryEntries = loadDiaryEntries()
+      if (savedDiaryEntries && Object.keys(savedDiaryEntries).length > 0) {
+        setDiaryEntries(savedDiaryEntries)
+        setDiaryEntriesList(Object.keys(savedDiaryEntries).map(date => ({
+          date,
+          preview: savedDiaryEntries[date].substring(0, 50)
+        })))
+      }
     }
   }, [hasLoadedUser, loading, user, tables.length])
 
@@ -1086,7 +1111,7 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
       
       // Single setTables call with merged data
       setTables(finalTables)
-      setSettings(prev => ({ ...prev, ...newSettings }))
+      setSettings(prev => ({ ...newSettings, visibleSpaceIds: newSettings.visibleSpaceIds ?? prev.visibleSpaceIds }))
       setTaskGroups(newTaskGroups || defaultTaskGroups)
       
       // Update notebook state separately
@@ -1614,9 +1639,58 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     }
   }, [tables])
 
-  // Sync calendar for premium users (debounced, separate effect)
-  // iCal sync removed - now using client-side .ics export
-  // Users can export calendar via Data menu > Export Calendar (.ics)
+  // Sync calendar to iCal feed for premium users (if enabled)
+  useEffect(() => {
+    // Only sync for authenticated premium users
+    if (!user || user.plan !== 'premium' || user.subscription_status !== 'active') {
+      return
+    }
+
+    // Skip if we know iCal is disabled
+    if (icalEnabledCache.current === false) {
+      return
+    }
+
+    // Skip if tables are empty or still loading
+    if (tables.length === 0 && !hasLoadedTables.current) {
+      return
+    }
+
+    // Skip during sync updates to avoid loops
+    if (isApplyingSyncUpdate.current) {
+      return
+    }
+
+    // Debounce: only sync after user stops editing for 3 seconds
+    const timeoutId = setTimeout(async () => {
+      try {
+        const dayTables = tables.filter(t => t.type === 'day')
+        if (dayTables.length > 0) {
+          console.log('📅 Syncing calendar events to iCal feed...')
+          await api.syncCalendar(dayTables)
+          console.log('✅ Calendar events synced')
+          // Mark as enabled on successful sync
+          if (icalEnabledCache.current === null) {
+            icalEnabledCache.current = true
+          }
+        }
+      } catch (error: any) {
+        // Check if error indicates iCal is not enabled
+        const errorMsg = error.message || error.error || ''
+        if (errorMsg.includes('not enabled') || errorMsg.includes('Enable it in Profile')) {
+          console.log('ℹ️ iCal export not enabled, skipping future syncs')
+          icalEnabledCache.current = false
+          return
+        }
+        // Silently fail for other errors (don't disrupt workflow)
+        if (!errorMsg.includes('403') && !errorMsg.includes('iCal')) {
+          console.error('⚠️ Calendar sync failed:', error)
+        }
+      }
+    }, 3000)
+
+    return () => clearTimeout(timeoutId)
+  }, [tables, user])
 
   // Auto-save settings to localStorage
   useEffect(() => {

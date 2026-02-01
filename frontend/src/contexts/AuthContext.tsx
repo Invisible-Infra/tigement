@@ -21,6 +21,14 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+const CACHED_USER_KEY = 'tigement_cached_user'
+
+function isNetworkError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const e = err as { name?: string; message?: string }
+  return e.name === 'TypeError' && (e.message === 'Failed to fetch' || (e.message && e.message.includes('fetch')))
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
@@ -69,9 +77,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         if (api.getAccessToken()) {
           console.log('🔐 Access token found, fetching current user...')
-          const currentUser = await api.getCurrentUser()
-          console.log('👤 Current user loaded:', { id: currentUser.id, email: currentUser.email, username: currentUser.username, profile_picture_url: currentUser.profile_picture_url })
-          setUser(currentUser)
+          try {
+            const currentUser = await api.getCurrentUser()
+            console.log('👤 Current user loaded:', { id: currentUser.id, email: currentUser.email, username: currentUser.username, profile_picture_url: currentUser.profile_picture_url })
+            setUser(currentUser)
+            try {
+              localStorage.setItem(CACHED_USER_KEY, JSON.stringify(currentUser))
+            } catch (_) { /* ignore */ }
           
           // Check if encryption key exists
           if (!syncManager.hasEncryptionKey()) {
@@ -184,9 +196,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               }
             }
           }
+          } catch (_) {
+            // getCurrentUser failed (e.g. network) - handled in outer catch
+            throw _
+          }
         }
       } catch (error) {
         console.error('Auth check failed:', error)
+        if (isNetworkError(error) && api.getAccessToken()) {
+          try {
+            const cached = localStorage.getItem(CACHED_USER_KEY)
+            if (cached) {
+              const parsed = JSON.parse(cached) as User
+              if (parsed && typeof parsed.id === 'number' && parsed.email) {
+                console.log('📴 Offline: using cached user for UI')
+                setUser(parsed)
+              }
+            }
+          } catch (_) { /* ignore */ }
+        }
       } finally {
         setLoading(false)
       }
@@ -365,9 +393,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     syncManager.stopAutoSync()
     syncManager.clearEncryptionKey()
     
-    // Clear user state
+    // Clear user state and cached user
     setUser(null)
-    
+    try {
+      localStorage.removeItem(CACHED_USER_KEY)
+    } catch (_) { /* ignore */ }
+
     console.log('✅ Logged out (local data preserved)')
   }
 

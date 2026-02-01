@@ -105,6 +105,28 @@ router.post('/sync', authMiddleware, async (req: AuthRequest, res: Response) => 
       return res.status(400).json({ error: 'dayTables must be an array' })
     }
 
+    // Check if user has active premium subscription
+    const subscriptionResult = await query(
+      `SELECT plan, status FROM subscriptions WHERE user_id = $1`,
+      [userId]
+    )
+
+    if (subscriptionResult.rows.length === 0 || 
+        subscriptionResult.rows[0].plan !== 'premium' || 
+        subscriptionResult.rows[0].status !== 'active') {
+      return res.status(403).json({ error: 'iCal sync requires active premium subscription' })
+    }
+
+    // Check if user has enabled iCal export (has a token)
+    const tokenResult = await query(
+      `SELECT token FROM ical_tokens WHERE user_id = $1`,
+      [userId]
+    )
+
+    if (tokenResult.rows.length === 0) {
+      return res.status(403).json({ error: 'iCal export not enabled. Enable it in Profile settings first.' })
+    }
+
     // Delete all existing calendar events for this user
     await query('DELETE FROM calendar_events WHERE user_id = $1', [userId])
 
@@ -175,6 +197,18 @@ router.post('/generate-token', authMiddleware, async (req: AuthRequest, res: Res
   try {
     const userId = req.user!.id
     console.log(`Generating iCal token for user ${userId}`)
+
+    // Check if user has active premium subscription
+    const subscriptionResult = await query(
+      `SELECT plan, status FROM subscriptions WHERE user_id = $1`,
+      [userId]
+    )
+
+    if (subscriptionResult.rows.length === 0 || 
+        subscriptionResult.rows[0].plan !== 'premium' || 
+        subscriptionResult.rows[0].status !== 'active') {
+      return res.status(403).json({ error: 'iCal export requires active premium subscription' })
+    }
 
     // Construct base URL from request or environment
     // For production: use BACKEND_URL, for dev/Cloudflare Tunnel: use request host
@@ -366,6 +400,44 @@ router.get('/:token', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('iCal feed error:', error)
     res.status(500).send('Internal server error')
+  }
+})
+
+/**
+ * DELETE /api/ical/disable
+ * Authenticated endpoint - Disable iCal export and delete all calendar data
+ * Called when user opts out of iCal export feature
+ */
+router.delete('/disable', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.id
+    console.log(`Disabling iCal export for user ${userId}`)
+
+    // Check if user has premium subscription (even expired can disable)
+    const subscriptionResult = await query(
+      `SELECT plan FROM subscriptions WHERE user_id = $1`,
+      [userId]
+    )
+
+    if (subscriptionResult.rows.length === 0 || 
+        subscriptionResult.rows[0].plan !== 'premium') {
+      return res.status(403).json({ error: 'iCal export is only available for premium users' })
+    }
+
+    // Delete all calendar events for this user
+    await query('DELETE FROM calendar_events WHERE user_id = $1', [userId])
+    
+    // Delete the iCal token (invalidates subscription URL)
+    await query('DELETE FROM ical_tokens WHERE user_id = $1', [userId])
+
+    console.log(`Successfully disabled iCal export and deleted data for user ${userId}`)
+    res.json({ 
+      success: true, 
+      message: 'iCal export disabled and all calendar data deleted from server' 
+    })
+  } catch (error) {
+    console.error('Disable iCal error:', error)
+    res.status(500).json({ error: 'Failed to disable iCal export' })
   }
 })
 

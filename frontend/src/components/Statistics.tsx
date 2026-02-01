@@ -31,6 +31,8 @@ export function Statistics({ onClose }: StatisticsProps) {
   const [tables, setTables] = useState<any[]>([])
   const [archivedTables, setArchivedTables] = useState<any[]>([])
   const [taskGroups, setTaskGroups] = useState<any[]>([])
+  const [largeTables, setLargeTables] = useState<Array<{ tableTitle: string; size: number }>>([])
+  const [largeTasks, setLargeTasks] = useState<Array<{ tableTitle: string; taskTitle: string; size: number }>>([])
 
   useEffect(() => {
     calculateStats()
@@ -122,6 +124,34 @@ export function Statistics({ onClose }: StatisticsProps) {
       // Server storage not available or error
       console.log('Server storage info not available')
     }
+
+    // Detect tables/tasks with significantly more data (e.g. large notebook content)
+    const tableSizes = tablesData.map((t: any) => ({ title: t.title || t.id || 'Untitled', size: JSON.stringify(t).length }))
+    const medianTableSize = tableSizes.length > 0
+      ? ([...tableSizes].sort((a, b) => a.size - b.size)[Math.floor(tableSizes.length / 2)]?.size ?? 0)
+      : 0
+    const largeTablesList = tableSizes.filter(
+      (t: { title: string; size: number }) => t.size > 80_000 || (tableSizes.length > 1 && t.size > 2 * medianTableSize && t.size > 50_000)
+    )
+
+    const allTaskSizes: Array<{ tableTitle: string; taskTitle: string; size: number }> = []
+    tablesData.forEach((table: any) => {
+      const tableTitle = table.title || table.id || 'Untitled'
+      table.tasks?.forEach((task: any) => {
+        const size = JSON.stringify(task).length
+        allTaskSizes.push({ tableTitle, taskTitle: (task.title || '').trim() || '(no title)', size })
+      })
+    })
+    const taskSizesOnly = allTaskSizes.map((x) => x.size)
+    const medianTaskSize = taskSizesOnly.length > 0
+      ? ([...taskSizesOnly].sort((a, b) => a - b)[Math.floor(taskSizesOnly.length / 2)] ?? 0)
+      : 0
+    const largeTasksList = allTaskSizes.filter(
+      (t) => t.size > 15_000 || (taskSizesOnly.length > 1 && t.size > 2 * medianTaskSize && t.size > 10_000)
+    )
+
+    setLargeTables(largeTablesList.map(({ title, size }) => ({ tableTitle: title, size })))
+    setLargeTasks(largeTasksList)
 
     setStats({
       totalTables: tablesData.length,
@@ -233,6 +263,38 @@ export function Statistics({ onClose }: StatisticsProps) {
                 </div>
               </div>
             </div>
+
+            {/* Data size warning: tables/tasks with significantly more data than others */}
+            {(largeTables.length > 0 || largeTasks.length > 0) && (
+              <div>
+                <h3 className="text-lg font-semibold text-gray-800 mb-3">⚠️ Data size</h3>
+                <div className="bg-amber-50 border border-amber-200 p-4 rounded-lg space-y-3">
+                  <p className="text-sm text-amber-800">
+                    Some tables or tasks use much more storage than others (e.g. long notebook text). This can make backups and sync slower.
+                  </p>
+                  {largeTables.length > 0 && (
+                    <div>
+                      <div className="text-sm font-medium text-amber-900 mb-1">Large tables:</div>
+                      <ul className="list-disc list-inside text-sm text-amber-800 space-y-0.5">
+                        {largeTables.map((t, i) => (
+                          <li key={i}><strong>{t.tableTitle}</strong> — {formatBytes(t.size)}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {largeTasks.length > 0 && (
+                    <div>
+                      <div className="text-sm font-medium text-amber-900 mb-1">Large tasks (e.g. long notebook):</div>
+                      <ul className="list-disc list-inside text-sm text-amber-800 space-y-0.5">
+                        {largeTasks.map((t, i) => (
+                          <li key={i}><strong>{t.tableTitle}</strong> → &quot;{t.taskTitle}&quot; — {formatBytes(t.size)}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Task Groups */}
             <div>

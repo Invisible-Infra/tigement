@@ -97,6 +97,8 @@ export function TimePicker({ value, onChange, onClose, timeFormat }: TimePickerP
                 }
               }}
               onWheel={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
                 if (e.deltaY < 0) incrementHours()
                 else decrementHours()
               }}
@@ -129,6 +131,8 @@ export function TimePicker({ value, onChange, onClose, timeFormat }: TimePickerP
                 if (!isNaN(val) && val >= 0 && val <= 59) setSelectedMinutes(val)
               }}
               onWheel={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
                 if (e.deltaY < 0) incrementMinutes()
                 else decrementMinutes()
               }}

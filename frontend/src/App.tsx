@@ -19,6 +19,7 @@ import { AdminPanel } from './components/admin/AdminPanel'
 import { PremiumPage } from './components/premium/PremiumPage'
 import { ProfileMenu } from './components/ProfileMenu'
 import { AdminAnnouncement } from './components/AdminAnnouncement'
+import { OfflineBanner } from './components/OfflineBanner'
 
 function App() {
   return (
@@ -548,6 +549,8 @@ function AppContent() {
       </nav>
 
       <AdminAnnouncement isMobile={isMobile} />
+
+      <OfflineBanner isPremium={isPremium} onSync={syncNow} />
 
       <div className="flex-1 overflow-hidden">
         <Workspace onShowPremium={() => setShowPremium(true)} />
