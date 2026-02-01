@@ -5,6 +5,7 @@ import { encryptionKeyManager } from '../utils/encryptionKey'
 import { TwoFactorSetup } from './TwoFactorSetup'
 import { syncManager } from '../utils/syncManager'
 import { exportBackup, downloadBackup, validateBackup, importBackup } from '../utils/backup'
+import { loadTables } from '../utils/storage'
 import { formatDateWithSettings } from '../utils/dateFormat'
 import { ReferralCouponsPanel } from './ReferralCouponsPanel'
 import { TokenManagement } from './TokenManagement'
@@ -66,6 +67,32 @@ export function ProfileMenu({ onClose, showDecryptionWarning }: ProfileMenuProps
       setUsername(user.username || '')
       setProfilePicture(user.profile_picture_url || '')
     }
+  }, [user])
+
+  // Check if iCal is already enabled on mount
+  useEffect(() => {
+    const checkIcalStatus = async () => {
+      // Only check for premium users
+      if (!user || user.plan !== 'premium' || user.subscription_status !== 'active') {
+        return
+      }
+
+      try {
+        // Check status without creating a token
+        const response = await api.getIcalStatus()
+        setIcalEnabled(response.enabled)
+        setIcalUrl(response.url)
+        if (response.enabled) {
+          console.log('✅ iCal export is already enabled')
+        }
+      } catch (error: any) {
+        // If error, assume not enabled
+        setIcalEnabled(false)
+        setIcalUrl(null)
+      }
+    }
+
+    checkIcalStatus()
   }, [user])
 
   // PWA Install prompt handling
@@ -430,15 +457,62 @@ export function ProfileMenu({ onClose, showDecryptionWarning }: ProfileMenuProps
     if (!confirmed) return
 
     setIcalLoading(true)
+    
     try {
       const response = await api.generateICalToken()
+      console.log('✅ iCal token generated:', response.url)
+      
+      // Update UI state FIRST (before any sync attempts)
       setIcalUrl(response.url)
       setIcalEnabled(true)
-      alert('✅ iCal export enabled! Copy the subscription URL below to add to your calendar app.')
-    } catch (error: any) {
-      alert('Failed to enable iCal export: ' + (error.message || 'Unknown error'))
-    } finally {
+      
+      // Force React to flush state updates
+      await new Promise(resolve => setTimeout(resolve, 0))
+      
+      // Set flag for Workspace to reset its cache
+      localStorage.setItem('tigement_ical_just_enabled', 'true')
+      
+      // Trigger initial sync with current tables
+      let syncSuccess = false
+      let syncError: string | null = null
+      let dayTablesCount = 0
+      try {
+        const tables = loadTables()
+        console.log(`📊 Loaded ${tables.length} tables from localStorage`)
+        const dayTables = tables.filter(t => t.type === 'day')
+        dayTablesCount = dayTables.length
+        console.log(`📅 Found ${dayTablesCount} day tables to sync`)
+        
+        if (dayTables.length > 0) {
+          const syncTime = Date.now()
+          localStorage.setItem('tigement_last_ical_sync', syncTime.toString())
+          console.log('🔄 Starting calendar sync...')
+          await api.syncCalendar(dayTables)
+          console.log('✅ Initial calendar sync completed')
+          syncSuccess = true
+        } else {
+          console.log('⚠️ No day tables to sync')
+          syncError = 'No calendar data found to sync. Add some tasks first!'
+        }
+      } catch (error: any) {
+        console.error('❌ Initial sync failed:', error)
+        syncError = error.message || error.error || 'Unknown sync error'
+      }
+      
       setIcalLoading(false)
+      
+      // Show appropriate message
+      if (syncSuccess) {
+        alert('✅ iCal export enabled and calendar synced!\n\n' + dayTablesCount + ' day(s) synced.\n\nCopy the subscription URL below to add to your calendar app.')
+      } else if (syncError) {
+        alert('⚠️ iCal export enabled but sync failed:\n\n' + syncError + '\n\nYour calendar will sync automatically when you add or modify tasks.')
+      } else {
+        alert('✅ iCal export enabled!\n\nYour calendar will sync automatically as you make changes.')
+      }
+    } catch (error: any) {
+      setIcalLoading(false)
+      console.error('❌ Enable iCal failed:', error)
+      alert('Failed to enable iCal export:\n\n' + (error.message || error.error || 'Unknown error'))
     }
   }
 
@@ -456,13 +530,23 @@ export function ProfileMenu({ onClose, showDecryptionWarning }: ProfileMenuProps
     setIcalLoading(true)
     try {
       await api.disableICalExport()
+      console.log('✅ iCal export disabled')
+      
+      // Update state IMMEDIATELY
       setIcalEnabled(false)
       setIcalUrl(null)
+      
+      // Clear any pending enable flags and sync timestamps
+      localStorage.removeItem('tigement_ical_just_enabled')
+      localStorage.removeItem('tigement_last_ical_sync')
+      
+      setIcalLoading(false)
+      
       alert('✅ iCal export disabled and all calendar data deleted from server.')
     } catch (error: any) {
-      alert('Failed to disable iCal export: ' + (error.message || 'Unknown error'))
-    } finally {
       setIcalLoading(false)
+      console.error('❌ Disable iCal failed:', error)
+      alert('Failed to disable iCal export:\n\n' + (error.message || error.error || 'Unknown error'))
     }
   }
 

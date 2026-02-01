@@ -443,6 +443,7 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
   const prevTablesHash = useRef<string>('')
   const spacesUpdateFromSettingsRef = useRef(false)
   const icalEnabledCache = useRef<boolean | null>(null) // null = unknown, true = enabled, false = disabled
+  const lastIcalSyncTime = useRef<number>(0) // Timestamp of last sync to prevent concurrent syncs
   const [showSettings, setShowSettings] = useState(false)
   const [showTimer, setShowTimer] = useState(false)
   const [timerPosition, setTimerPosition] = useState(() => {
@@ -1646,6 +1647,20 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
       return
     }
 
+    // Check if iCal was just enabled (reset cache)
+    const justEnabled = localStorage.getItem('tigement_ical_just_enabled')
+    if (justEnabled === 'true') {
+      localStorage.removeItem('tigement_ical_just_enabled')
+      icalEnabledCache.current = null // Reset cache to allow retry
+      console.log('🔄 iCal was just enabled, resetting sync cache')
+    }
+
+    // Load last sync time from localStorage (shared across components)
+    const storedLastSync = localStorage.getItem('tigement_last_ical_sync')
+    if (storedLastSync && lastIcalSyncTime.current === 0) {
+      lastIcalSyncTime.current = parseInt(storedLastSync, 10)
+    }
+
     // Skip if we know iCal is disabled
     if (icalEnabledCache.current === false) {
       return
@@ -1663,10 +1678,21 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
 
     // Debounce: only sync after user stops editing for 3 seconds
     const timeoutId = setTimeout(async () => {
+      // Prevent syncs within 10 seconds of each other (avoid race conditions)
+      const now = Date.now()
+      const timeSinceLastSync = now - lastIcalSyncTime.current
+      if (timeSinceLastSync < 10000) {
+        console.log(`⏭️ Skipping iCal sync (last sync was ${Math.round(timeSinceLastSync / 1000)}s ago)`)
+        return
+      }
+
       try {
         const dayTables = tables.filter(t => t.type === 'day')
         if (dayTables.length > 0) {
           console.log('📅 Syncing calendar events to iCal feed...')
+          const syncTime = Date.now()
+          lastIcalSyncTime.current = syncTime
+          localStorage.setItem('tigement_last_ical_sync', syncTime.toString())
           await api.syncCalendar(dayTables)
           console.log('✅ Calendar events synced')
           // Mark as enabled on successful sync

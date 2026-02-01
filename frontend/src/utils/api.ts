@@ -431,6 +431,12 @@ class ApiClient {
     })
   }
 
+  async getIcalStatus(): Promise<{ enabled: boolean, url: string | null }> {
+    return this.request('/ical/status', {
+      method: 'GET',
+    })
+  }
+
   async generateICalToken(): Promise<{ token: string, url: string }> {
     return this.request('/ical/generate-token', {
       method: 'POST',

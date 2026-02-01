@@ -59,7 +59,7 @@ function generateICalFeed(tables: any[], userEmail: string): string {
 
       ical += '\r\n' + [
         'BEGIN:VEVENT',
-        `UID:${uid}@tigement.cz`,
+        `UID:${uid}@tigement.com`,
         `DTSTAMP:${timestamp}`,
         `DTSTART:${dtstart}`,
         `DTEND:${dtend}`,
@@ -152,20 +152,10 @@ router.post('/sync', authMiddleware, async (req: AuthRequest, res: Response) => 
 
         // Note: created_at, last_modified, sequence, and etag are automatically
         // set by database triggers (see migration 022_caldav_support.sql)
+        // Note: We delete all events before inserting, so no conflicts expected
         await query(
           `INSERT INTO calendar_events (user_id, event_date, start_time, end_time, title, duration_minutes, table_id, task_id)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-           ON CONFLICT (id) DO UPDATE 
-           SET title = EXCLUDED.title, 
-               start_time = EXCLUDED.start_time, 
-               end_time = EXCLUDED.end_time,
-               duration_minutes = EXCLUDED.duration_minutes,
-               event_date = EXCLUDED.event_date
-           WHERE calendar_events.title != EXCLUDED.title 
-              OR calendar_events.start_time != EXCLUDED.start_time 
-              OR calendar_events.end_time != EXCLUDED.end_time 
-              OR calendar_events.duration_minutes != EXCLUDED.duration_minutes
-              OR calendar_events.event_date != EXCLUDED.event_date`,
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
           [
             userId,
             tableDate.toISOString().split('T')[0],
@@ -186,6 +176,55 @@ router.post('/sync', authMiddleware, async (req: AuthRequest, res: Response) => 
   } catch (error) {
     console.error('Calendar sync error:', error)
     res.status(500).json({ error: 'Failed to sync calendar' })
+  }
+})
+
+/**
+ * GET /api/ical/status
+ * Authenticated endpoint - Check if iCal export is enabled (without creating token)
+ */
+router.get('/status', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.id
+
+    // Check if user has premium subscription
+    const subscriptionResult = await query(
+      `SELECT plan, status FROM subscriptions WHERE user_id = $1`,
+      [userId]
+    )
+
+    if (subscriptionResult.rows.length === 0 || 
+        subscriptionResult.rows[0].plan !== 'premium' || 
+        subscriptionResult.rows[0].status !== 'active') {
+      return res.json({ enabled: false, url: null })
+    }
+
+    // Check if token exists
+    const tokenResult = await query(
+      'SELECT token FROM ical_tokens WHERE user_id = $1',
+      [userId]
+    )
+
+    if (tokenResult.rows.length === 0) {
+      return res.json({ enabled: false, url: null })
+    }
+
+    // Construct base URL
+    let baseUrl = process.env.BACKEND_URL || process.env.FRONTEND_URL
+    if (!baseUrl) {
+      const protocol = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http')
+      const host = req.headers['x-forwarded-host'] || req.headers.host
+      baseUrl = `${protocol}://${host}`
+    }
+
+    const token = tokenResult.rows[0].token
+    return res.json({ 
+      enabled: true, 
+      url: `${baseUrl}/api/ical/${token}` 
+    })
+  } catch (error) {
+    console.error('iCal status check error:', error)
+    res.status(500).json({ error: 'Failed to check iCal status' })
   }
 })
 
@@ -329,7 +368,7 @@ router.get('/:token', async (req: Request, res: Response) => {
     let ical = [
       'BEGIN:VCALENDAR',
       'VERSION:2.0',
-      'PRODID:-//Tigement.cz//NONSGML Day Planner//EN',
+      'PRODID:-//Tigement.com//NONSGML Day Planner//EN',
       'CALSCALE:GREGORIAN',
       'METHOD:PUBLISH',
       'X-WR-CALNAME:Tigement',
@@ -374,7 +413,7 @@ router.get('/:token', async (req: Request, res: Response) => {
 
       ical += '\r\n' + [
         'BEGIN:VEVENT',
-        `UID:${uid}@tigement.cz`,
+        `UID:${uid}@tigement.com`,
         `DTSTAMP:${timestamp}`,
         `CREATED:${created}`,
         `LAST-MODIFIED:${lastModified}`,
