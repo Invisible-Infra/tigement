@@ -5,6 +5,7 @@
 
 import express, { Request, Response } from 'express'
 import { query } from '../db'
+import pool from '../db'
 import { authMiddleware, AuthRequest } from '../middleware/auth'
 import crypto from 'crypto'
 
@@ -127,49 +128,62 @@ router.post('/sync', authMiddleware, async (req: AuthRequest, res: Response) => 
       return res.status(403).json({ error: 'iCal export not enabled. Enable it in Profile settings first.' })
     }
 
-    // Delete all existing calendar events for this user
-    await query('DELETE FROM calendar_events WHERE user_id = $1', [userId])
-
-    // Insert new calendar events
-    for (const table of dayTables) {
-      if (table.type !== 'day' || !table.date || !table.startTime) continue
-
-      const tableDate = new Date(table.date)
-      const [startHour, startMinute] = table.startTime.split(':').map(Number)
+    // Delete and insert calendar events in a transaction for atomicity
+    const client = await pool.connect()
+    try {
+      await client.query('BEGIN')
       
-      let currentTime = new Date(tableDate)
-      currentTime.setHours(startHour, startMinute, 0, 0)
+      // Delete all existing calendar events for this user
+      await client.query('DELETE FROM calendar_events WHERE user_id = $1', [userId])
 
-      for (const task of table.tasks) {
-        const startTime = new Date(currentTime)
-        const endTime = new Date(currentTime.getTime() + task.duration * 60000)
+      // Insert new calendar events
+      for (const table of dayTables) {
+        if (table.type !== 'day' || !table.date || !table.startTime) continue
 
-        // Skip empty tasks or placeholder text, but still advance time
-        if (!task.title || task.title.trim() === '' || task.title === 'Task name...') {
+        const tableDate = new Date(table.date)
+        const [startHour, startMinute] = table.startTime.split(':').map(Number)
+        
+        let currentTime = new Date(tableDate)
+        currentTime.setHours(startHour, startMinute, 0, 0)
+
+        for (const task of table.tasks) {
+          const startTime = new Date(currentTime)
+          const endTime = new Date(currentTime.getTime() + task.duration * 60000)
+
+          // Skip empty tasks or placeholder text, but still advance time
+          if (!task.title || task.title.trim() === '' || task.title === 'Task name...') {
+            currentTime = endTime
+            continue
+          }
+
+          // Note: created_at, last_modified, sequence, and etag are automatically
+          // set by database triggers (see migration 022_caldav_support.sql)
+          // Note: We delete all events before inserting, so no conflicts expected
+          await client.query(
+            `INSERT INTO calendar_events (user_id, event_date, start_time, end_time, title, duration_minutes, table_id, task_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            [
+              userId,
+              tableDate.toISOString().split('T')[0],
+              startTime.toTimeString().split(' ')[0],
+              endTime.toTimeString().split(' ')[0],
+              task.title.trim(),
+              task.duration,
+              table.id,
+              task.id
+            ]
+          )
+
           currentTime = endTime
-          continue
         }
-
-        // Note: created_at, last_modified, sequence, and etag are automatically
-        // set by database triggers (see migration 022_caldav_support.sql)
-        // Note: We delete all events before inserting, so no conflicts expected
-        await query(
-          `INSERT INTO calendar_events (user_id, event_date, start_time, end_time, title, duration_minutes, table_id, task_id)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-          [
-            userId,
-            tableDate.toISOString().split('T')[0],
-            startTime.toTimeString().split(' ')[0],
-            endTime.toTimeString().split(' ')[0],
-            task.title.trim(),
-            task.duration,
-            table.id,
-            task.id
-          ]
-        )
-
-        currentTime = endTime
       }
+      
+      await client.query('COMMIT')
+    } catch (txError) {
+      await client.query('ROLLBACK')
+      throw txError
+    } finally {
+      client.release()
     }
 
     res.json({ success: true, message: 'Calendar events synced' })
@@ -338,13 +352,18 @@ router.get('/:token', async (req: Request, res: Response) => {
 
     const subscription = subscriptionResult.rows[0]
     
+    // Verify it's a premium subscription
+    if (subscription.plan !== 'premium') {
+      return res.status(403).send('Calendar feed requires premium subscription')
+    }
+    
     // Check if subscription is active
     if (subscription.status !== 'active') {
       return res.status(403).send('Calendar feed requires active premium subscription')
     }
 
     // Check if subscription has expired
-    if (subscription.plan === 'premium' && subscription.expires_at && new Date(subscription.expires_at) < new Date()) {
+    if (subscription.expires_at && new Date(subscription.expires_at) < new Date()) {
       return res.status(403).send('Premium subscription has expired')
     }
 
