@@ -576,7 +576,11 @@ class SyncManager {
     }
 
     this.isSyncing = true
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('tigement:sync-start'))
+    }
 
+    let syncSucceeded = false
     // Re-read local version from storage so we pick up updates from applyRemoteWorkspace or other tabs
     const savedVersion = localStorage.getItem(this.VERSION_STORAGE_KEY)
     if (savedVersion !== null) {
@@ -657,8 +661,11 @@ class SyncManager {
         this.updateLocalVersion(targetVersion)
         console.log('✅ Empty data sync completed (server data overwritten)')
         this.localModified = false
+        syncSucceeded = true
         this.config.onSyncSuccess?.()
-        this.isSyncing = false
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('tigement:sync-complete', { detail: { success: true } }))
+        }
         return
       }
 
@@ -680,7 +687,11 @@ class SyncManager {
           this.updateLocalVersion(targetVersion)
           console.log('✅ First sync completed, data saved to cloud!')
           this.localModified = false
+          syncSucceeded = true
           this.config.onSyncSuccess?.()
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('tigement:sync-complete', { detail: { success: true } }))
+          }
           return
         }
 
@@ -699,7 +710,11 @@ class SyncManager {
             this.updateLocalVersion(targetVersion)
             console.log('✅ Forced local push completed')
             this.localModified = false
+            syncSucceeded = true
             this.config.onSyncSuccess?.()
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('tigement:sync-complete', { detail: { success: true } }))
+            }
             return
           }
           
@@ -731,7 +746,11 @@ class SyncManager {
           // This handles cases where only UI fields (position) differ
           await this.applyRemoteWorkspace(remoteWorkspace)
           this.localModified = false
+          syncSucceeded = true
           this.config.onSyncSuccess?.()
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('tigement:sync-complete', { detail: { success: true } }))
+          }
           return
         }
 
@@ -744,7 +763,11 @@ class SyncManager {
           this.localModified = false
           this.lastSyncTime = new Date()
           this.lastSyncDirection = 'uploaded'
+          syncSucceeded = true
           this.config.onSyncSuccess?.()
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('tigement:sync-complete', { detail: { success: true } }))
+          }
           return
         }
         
@@ -778,13 +801,21 @@ class SyncManager {
             // Only update local version after successful push
             this.updateLocalVersion(targetVersion)
             this.localModified = false
+            syncSucceeded = true
             this.config.onSyncSuccess?.()
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('tigement:sync-complete', { detail: { success: true } }))
+            }
           } else if (resolution.resolution === 'remote') {
             // User chose remote, pull it
             console.log('✅ User chose remote, pulling...')
             await this.applyRemoteWorkspace(remoteWorkspace)
             this.localModified = false
+            syncSucceeded = true
             this.config.onSyncSuccess?.()
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('tigement:sync-complete', { detail: { success: true } }))
+            }
           } else if (resolution.resolution === 'merge' && resolution.mergedTables) {
             // User manually merged
             console.log('✅ User merged, pushing merged result...')
@@ -816,18 +847,30 @@ class SyncManager {
             }
             
             this.localModified = false
+            syncSucceeded = true
             this.config.onSyncSuccess?.()
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('tigement:sync-complete', { detail: { success: true } }))
+            }
           }
         } else {
           // No conflict handler, default to pulling remote (safe)
           console.log('⚠️ No conflict handler, pulling remote (safe)')
           await this.pull()
+          syncSucceeded = true
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('tigement:sync-complete', { detail: { success: true } }))
+          }
         }
       } else if (remoteIsNewer) {
         // Remote is newer, but we have NO local changes - just pull
         console.log('⬇️ Remote is newer, pulling (no local changes to conflict)...')
         await this.pull()
         this.localModified = false
+        syncSucceeded = true
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('tigement:sync-complete', { detail: { success: true } }))
+        }
       } else {
         // Versions match - only push if we have local changes
         if (hasLocalChanges) {
@@ -841,14 +884,22 @@ class SyncManager {
           this.localModified = false
           this.lastSyncTime = new Date()
           this.lastSyncDirection = 'uploaded'
+          syncSucceeded = true
           this.config.onSyncSuccess?.()
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('tigement:sync-complete', { detail: { success: true } }))
+          }
         } else {
           // No changes and versions match - nothing to sync
           console.log('✅ Already in sync (no local changes, versions match)')
           this.localModified = false
           this.lastSyncTime = new Date()
           this.lastSyncDirection = 'uploaded'
+          syncSucceeded = true
           this.config.onSyncSuccess?.()
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('tigement:sync-complete', { detail: { success: true } }))
+          }
         }
       }
     } catch (error: any) {
@@ -872,6 +923,9 @@ class SyncManager {
       }
       
       this.config.onSyncError?.(error)
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('tigement:sync-complete', { detail: { success: false } }))
+      }
       throw error
     } finally {
       this.isSyncing = false

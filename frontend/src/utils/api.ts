@@ -664,12 +664,27 @@ class ApiClient {
     return this.request('/announcements/current')
   }
 
+  async getOnboardingVideoUrl(): Promise<{ url: string }> {
+    return this.request('/announcements/onboarding-video-url')
+  }
+
   async getAdminAnnouncement(): Promise<any> {
     return this.request('/admin/announcement')
   }
 
   async updateAnnouncement(data: { message: string; text_color: string; background_color: string; enabled: boolean }): Promise<any> {
     return this.request('/admin/announcement', {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    })
+  }
+
+  async getOnboardingSettings(): Promise<{ onboarding_video_url: string }> {
+    return this.request('/admin/onboarding-settings')
+  }
+
+  async updateOnboardingSettings(data: { onboarding_video_url: string }): Promise<any> {
+    return this.request('/admin/onboarding-settings', {
       method: 'PUT',
       body: JSON.stringify(data)
     })

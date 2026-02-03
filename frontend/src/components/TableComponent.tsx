@@ -125,6 +125,12 @@ interface TableComponentProps {
   
   // For getting all tables (needed for setTables)
   tables: Table[]
+
+  // Tutorial mode: add data-tutorial-target for step highlighting
+  tutorialTargets?: {
+    dayStart?: string
+    taskTargets?: Record<string, { name?: string; duration?: string; dragHandle?: string; row?: string }>
+  }
 }
 
 export function TableComponent({
@@ -201,7 +207,8 @@ export function TableComponent({
   getContrastColor,
   getEffectiveBackgroundHex,
   getThemeColor,
-  tables
+  tables,
+  tutorialTargets,
 }: TableComponentProps) {
   const [spaceDropdownOpen, setSpaceDropdownOpen] = useState(false)
   const spaceDropdownTriggerRef = useRef<HTMLButtonElement>(null)
@@ -226,6 +233,7 @@ export function TableComponent({
   return (
     <div
       id={`table-${table.id}`}
+      data-tutorial-table-id={table.id}
       style={{
         position: 'relative',
         width: '100%',
@@ -473,6 +481,7 @@ export function TableComponent({
               )}
               
               <div
+                data-tutorial-target={tutorialTargets?.taskTargets?.[task.id]?.row}
                 onDragOver={!isMobile ? (e) => handleDragOver(e, table.id, index) : undefined}
                 onDragLeave={!isMobile ? handleDragLeave : undefined}
                 onDrop={!isMobile ? (e) => handleDrop(e, table.id, index) : undefined}
@@ -519,6 +528,7 @@ export function TableComponent({
               ) : (
                 /* Desktop: Drag handle */
                 <div 
+                  data-tutorial-target={tutorialTargets?.taskTargets?.[task.id]?.dragHandle}
                   draggable={true}
                   onDragStart={(e) => handleDragStart(table.id, task.id, index, e)}
                   onDragEnd={handleDragEnd}
@@ -544,6 +554,7 @@ export function TableComponent({
                   {index === 0 ? (
                     settings.useTimePickers ? (
                       <div
+                        data-tutorial-target={tutorialTargets?.dayStart}
                         onClick={() => setTimePickerTable(table.id)}
                         className="cursor-pointer hover:bg-gray-100 active:bg-gray-200"
                         style={{
@@ -565,6 +576,7 @@ export function TableComponent({
                     ) : (
                       <input
                         type="text"
+                        data-tutorial-target={tutorialTargets?.dayStart}
                         defaultValue={formatTime(table.startTime || '08:00')}
                         key={`${table.id}-starttime-${table.startTime}-${settings.timeFormat}`}
                         onBlur={(e) => {
@@ -686,12 +698,13 @@ export function TableComponent({
 
               {/* Task Name */}
               <div 
-                className="flex-1 relative min-w-0"
+                className={`flex-1 relative min-w-0 ${tutorialTargets ? 'min-w-[8rem]' : ''}`}
                 onMouseEnter={() => setHoveredTask(task.id)}
                 onMouseLeave={() => setHoveredTask(null)}
               >
                 <input
                   type="text"
+                  data-tutorial-target={tutorialTargets?.taskTargets?.[task.id]?.name}
                   value={task.title}
                   onChange={(e) => updateTask(table.id, task.id, 'title', e.target.value)}
                   onKeyDown={(e) => {
@@ -709,16 +722,22 @@ export function TableComponent({
                   onTouchEnd={cancelMoveLongPress}
                   onTouchMove={cancelMoveLongPress}
                   id={`task-input-${table.id}-${index}`}
-                  style={{ 
+                  style={tutorialTargets ? {
+                    backgroundColor: '#ffffff',
+                    color: '#111827',
+                    border: '1px solid #d1d5db',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                    fontSize: isMobile ? '0.75rem' : undefined,
+                    touchAction: 'manipulation',
+                  } : {
                     backgroundColor: task.selected ? 'transparent' : (getTaskGroup(task.group)?.color || 'transparent'),
-                    // If no group color and no row state color applies, use theme foreground for contrast
                     color: (getTaskGroup(task.group)?.color || timeMatchStatus !== null || task.selected)
                       ? (task.selected ? '#1f2937' : getContrastColor(getTaskGroup(task.group)?.color || '#ffffff'))
                       : 'var(--color-text)',
                     fontSize: isMobile ? '0.75rem' : undefined,
-                    touchAction: 'manipulation'
+                    touchAction: 'manipulation',
                   }}
-                  className={`w-full ${isMobile ? 'px-1 text-sm' : 'px-2'} py-1 border-none outline-none ${isCurrent ? 'font-bold' : ''} ${task.selected ? '' : 'group-hover:!bg-transparent'}`}
+                  className={`w-full ${isMobile ? 'px-1 text-sm' : 'px-2'} py-1 outline-none ${isCurrent ? 'font-bold' : ''} ${task.selected ? '' : 'group-hover:!bg-transparent'} ${tutorialTargets ? 'rounded' : 'border-none'}`}
                   placeholder="Task name..."
                 />
                 {hoveredTask === task.id && task.title && (
@@ -769,6 +788,7 @@ export function TableComponent({
                 return settings.useTimePickers ? (
                   <div
                     data-duration-wheel
+                    data-tutorial-target={tutorialTargets?.taskTargets?.[task.id]?.duration}
                     onClick={() => setDurationPickerTask({ tableId: table.id, taskId: task.id })}
                     onWheel={!isMobile ? (e) => {
                       e.preventDefault()
@@ -792,6 +812,7 @@ export function TableComponent({
                 ) : (
                   <input
                     type="text"
+                    data-tutorial-target={tutorialTargets?.taskTargets?.[task.id]?.duration}
                     defaultValue={formatDuration(task.duration)}
                     key={`${table.id}-${task.id}-${task.duration}`}
                     onBlur={(e) => {

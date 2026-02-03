@@ -11,6 +11,8 @@ interface AIChatProps {
   /** When provided with onPositionChange, modal is draggable and positioned at (x,y). Omit for centered behavior. */
   position?: { x: number; y: number };
   onPositionChange?: (pos: { x: number; y: number }) => void;
+  /** When true, render only inner content (no overlay/header) for embedding in AIPanel */
+  embedded?: boolean;
 }
 
 interface Message {
@@ -148,7 +150,7 @@ function formatChangePreview(change: any, workspace: any): string {
   }
 }
 
-export function AIChat({ workspace, onWorkspaceUpdate, onClose, position, onPositionChange }: AIChatProps) {
+export function AIChat({ workspace, onWorkspaceUpdate, onClose, position, onPositionChange, embedded }: AIChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -483,7 +485,7 @@ export function AIChat({ workspace, onWorkspaceUpdate, onClose, position, onPosi
     return null;
   }
 
-  const innerStyle = draggable && position
+  const innerStyle = !embedded && draggable && position
     ? {
         position: 'fixed' as const,
         left: position.x,
@@ -495,33 +497,8 @@ export function AIChat({ workspace, onWorkspaceUpdate, onClose, position, onPosi
       }
     : undefined;
 
-  return (
-    <div className={`fixed inset-0 bg-black/50 z-50 p-4 ${draggable ? '' : 'flex items-center justify-center'}`}>
-      <div
-        ref={panelRef}
-        className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-4xl h-[80vh] flex flex-col"
-        style={innerStyle}
-      >
-        <div
-          className={`p-4 border-b dark:border-gray-700 flex items-center justify-between ${draggable ? 'cursor-move' : ''}`}
-          onMouseDown={draggable ? handleMouseDown : undefined}
-        >
-          <div>
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-              AI Assistant
-            </h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              {config.provider} • {config.model} • {config.mode} mode
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-          >
-            ✕
-          </button>
-        </div>
-
+  const contentArea = (
+    <>
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {messages.length === 0 && (
             <div className="text-center text-gray-500 dark:text-gray-400 mt-8">
@@ -658,6 +635,44 @@ export function AIChat({ workspace, onWorkspaceUpdate, onClose, position, onPosi
             </button>
           </div>
         </form>
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <div className="h-full flex flex-col min-h-0">
+        {contentArea}
+      </div>
+    );
+  }
+
+  return (
+    <div className={`fixed inset-0 bg-black/50 z-50 p-4 ${draggable ? '' : 'flex items-center justify-center'}`}>
+      <div
+        ref={panelRef}
+        className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-4xl h-[80vh] flex flex-col"
+        style={innerStyle}
+      >
+        <div
+          className={`p-4 border-b dark:border-gray-700 flex items-center justify-between ${draggable ? 'cursor-move' : ''}`}
+          onMouseDown={draggable ? handleMouseDown : undefined}
+        >
+          <div>
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+              AI Assistant
+            </h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              {config.provider} • {config.model} • {config.mode} mode
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+          >
+            ✕
+          </button>
+        </div>
+        {contentArea}
       </div>
     </div>
   );

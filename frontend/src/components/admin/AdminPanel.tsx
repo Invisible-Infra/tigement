@@ -9,7 +9,7 @@ interface AdminPanelProps {
 
 export function AdminPanel({ onClose }: AdminPanelProps) {
   const { user } = useAuth()
-  const [activeTab, setActiveTab] = useState<'users' | 'coupons' | 'stats' | 'payment' | 'payment-methods' | 'referral-coupons' | 'announcements' | 'debugging'>('users')
+  const [activeTab, setActiveTab] = useState<'users' | 'coupons' | 'stats' | 'payment' | 'payment-methods' | 'referral-coupons' | 'announcements' | 'onboarding' | 'debugging'>('users')
   const [users, setUsers] = useState<any[]>([])
   const [coupons, setCoupons] = useState<any[]>([])
   const [stats, setStats] = useState<any>(null)
@@ -50,6 +50,9 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
   })
   const [debugSettingsSaved, setDebugSettingsSaved] = useState(false)
 
+  const [onboardingSettings, setOnboardingSettings] = useState({ onboarding_video_url: '' })
+  const [onboardingSettingsSaved, setOnboardingSettingsSaved] = useState(false)
+
   // Coupon form
   const [newCoupon, setNewCoupon] = useState({
     code: '',
@@ -86,6 +89,8 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
       loadCouponSettings()
     } else if (activeTab === 'announcements') {
       loadAnnouncement()
+    } else if (activeTab === 'onboarding') {
+      loadOnboardingSettings()
     } else if (activeTab === 'debugging') {
       loadDebugSettings()
     }
@@ -256,6 +261,32 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
     }
   }
 
+  const loadOnboardingSettings = async () => {
+    setLoading(true)
+    try {
+      const data = await api.getOnboardingSettings()
+      setOnboardingSettings(data)
+    } catch (error) {
+      console.error('Failed to load onboarding settings:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const saveOnboardingSettings = async () => {
+    setLoading(true)
+    try {
+      await api.updateOnboardingSettings(onboardingSettings)
+      setOnboardingSettingsSaved(true)
+      setTimeout(() => setOnboardingSettingsSaved(false), 3000)
+      alert('Onboarding settings saved successfully!')
+    } catch (error: any) {
+      alert(`Failed to save: ${error.message}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const togglePremium = async (userId: number, currentPlan: string, subscriptionStatus?: string) => {
     const isExpired = currentPlan === 'premium' && subscriptionStatus === 'expired'
     const action = isExpired ? 'Renew' : (currentPlan === 'premium' ? 'Revoke' : 'Grant')
@@ -414,6 +445,12 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
             className={`px-6 py-3 font-medium ${activeTab === 'announcements' ? 'border-b-2 border-[#4fc3f7] text-[#4fc3f7]' : 'text-gray-600'}`}
           >
             📢 Announcements
+          </button>
+          <button
+            onClick={() => setActiveTab('onboarding')}
+            className={`px-6 py-3 font-medium ${activeTab === 'onboarding' ? 'border-b-2 border-[#4fc3f7] text-[#4fc3f7]' : 'text-gray-600'}`}
+          >
+            🎓 Onboarding
           </button>
           <button
             onClick={() => setActiveTab('debugging')}
@@ -1276,6 +1313,55 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
                       style={{ color: '#991b1b', backgroundColor: '#fee2e2' }}
                     >
                       Alert (Red)
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Onboarding Tab */}
+          {activeTab === 'onboarding' && !loading && (
+            <div className="max-w-3xl">
+              <h2 className="text-2xl font-bold mb-6">🎓 Onboarding Settings</h2>
+              
+              <div className="bg-blue-50 p-4 rounded-lg mb-6">
+                <p className="text-sm text-blue-800">
+                  💡 <strong>Info:</strong> Configure the welcome modal video shown to new users on first run. Leave empty to hide the video or fall back to <code className="bg-blue-100 px-1 rounded">VITE_ONBOARDING_VIDEO_URL</code> from .env.
+                </p>
+              </div>
+
+              {onboardingSettingsSaved && (
+                <div className="bg-green-50 border border-green-200 p-4 rounded mb-4 text-green-800">
+                  ✓ Onboarding settings saved successfully!
+                </div>
+              )}
+
+              <div className="space-y-6">
+                <div className="border-2 rounded-lg p-6 bg-white">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Onboarding Video URL
+                    </label>
+                    <input
+                      type="url"
+                      value={onboardingSettings.onboarding_video_url || ''}
+                      onChange={(e) => setOnboardingSettings({ ...onboardingSettings, onboarding_video_url: e.target.value })}
+                      placeholder="https://example.com/onboarding-video.mp4"
+                      className="w-full px-4 py-2 border border-gray-300 rounded"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      YouTube link (watch or youtu.be), direct .mp4/.webm URL, or leave empty to disable
+                    </p>
+                  </div>
+
+                  <div className="flex gap-4 pt-6">
+                    <button
+                      onClick={saveOnboardingSettings}
+                      className="px-6 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+                      disabled={loading}
+                    >
+                      {loading ? 'Saving...' : 'Save Settings'}
                     </button>
                   </div>
                 </div>

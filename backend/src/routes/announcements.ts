@@ -38,6 +38,22 @@ router.get('/current', async (req: Request, res: Response) => {
 })
 
 /**
+ * Get onboarding video URL
+ * GET /api/announcements/onboarding-video-url
+ * Public endpoint - no authentication required
+ */
+router.get('/onboarding-video-url', async (req: Request, res: Response) => {
+  try {
+    const result = await query('SELECT onboarding_video_url FROM payment_settings WHERE id = 1')
+    const url = result.rows[0]?.onboarding_video_url || ''
+    res.json({ url: url || '' })
+  } catch (error: any) {
+    console.error('Error fetching onboarding video URL:', error)
+    res.json({ url: '' })
+  }
+})
+
+/**
  * Get debug settings
  * GET /api/announcements/debug-settings
  * Public endpoint - no authentication required

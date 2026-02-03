@@ -753,6 +753,43 @@ router.put('/announcement', async (req: AuthRequest, res) => {
 })
 
 /**
+ * GET /api/admin/onboarding-settings
+ * Get onboarding settings (admin only)
+ */
+router.get('/onboarding-settings', async (req: AuthRequest, res) => {
+  try {
+    const result = await query('SELECT onboarding_video_url FROM payment_settings WHERE id = 1')
+    res.json({
+      onboarding_video_url: result.rows[0]?.onboarding_video_url || ''
+    })
+  } catch (error: any) {
+    console.error('Error fetching onboarding settings:', error)
+    res.status(500).json({ error: 'Failed to fetch onboarding settings' })
+  }
+})
+
+/**
+ * PUT /api/admin/onboarding-settings
+ * Update onboarding settings (admin only)
+ */
+router.put('/onboarding-settings', async (req: AuthRequest, res) => {
+  try {
+    const { onboarding_video_url } = req.body
+    const url = typeof onboarding_video_url === 'string' ? onboarding_video_url.trim() : ''
+    
+    await query(
+      'UPDATE payment_settings SET onboarding_video_url = $1 WHERE id = 1',
+      [url || null]
+    )
+    
+    res.json({ success: true, onboarding_video_url: url })
+  } catch (error: any) {
+    console.error('Error updating onboarding settings:', error)
+    res.status(500).json({ error: 'Failed to update onboarding settings' })
+  }
+})
+
+/**
  * GET /api/admin/debug-settings
  * Get debug settings (admin only)
  */

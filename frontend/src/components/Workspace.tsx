@@ -15,8 +15,7 @@ import { SplitView } from './SplitView'
 import { SpaceTabs } from './SpaceTabs'
 import { TableComponent } from './TableComponent'
 import { BottomNav } from './BottomNav'
-import { AIChat } from './AIChat'
-import { AIHistory } from './AIHistory'
+import { AIPanel } from './AIPanel'
 import { exportToCSV, downloadCSV, importFromCSV } from '../utils/csvUtils'
 import { saveTables, loadTables, saveSettings, loadSettings, saveTaskGroups, loadTaskGroups, saveNotebooks, loadNotebooks, saveArchivedTables, loadArchivedTables, saveDiaryEntries, loadDiaryEntries } from '../utils/storage'
 import { normalizeDate } from '../utils/dateFormat'
@@ -108,7 +107,8 @@ import {
   faUmbrella,
   faLeaf,
   faTree,
-  faMountain
+  faMountain,
+  faFloppyDisk
 } from '@fortawesome/free-solid-svg-icons'
 
 interface Task {
@@ -372,9 +372,14 @@ const getDefaultTables = (): Table[] => {
 
 interface WorkspaceProps {
   onShowPremium?: () => void
+  onShowOnboarding?: () => void
+  onStartTutorial?: () => void
+  onResetOnboarding?: () => void
+  onEnableOnboardingAgain?: () => void
+  onShowProfile?: () => void
 }
 
-export function Workspace({ onShowPremium }: WorkspaceProps) {
+export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, onResetOnboarding, onEnableOnboardingAgain, onShowProfile }: WorkspaceProps) {
   const { user, syncNow, loading, decryptionFailure, authError, clearAuthError } = useAuth()
   const { theme } = useTheme()
   const [syncing, setSyncing] = useState(false)
@@ -438,6 +443,7 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
   const [hoveredTask, setHoveredTask] = useState<string | null>(null)
   const handleLongPressTimer = useRef<number | null>(null)
   const dragHandleTimer = useRef<number | null>(null)
+  const addTableRef = useRef<(type: 'day' | 'todo') => void>(() => {})
   const isApplyingSyncUpdate = useRef(false)
   const hasLoadedTables = useRef(false)
   const prevTablesHash = useRef<string>('')
@@ -445,7 +451,7 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
   const icalEnabledCache = useRef<boolean | null>(null) // null = unknown, true = enabled, false = disabled
   const lastIcalSyncTime = useRef<number>(0) // Timestamp of last sync to prevent concurrent syncs
   const [showSettings, setShowSettings] = useState(false)
-  const [showTimer, setShowTimer] = useState(false)
+  const [showTimer, setShowTimer] = useState(true)
   const [timerPosition, setTimerPosition] = useState(() => {
     try {
       const saved = localStorage.getItem('tigement_timer_position')
@@ -460,7 +466,7 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
   const [showStatistics, setShowStatistics] = useState(false)
   const [showBugReport, setShowBugReport] = useState(false)
   const [showFeatureRequest, setShowFeatureRequest] = useState(false)
-  const [showAIChat, setShowAIChat] = useState(false)
+  const [showAIPanel, setShowAIPanel] = useState(false)
   const [aiChatPosition, setAiChatPosition] = useState<{ x: number; y: number }>(() => {
     try {
       const saved = localStorage.getItem('tigement_ai_chat_position')
@@ -479,7 +485,6 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     }
     return { x: 100, y: 100 }
   })
-  const [showAIHistory, setShowAIHistory] = useState(false)
   const [showGroupsEditor, setShowGroupsEditor] = useState(false)
   const [showConflict, setShowConflict] = useState(false)
   const [conflictData, setConflictData] = useState<any>(null)
@@ -563,7 +568,8 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
   const [notebookAnimation, setNotebookAnimation] = useState<{ from: { x: number; y: number }; to: { x: number; y: number }; taskId: string } | null>(null)
   const [pinnedItems, setPinnedItems] = useState<string[]>(() => {
     const saved = localStorage.getItem('tigement_pinned_items')
-    return saved ? JSON.parse(saved) : ['sync-now', 'settings', 'undo', 'redo']
+    const items = saved ? JSON.parse(saved) : ['sync-now', 'settings', 'undo', 'redo']
+    return items.filter((id: string) => id !== 'ai-history')
   })
   const [openDiaryEntry, setOpenDiaryEntry] = useState<{ date: string; position: { x: number; y: number } } | null>(null)
   const [durationPickerTask, setDurationPickerTask] = useState<{ tableId: string; taskId: string } | null>(null)
@@ -810,7 +816,7 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
         defaultTasksCount: 4,
         timeFormat: 24,
         dateFormat: 'DD. MM. YYYY',
-        showTimerOnStartup: false,
+        showTimerOnStartup: true,
         sessionDuration: 7,
         useTimePickers: true
       })
@@ -953,6 +959,15 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     }
     
     window.addEventListener('tigement-restore-complete', handleRestoreComplete)
+
+    const handleRequestAddDayTable = () => {
+      addTableRef.current('day')
+    }
+    const handleRequestOpenTimer = () => {
+      setShowTimer(true)
+    }
+    window.addEventListener('tigement-request-add-day-table', handleRequestAddDayTable)
+    window.addEventListener('tigement-request-open-timer', handleRequestOpenTimer)
     
     // Also check immediately if restore flag is set (in case event already fired or fires synchronously)
     const checkRestoreFlag = () => {
@@ -995,7 +1010,11 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     setTimeout(checkRestoreFlag, 100)
     setTimeout(checkRestoreFlag, 500)
     
-    return () => window.removeEventListener('tigement-restore-complete', handleRestoreComplete)
+    return () => {
+      window.removeEventListener('tigement-restore-complete', handleRestoreComplete)
+      window.removeEventListener('tigement-request-add-day-table', handleRequestAddDayTable)
+      window.removeEventListener('tigement-request-open-timer', handleRequestOpenTimer)
+    }
   }, [])
 
   // Save task groups to localStorage whenever they change
@@ -1081,6 +1100,28 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
       }
     }
   }, [currentTableIndex, isMobile])
+
+  // Listen for sync start/complete from automatic or manual sync
+  useEffect(() => {
+    const handleSyncStart = () => {
+      setSyncing(true)
+      setSyncSuccess(false)
+    }
+    const handleSyncComplete = (event: CustomEvent<{ success: boolean }>) => {
+      setSyncing(false)
+      if (event.detail?.success) {
+        setSyncSuccess(true)
+        setLastSyncInfo(syncManager.getLastSyncInfo())
+        setTimeout(() => setSyncSuccess(false), 2000)
+      }
+    }
+    window.addEventListener('tigement:sync-start', handleSyncStart)
+    window.addEventListener('tigement:sync-complete', handleSyncComplete as EventListener)
+    return () => {
+      window.removeEventListener('tigement:sync-start', handleSyncStart)
+      window.removeEventListener('tigement:sync-complete', handleSyncComplete as EventListener)
+    }
+  }, [])
 
   // Listen for sync updates from background sync
   useEffect(() => {
@@ -1251,7 +1292,7 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
         defaultTasksCount: saved.defaultTasksCount ?? 4,
         timeFormat: saved.timeFormat ?? 24,
         dateFormat: saved.dateFormat ?? 'DD. MM. YYYY',
-        showTimerOnStartup: saved.showTimerOnStartup ?? false,
+        showTimerOnStartup: saved.showTimerOnStartup ?? true,
         sessionDuration: saved.sessionDuration ?? 7,
         useTimePickers: saved.useTimePickers ?? true,
         durationPresets: saved.durationPresets ?? [15, 30, 60, 120],
@@ -1273,7 +1314,7 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
       defaultTasksCount: 4,
       timeFormat: 24,
       dateFormat: 'DD. MM. YYYY',
-      showTimerOnStartup: false,
+      showTimerOnStartup: true,
       sessionDuration: 7,
       useTimePickers: true,
       durationPresets: [15, 30, 60, 120],
@@ -1927,6 +1968,8 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     }
   }
 
+  addTableRef.current = addTable
+
   const deleteTable = (tableId: string) => {
     if (tables.length === 1) {
       alert('Cannot delete the last table!')
@@ -2266,19 +2309,30 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
 
         const sourceTable = newTables[sourceTableIdx]
         const targetTable = newTables[targetTableIdx]
-        
-        // Remove from source
-        const [movedTask] = sourceTable.tasks.splice(draggedTask.index, 1)
-        
-        // Calculate correct target index
+        const draggedTaskObj = sourceTable.tasks[draggedTask.index]
+        if (!draggedTaskObj) return prevTables
+
+        // If dragged task is selected, move all selected tasks; otherwise move just the one
+        const tasksToMove = draggedTaskObj.selected
+          ? sourceTable.tasks.filter(t => t.selected)
+          : [draggedTaskObj]
+        const idsToMove = new Set(tasksToMove.map(t => t.id))
+
+        // Calculate insert index before modifying (for same-table move)
         let insertIndex = targetIndex
-        if (draggedTask.tableId === targetTableId && draggedTask.index < targetIndex) {
-          // Same table: adjust index since we removed one item
-          insertIndex = targetIndex - 1
+        if (draggedTask.tableId === targetTableId) {
+          const countMovedBeforeTarget = tasksToMove.filter(t => {
+            const i = sourceTable.tasks.findIndex(x => x.id === t.id)
+            return i < targetIndex
+          }).length
+          insertIndex = Math.max(0, targetIndex - countMovedBeforeTarget)
         }
+
+        // Remove from source
+        sourceTable.tasks = sourceTable.tasks.filter(t => !idsToMove.has(t.id))
         
         // Insert at target
-        targetTable.tasks.splice(insertIndex, 0, movedTask)
+        targetTable.tasks.splice(insertIndex, 0, ...tasksToMove)
         
         return newTables
       })
@@ -2296,7 +2350,7 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
     } catch {}
   }
 
-  // Move task to another table (append at end)
+  // Move task to another table (append at end). If the task is selected, move all selected tasks.
   const moveTaskToTable = (sourceTableId: string, taskIndex: number, targetTableId: string) => {
     if (sourceTableId === targetTableId) return
     setTables(prev => {
@@ -2304,8 +2358,16 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
       const sIdx = newTables.findIndex(t => t.id === sourceTableId)
       const tIdx = newTables.findIndex(t => t.id === targetTableId)
       if (sIdx === -1 || tIdx === -1) return prev
-      const [moved] = newTables[sIdx].tasks.splice(taskIndex, 1)
-      newTables[tIdx].tasks.push(moved)
+      const sourceTable = newTables[sIdx]
+      const taskAt = sourceTable.tasks[taskIndex]
+      if (!taskAt) return prev
+      const tasksToMove = taskAt.selected
+        ? sourceTable.tasks.filter(t => t.selected)
+        : [taskAt]
+      if (tasksToMove.length === 0) return prev
+      const idsToMove = new Set(tasksToMove.map(t => t.id))
+      newTables[sIdx].tasks = newTables[sIdx].tasks.filter(t => !idsToMove.has(t.id))
+      newTables[tIdx].tasks.push(...tasksToMove)
       return newTables
     })
     focusTable(targetTableId) // Focus target table when task is moved
@@ -3069,19 +3131,30 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
 
       const sourceTable = newTables[sourceTableIdx]
       const targetTable = newTables[targetTableIdx]
-      
-      // Remove from source
-      const [movedTask] = sourceTable.tasks.splice(draggedTask.index, 1)
-      
-      // Calculate correct target index
+      const draggedTaskObj = sourceTable.tasks[draggedTask.index]
+      if (!draggedTaskObj) return prevTables
+
+      // If dragged task is selected, move all selected tasks; otherwise move just the one
+      const tasksToMove = draggedTaskObj.selected
+        ? sourceTable.tasks.filter(t => t.selected)
+        : [draggedTaskObj]
+      const idsToMove = new Set(tasksToMove.map(t => t.id))
+
+      // Calculate insert index before modifying (for same-table move)
       let insertIndex = targetIndex
-      if (draggedTask.tableId === targetTableId && draggedTask.index < targetIndex) {
-        // Same table: adjust index since we removed one item
-        insertIndex = targetIndex - 1
+      if (draggedTask.tableId === targetTableId) {
+        const countMovedBeforeTarget = tasksToMove.filter(t => {
+          const i = sourceTable.tasks.findIndex(x => x.id === t.id)
+          return i < targetIndex
+        }).length
+        insertIndex = Math.max(0, targetIndex - countMovedBeforeTarget)
       }
+
+      // Remove from source
+      sourceTable.tasks = sourceTable.tasks.filter(t => !idsToMove.has(t.id))
       
       // Insert at target
-      targetTable.tasks.splice(insertIndex, 0, movedTask)
+      targetTable.tasks.splice(insertIndex, 0, ...tasksToMove)
       
       return newTables
     })
@@ -3407,7 +3480,13 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
                 </button>
               )}
               
-              {/* Primary Actions: Create Tables */}
+              {/* Primary Actions */}
+              <button
+                onClick={() => { addTable('day'); isMobile && setShowMenu(false); }}
+                className="w-full px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition text-sm text-left"
+              >
+                Add Day
+              </button>
               <button
                 onClick={() => { addTable('todo'); isMobile && setShowMenu(false); }}
                 className="w-full px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition text-sm text-left"
@@ -3415,10 +3494,14 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
                 Add TODO
               </button>
               <button
-                onClick={() => { addTable('day'); isMobile && setShowMenu(false); }}
-                className="w-full px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition text-sm text-left"
+                onClick={() => { setShowTimer(prev => !prev); isMobile && setShowMenu(false); }}
+                className={`w-full px-3 py-2 rounded transition text-sm text-left ${
+                  showTimer
+                    ? 'bg-[#4fc3f7] text-white hover:bg-[#3ba3d7]'
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}
               >
-                Add Day
+                {showEmoji ? '⏱️ ' : ''}Timer
               </button>
               
               <div className="border-t border-gray-300 my-2"></div>
@@ -3490,12 +3573,11 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
                           'notebook': { label: showEmoji ? '📓 Notebook' : 'Notebook', onClick: () => { openWorkspaceNotebook(); isMobile && setShowMenu(false); }, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
                           'diary': { label: showEmoji ? '📔 Diary' : 'Diary', onClick: () => { setShowDiaryList(true); isMobile && setShowMenu(false); }, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
                           'statistics': { label: showEmoji ? '📈 Statistics' : 'Statistics', onClick: () => { setShowStatistics(true); isMobile && setShowMenu(false); }, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
-                          'ai-chat': { label: showEmoji ? '🤖 AI Assistant' : 'AI Assistant', onClick: () => { setShowAIChat(true); isMobile && setShowMenu(false); }, className: 'bg-purple-600 text-white hover:bg-purple-700' },
-                          'ai-history': { label: showEmoji ? '📜 AI History' : 'AI History', onClick: () => { setShowAIHistory(true); isMobile && setShowMenu(false); }, className: 'bg-indigo-600 text-white hover:bg-indigo-700' },
+                          'ai-chat': { label: showEmoji ? '🤖 AI Assistant' : 'AI Assistant', onClick: () => { setShowAIPanel(true); isMobile && setShowMenu(false); }, className: 'bg-purple-600 text-white hover:bg-purple-700' },
                           'archived': { label: showEmoji ? '📦 Archived' : 'Archived', onClick: () => { setShowArchivedMenu(true); isMobile && setShowMenu(false); }, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
-                          'add-tab-group': { label: showEmoji ? '➕ Add Tab Group' : 'Add Tab Group', onClick: () => { handleAddSpace(); isMobile && setShowMenu(false); }, className: 'bg-green-600 text-white hover:bg-green-700' },
+                          'add-tab-group': { label: showEmoji ? '➕ New space' : 'New space', onClick: () => { handleAddSpace(); isMobile && setShowMenu(false); }, className: 'bg-green-600 text-white hover:bg-green-700' },
                           'settings': { label: showEmoji ? '⚙️ Settings' : 'Settings', onClick: () => { setShowSettings(true); isMobile && setShowMenu(false); }, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
-                          'edit-groups': { label: showEmoji ? '🏷️ Edit Groups' : 'Edit Groups', onClick: () => { setShowGroupsEditor(true); isMobile && setShowMenu(false); }, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
+                          'edit-groups': { label: showEmoji ? '🏷️ Task groups' : 'Task groups', onClick: () => { setShowGroupsEditor(true); isMobile && setShowMenu(false); }, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
                           'manual': { label: showEmoji ? '📖 Manual' : 'Manual', onClick: () => { setShowManual(true); isMobile && setShowMenu(false); }, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
                           'export-csv': { label: showEmoji ? '📤 Export CSV' : 'Export CSV', onClick: () => { handleExportCSV(); isMobile && setShowMenu(false); }, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
                           'import-csv': { label: showEmoji ? '📥 Import CSV' : 'Import CSV', onClick: () => { fileInputRef.current?.click(); isMobile && setShowMenu(false); }, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
@@ -3517,7 +3599,7 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
                               ? (showEmoji ? '🔄 Syncing...' : 'Syncing...') 
                               : syncSuccess 
                                 ? (showEmoji ? '✅ Synced!' : 'Synced!') 
-                                : (showEmoji ? '☁️ Sync Now' : 'Sync Now'), 
+                                : (showEmoji ? '☁️ Sync now' : 'Sync now'), 
                             onClick: () => { handleSyncNow(); isMobile && setShowMenu(false); }, 
                             className: syncSuccess 
                               ? 'bg-green-100 text-green-800 hover:bg-green-200 border border-green-300' 
@@ -3525,8 +3607,8 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
                           },
                           'undo': { label: showEmoji ? '↶ Undo' : 'Undo', onClick: undo, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
                           'redo': { label: showEmoji ? '↷ Redo' : 'Redo', onClick: redo, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
-                          'report-bug': { label: showEmoji ? '🐛 Report Bug' : 'Report Bug', onClick: () => { setShowBugReport(true); isMobile && setShowMenu(false); }, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
-                          'feature-request': { label: showEmoji ? '✨ Feature Request' : 'Feature Request', onClick: () => { setShowFeatureRequest(true); isMobile && setShowMenu(false); }, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
+                          'report-bug': { label: showEmoji ? '🐛 Report bug' : 'Report bug', onClick: () => { setShowBugReport(true); isMobile && setShowMenu(false); }, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
+                          'feature-request': { label: showEmoji ? '✨ Feature request' : 'Feature request', onClick: () => { setShowFeatureRequest(true); isMobile && setShowMenu(false); }, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
                         }
                         
                         const config = itemConfig[itemId]
@@ -3551,9 +3633,19 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
                               <button
                                 onClick={config.onClick}
                                 disabled={itemId === 'undo' && historyIndex <= 0 || itemId === 'redo' && historyIndex >= history.length - 1 || itemId === 'sync-now' && syncing}
-                                className={`flex-1 px-3 py-2 rounded transition text-sm text-left cursor-move ${config.className} disabled:opacity-30 disabled:cursor-not-allowed`}
+                                className={`flex-1 px-3 py-2 rounded transition text-sm text-left cursor-move flex items-center gap-2 ${config.className} disabled:opacity-30 disabled:cursor-not-allowed`}
                               >
-                                {config.label}
+                                {itemId === 'sync-now' && (syncing || syncSuccess) ? (
+                                  <>
+                                    <FontAwesomeIcon
+                                      icon={faFloppyDisk}
+                                      className="sync-icon-glow"
+                                    />
+                                    <span>{config.label}</span>
+                                  </>
+                                ) : (
+                                  config.label
+                                )}
                               </button>
                               <button 
                                 onClick={(e) => {
@@ -3612,7 +3704,7 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
                     <>
                       <div className="border-t border-gray-300 my-2"></div>
                       <div className="px-1">
-                        <label className="text-xs text-gray-600 mb-1 block">TODO Spaces Filter</label>
+                        <label className="text-xs text-gray-600 mb-1 block">Visible spaces</label>
                         <div className="space-y-1">
                           {spaces.map(space => (
                             <button
@@ -3640,13 +3732,13 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
               
               {/* Collapsible Menu Sections */}
               
-              {/* Workspace Section */}
+              {/* Go to Section (destinations) */}
               <div className="border-b border-gray-200 pb-2 mb-2">
                 <button
                   onClick={() => toggleMenu('workspace')}
                   className="w-full px-3 py-2 text-left font-semibold text-gray-700 hover:bg-gray-100 rounded flex items-center justify-between"
                 >
-                  <span>{showEmoji && '📊 '}Workspace</span>
+                  <span>{showEmoji && '🎯 '}Go to</span>
                   <span>{expandedMenus.has('workspace') ? '▼' : '▶'}</span>
                 </button>
                 {expandedMenus.has('workspace') && (
@@ -3703,7 +3795,7 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
                       </button>
                     </div>
                     <div className="flex items-center gap-1">
-                      <button onClick={() => { setShowAIChat(true); isMobile && setShowMenu(false); }} className="flex-1 px-3 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition text-sm text-left">
+                      <button onClick={() => { setShowAIPanel(true); isMobile && setShowMenu(false); }} className="flex-1 px-3 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition text-sm text-left">
                         {showEmoji && '🤖 '}AI Assistant
                       </button>
                       <button 
@@ -3712,18 +3804,6 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
                         title={pinnedItems.includes('ai-chat') ? 'Unpin' : 'Pin'}
                       >
                         {pinnedItems.includes('ai-chat') ? '📍' : '📌'}
-                      </button>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <button onClick={() => { setShowAIHistory(true); isMobile && setShowMenu(false); }} className="flex-1 px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition text-sm text-left">
-                        {showEmoji && '📜 '}AI History
-                      </button>
-                      <button 
-                        onClick={() => togglePin('ai-history')}
-                        className={`px-2 py-2 rounded transition text-sm ${pinnedItems.includes('ai-history') ? 'text-yellow-500 font-bold' : 'text-gray-400 hover:text-gray-600'}`}
-                        title={pinnedItems.includes('ai-history') ? 'Unpin' : 'Pin'}
-                      >
-                        {pinnedItems.includes('ai-history') ? '📍' : '📌'}
                       </button>
                     </div>
                   </div>
@@ -3757,20 +3837,21 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
                 )}
               </div>
 
-              {/* Spaces (Tab Groups) Section */}
+              {/* Organize Section: Spaces + Task groups */}
               <div className="border-b border-gray-200 pb-2 mb-2">
                 <button
-                  onClick={() => toggleMenu('spaces')}
+                  onClick={() => toggleMenu('organize')}
                   className="w-full px-3 py-2 text-left font-semibold text-gray-700 hover:bg-gray-100 rounded flex items-center justify-between"
                 >
-                  <span>{showEmoji && '🗂️ '}Tab Groups</span>
-                  <span>{expandedMenus.has('spaces') ? '▼' : '▶'}</span>
+                  <span>{showEmoji && '🗂️ '}Organize</span>
+                  <span>{expandedMenus.has('organize') ? '▼' : '▶'}</span>
                 </button>
-                {expandedMenus.has('spaces') && (
+                {expandedMenus.has('organize') && (
                   <div className="ml-2 space-y-1 mt-1">
+                    <div className="px-3 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">Spaces</div>
                     <div className="flex items-center gap-1">
                       <button onClick={() => { handleAddSpace(); isMobile && setShowMenu(false); }} className="flex-1 px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition text-sm text-left">
-                        {showEmoji && '➕ '}Add Tab Group
+                        {showEmoji && '➕ '}New space
                       </button>
                       <button 
                         onClick={() => togglePin('add-tab-group')}
@@ -3810,21 +3891,19 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
                         </button>
                       </div>
                     ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Settings Section */}
-              <div className="border-b border-gray-200 pb-2 mb-2">
-                <button
-                  onClick={() => toggleMenu('settings')}
-                  className="w-full px-3 py-2 text-left font-semibold text-gray-700 hover:bg-gray-100 rounded flex items-center justify-between"
-                >
-                  <span>{showEmoji && '⚙️ '}Settings</span>
-                  <span>{expandedMenus.has('settings') ? '▼' : '▶'}</span>
-                </button>
-                {expandedMenus.has('settings') && (
-                  <div className="ml-2 space-y-1 mt-1">
+                    <div className="px-3 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wider mt-2">Task groups</div>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => { setShowGroupsEditor(true); isMobile && setShowMenu(false); }} className="flex-1 px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm text-left border border-gray-300">
+                        {showEmoji && '🏷️ '}Task groups
+                      </button>
+                      <button 
+                        onClick={() => togglePin('edit-groups')}
+                        className={`px-2 py-2 rounded transition text-sm ${pinnedItems.includes('edit-groups') ? 'text-yellow-500 font-bold' : 'text-gray-400 hover:text-gray-600'}`}
+                        title={pinnedItems.includes('edit-groups') ? 'Unpin' : 'Pin'}
+                      >
+                        {pinnedItems.includes('edit-groups') ? '📍' : '📌'}
+                      </button>
+                    </div>
                     <div className="flex items-center gap-1">
                       <button onClick={() => { setShowSettings(true); isMobile && setShowMenu(false); }} className="flex-1 px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm text-left border border-gray-300">
                         {showEmoji && '⚙️ '}Settings
@@ -3837,29 +3916,56 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
                         {pinnedItems.includes('settings') ? '📍' : '📌'}
                       </button>
                     </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Edit Section */}
+              <div className="border-b border-gray-200 pb-2 mb-2">
+                <button
+                  onClick={() => toggleMenu('edit')}
+                  className="w-full px-3 py-2 text-left font-semibold text-gray-700 hover:bg-gray-100 rounded flex items-center justify-between"
+                >
+                  <span>{showEmoji && '✏️ '}Edit</span>
+                  <span>{expandedMenus.has('edit') ? '▼' : '▶'}</span>
+                </button>
+                {expandedMenus.has('edit') && (
+                  <div className="ml-2 space-y-1 mt-1">
                     <div className="flex items-center gap-1">
-                      <button onClick={() => { setShowGroupsEditor(true); isMobile && setShowMenu(false); }} className="flex-1 px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm text-left border border-gray-300">
-                        {showEmoji && '🏷️ '}Edit Groups
+                      <button onClick={undo} disabled={historyIndex <= 0} className="flex-1 px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm disabled:opacity-30 disabled:cursor-not-allowed text-left border border-gray-300" title="Undo (Ctrl+Z)">
+                        {showEmoji && '↶ '}Undo
                       </button>
                       <button 
-                        onClick={() => togglePin('edit-groups')}
-                        className={`px-2 py-2 rounded transition text-sm ${pinnedItems.includes('edit-groups') ? 'text-yellow-500 font-bold' : 'text-gray-400 hover:text-gray-600'}`}
-                        title={pinnedItems.includes('edit-groups') ? 'Unpin' : 'Pin'}
+                        onClick={() => togglePin('undo')}
+                        className={`px-2 py-2 rounded transition text-sm ${pinnedItems.includes('undo') ? 'text-yellow-500 font-bold' : 'text-gray-400 hover:text-gray-600'}`}
+                        title={pinnedItems.includes('undo') ? 'Unpin' : 'Pin'}
                       >
-                        {pinnedItems.includes('edit-groups') ? '📍' : '📌'}
+                        {pinnedItems.includes('undo') ? '📍' : '📌'}
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button onClick={redo} disabled={historyIndex >= history.length - 1} className="flex-1 px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm disabled:opacity-30 disabled:cursor-not-allowed text-left border border-gray-300" title="Redo (Ctrl+Shift+Z / Ctrl+Y)">
+                        {showEmoji && '↷ '}Redo
+                      </button>
+                      <button 
+                        onClick={() => togglePin('redo')}
+                        className={`px-2 py-2 rounded transition text-sm ${pinnedItems.includes('redo') ? 'text-yellow-500 font-bold' : 'text-gray-400 hover:text-gray-600'}`}
+                        title={pinnedItems.includes('redo') ? 'Unpin' : 'Pin'}
+                      >
+                        {pinnedItems.includes('redo') ? '📍' : '📌'}
                       </button>
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* Data Section */}
+              {/* Data & Sync Section */}
               <div className="border-b border-gray-200 pb-2 mb-2">
                 <button
                   onClick={() => toggleMenu('data')}
                   className="w-full px-3 py-2 text-left font-semibold text-gray-700 hover:bg-gray-100 rounded flex items-center justify-between"
                 >
-                  <span>{showEmoji && '💾 '}Data</span>
+                  <span>{showEmoji && '💾 '}Data & Sync</span>
                   <span>{expandedMenus.has('data') ? '▼' : '▶'}</span>
                 </button>
                 {expandedMenus.has('data') && (
@@ -3918,24 +4024,40 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
                         {pinnedItems.includes('export-ics') ? '📍' : '📌'}
                       </button>
                     </div>
+                    {user && onShowProfile && (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => { onShowProfile(); isMobile && setShowMenu(false); }}
+                          className="flex-1 px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm text-left border border-gray-300"
+                        >
+                          {showEmoji && '💾 '}Backup & restore...
+                        </button>
+                      </div>
+                    )}
                     {user?.plan === 'premium' && (
                       <div className="space-y-1">
                         <div className="flex items-center gap-1">
                           <button 
                             onClick={() => { handleSyncNow(); isMobile && setShowMenu(false); }} 
                             disabled={syncing} 
-                            className={`flex-1 px-3 py-2 rounded transition text-sm disabled:opacity-50 text-left border ${
+                            className={`flex-1 px-3 py-2 rounded transition text-sm disabled:opacity-50 text-left border flex items-center gap-2 ${
                               syncSuccess 
                                 ? 'bg-green-100 text-green-800 hover:bg-green-200 border-green-300' 
                                 : 'bg-white text-gray-800 hover:bg-gray-100 border-gray-300'
                             }`}
                             title="Sync workspace to cloud"
                           >
+                            {(syncing || syncSuccess) && (
+                              <FontAwesomeIcon
+                                icon={faFloppyDisk}
+                                className="sync-icon-glow"
+                              />
+                            )}
                             {syncing 
-                              ? (showEmoji ? '🔄 Syncing...' : 'Syncing...') 
+                              ? (showEmoji ? 'Syncing...' : 'Syncing...') 
                               : syncSuccess 
-                                ? (showEmoji ? '✅ Synced!' : 'Synced!') 
-                                : (showEmoji ? '☁️ Sync Now' : 'Sync Now')
+                                ? (showEmoji ? 'Synced!' : 'Synced!') 
+                                : (showEmoji ? '☁️ Sync now' : 'Sync now')
                             }
                           </button>
                           <button 
@@ -3948,30 +4070,6 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
                         </div>
                       </div>
                     )}
-                    <div className="flex items-center gap-1">
-                      <button onClick={undo} disabled={historyIndex <= 0} className="flex-1 px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm disabled:opacity-30 disabled:cursor-not-allowed text-left border border-gray-300" title="Undo (Ctrl+Z)">
-                        {showEmoji && '↶ '}Undo
-                      </button>
-                      <button 
-                        onClick={() => togglePin('undo')}
-                        className={`px-2 py-2 rounded transition text-sm ${pinnedItems.includes('undo') ? 'text-yellow-500 font-bold' : 'text-gray-400 hover:text-gray-600'}`}
-                        title={pinnedItems.includes('undo') ? 'Unpin' : 'Pin'}
-                      >
-                        {pinnedItems.includes('undo') ? '📍' : '📌'}
-                      </button>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <button onClick={redo} disabled={historyIndex >= history.length - 1} className="flex-1 px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm disabled:opacity-30 disabled:cursor-not-allowed text-left border border-gray-300" title="Redo (Ctrl+Shift+Z / Ctrl+Y)">
-                        {showEmoji && '↷ '}Redo
-                      </button>
-                      <button 
-                        onClick={() => togglePin('redo')}
-                        className={`px-2 py-2 rounded transition text-sm ${pinnedItems.includes('redo') ? 'text-yellow-500 font-bold' : 'text-gray-400 hover:text-gray-600'}`}
-                        title={pinnedItems.includes('redo') ? 'Unpin' : 'Pin'}
-                      >
-                        {pinnedItems.includes('redo') ? '📍' : '📌'}
-                      </button>
-                    </div>
                   </div>
                 )}
               </div>
@@ -3987,6 +4085,13 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
                 </button>
                 {expandedMenus.has('help') && (
                   <div className="ml-2 space-y-1 mt-1">
+                    {onShowOnboarding && (
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => { onShowOnboarding(); isMobile && setShowMenu(false); }} className="flex-1 px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm text-left border border-gray-300">
+                          {showEmoji && '🎓 '}Tutorial / Onboarding
+                        </button>
+                      </div>
+                    )}
                     <div className="flex items-center gap-1">
                       <button onClick={() => { setShowManual(true); isMobile && setShowMenu(false); }} className="flex-1 px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm text-left border border-gray-300">
                         {showEmoji && '📖 '}Manual
@@ -4001,7 +4106,7 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
                     </div>
                     <div className="flex items-center gap-1">
                       <button onClick={() => { setShowBugReport(true); isMobile && setShowMenu(false); }} className="flex-1 px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm text-left border border-gray-300">
-                        {showEmoji && '🐛 '}Report Bug
+                        {showEmoji && '🐛 '}Report bug
                       </button>
                       <button 
                         onClick={() => togglePin('report-bug')}
@@ -4013,7 +4118,7 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
                     </div>
                     <div className="flex items-center gap-1">
                       <button onClick={() => { setShowFeatureRequest(true); isMobile && setShowMenu(false); }} className="flex-1 px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm text-left border border-gray-300">
-                        {showEmoji && '✨ '}Feature Request
+                        {showEmoji && '✨ '}Feature request
                       </button>
                       <button 
                         onClick={() => togglePin('feature-request')}
@@ -4023,6 +4128,35 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
                         {pinnedItems.includes('feature-request') ? '📍' : '📌'}
                       </button>
                     </div>
+                    {(onResetOnboarding || onEnableOnboardingAgain) && (
+                      <>
+                        <button
+                          onClick={() => toggleMenu('help-advanced')}
+                          className="w-full px-3 py-2 text-left text-xs font-semibold text-gray-500 hover:bg-gray-100 rounded flex items-center justify-between mt-2"
+                        >
+                          Advanced
+                          <span>{expandedMenus.has('help-advanced') ? '▼' : '▶'}</span>
+                        </button>
+                        {expandedMenus.has('help-advanced') && (
+                          <div className="ml-2 space-y-1 mt-1">
+                            {onResetOnboarding && (
+                              <div className="flex items-center gap-1">
+                                <button onClick={() => { onResetOnboarding(); isMobile && setShowMenu(false); }} className="flex-1 px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm text-left border border-gray-300">
+                                  {showEmoji && '🔄 '}Reset onboarding
+                                </button>
+                              </div>
+                            )}
+                            {onEnableOnboardingAgain && (
+                              <div className="flex items-center gap-1">
+                                <button onClick={() => { onEnableOnboardingAgain(); isMobile && setShowMenu(false); }} className="flex-1 px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm text-left border border-gray-300">
+                                  {showEmoji && '🎓 '}Enable onboarding again
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -4783,9 +4917,9 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
         <Statistics onClose={() => setShowStatistics(false)} />
       )}
 
-      {/* AI Chat */}
-      {showAIChat && (
-        <AIChat 
+      {/* AI Panel (Chat + History) */}
+      {showAIPanel && (
+        <AIPanel 
           workspace={{ tables, taskGroups, settings }}
           position={aiChatPosition}
           onPositionChange={setAiChatPosition}
@@ -4866,26 +5000,7 @@ export function Workspace({ onShowPremium }: WorkspaceProps) {
               saveSettings(updatedWorkspace.settings)
             }
           }}
-          onClose={() => setShowAIChat(false)}
-        />
-      )}
-
-      {/* AI History */}
-      {showAIHistory && (
-        <AIHistory 
-          workspace={{ tables, taskGroups, settings }}
-          onWorkspaceUpdate={(updatedWorkspace) => {
-            if (updatedWorkspace.tables) {
-              setTables(updatedWorkspace.tables)
-            }
-            if (updatedWorkspace.taskGroups) {
-              setTaskGroups(updatedWorkspace.taskGroups)
-            }
-            if (updatedWorkspace.settings) {
-              saveSettings(updatedWorkspace.settings)
-            }
-          }}
-          onClose={() => setShowAIHistory(false)}
+          onClose={() => setShowAIPanel(false)}
         />
       )}
 

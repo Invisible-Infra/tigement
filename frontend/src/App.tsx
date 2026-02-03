@@ -20,6 +20,8 @@ import { PremiumPage } from './components/premium/PremiumPage'
 import { ProfileMenu } from './components/ProfileMenu'
 import { AdminAnnouncement } from './components/AdminAnnouncement'
 import { OfflineBanner } from './components/OfflineBanner'
+import { WelcomeModal, TutorialWorkspace } from './components/onboarding'
+import { getOnboardingSeen, getOnboardingNeverShow, clearOnboardingSeen, clearOnboardingNeverShow } from './utils/onboardingStorage'
 
 function App() {
   return (
@@ -48,6 +50,9 @@ function AppContent() {
   const [migrationStatus, setMigrationStatus] = useState<any>(null)
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768)
   const [avatarLoadFailed, setAvatarLoadFailed] = useState(false)
+  const [showWelcomeModal, setShowWelcomeModal] = useState(false)
+  const [showTutorial, setShowTutorial] = useState(false)
+  const [tutorialStep, setTutorialStep] = useState(0)
 
   // Calculate days until premium expires
   const getDaysUntilExpiry = (expiresAt?: string): number | null => {
@@ -78,6 +83,13 @@ function AppContent() {
   useEffect(() => {
     setAvatarLoadFailed(false)
   }, [user?.profile_picture_url])
+
+  // First-run onboarding: show welcome modal if not seen and not disabled
+  useEffect(() => {
+    if (!getOnboardingSeen() && !getOnboardingNeverShow()) {
+      setShowWelcomeModal(true)
+    }
+  }, [])
 
   // Check for reset token in URL on mount
   useEffect(() => {
@@ -553,7 +565,25 @@ function AppContent() {
       <OfflineBanner isPremium={isPremium} onSync={syncNow} />
 
       <div className="flex-1 overflow-hidden">
-        <Workspace onShowPremium={() => setShowPremium(true)} />
+        <Workspace
+          onShowPremium={() => setShowPremium(true)}
+          onShowProfile={() => setShowProfile(true)}
+          onShowOnboarding={() => setShowWelcomeModal(true)}
+          onStartTutorial={() => {
+            setShowWelcomeModal(false)
+            setShowTutorial(true)
+            setTutorialStep(0)
+          }}
+          onResetOnboarding={() => {
+            clearOnboardingSeen()
+            setShowWelcomeModal(true)
+          }}
+          onEnableOnboardingAgain={() => {
+            clearOnboardingNeverShow()
+            clearOnboardingSeen()
+            setShowWelcomeModal(true)
+          }}
+        />
       </div>
 
       {showLogin && (
@@ -623,6 +653,26 @@ function AppContent() {
             console.log('⚠️ User skipped backup before migration')
           }}
           onComplete={handleMigrationComplete}
+        />
+      )}
+
+      {showWelcomeModal && (
+        <WelcomeModal
+          onClose={() => setShowWelcomeModal(false)}
+          onStartTutorial={() => {
+            setShowWelcomeModal(false)
+            setShowTutorial(true)
+            setTutorialStep(0)
+          }}
+        />
+      )}
+
+      {showTutorial && (
+        <TutorialWorkspace
+          step={tutorialStep}
+          onStepChange={setTutorialStep}
+          onFinish={() => setShowTutorial(false)}
+          isMobile={isMobile}
         />
       )}
 
