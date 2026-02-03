@@ -47,6 +47,7 @@ export function ProfileMenu({ onClose, showDecryptionWarning }: ProfileMenuProps
   const [icalEnabled, setIcalEnabled] = useState(false)
   const [icalUrl, setIcalUrl] = useState<string | null>(null)
   const [icalLoading, setIcalLoading] = useState(false)
+  const icalEnableInProgressRef = useRef(false)
   const customKeyInputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   
@@ -445,6 +446,10 @@ export function ProfileMenu({ onClose, showDecryptionWarning }: ProfileMenuProps
   }
 
   const handleEnableIcal = async () => {
+    // Prevent double submission (ref updates synchronously, before React re-render)
+    if (icalEnableInProgressRef.current) return
+    icalEnableInProgressRef.current = true
+
     // Show warning and get confirmation
     const confirmed = confirm(
       '⚠️ PRIVACY NOTICE:\n\n' +
@@ -454,7 +459,10 @@ export function ProfileMenu({ onClose, showDecryptionWarning }: ProfileMenuProps
       'Continue?'
     )
 
-    if (!confirmed) return
+    if (!confirmed) {
+      icalEnableInProgressRef.current = false
+      return
+    }
 
     setIcalLoading(true)
     
@@ -513,6 +521,8 @@ export function ProfileMenu({ onClose, showDecryptionWarning }: ProfileMenuProps
       setIcalLoading(false)
       console.error('❌ Enable iCal failed:', error)
       alert('Failed to enable iCal export:\n\n' + (error.message || error.error || 'Unknown error'))
+    } finally {
+      icalEnableInProgressRef.current = false
     }
   }
 

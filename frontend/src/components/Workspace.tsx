@@ -450,6 +450,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
   const spacesUpdateFromSettingsRef = useRef(false)
   const icalEnabledCache = useRef<boolean | null>(null) // null = unknown, true = enabled, false = disabled
   const lastIcalSyncTime = useRef<number>(0) // Timestamp of last sync to prevent concurrent syncs
+  const icalSyncInFlight = useRef<boolean>(false) // Prevents overlapping sync requests
   const [showSettings, setShowSettings] = useState(false)
   const [showTimer, setShowTimer] = useState(true)
   const [timerPosition, setTimerPosition] = useState(() => {
@@ -1719,11 +1720,26 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
 
     // Debounce: only sync after user stops editing for 3 seconds
     const timeoutId = setTimeout(async () => {
+      // Re-read localStorage to pick up syncs from ProfileMenu or other tabs
+      const storedLastSync = localStorage.getItem('tigement_last_ical_sync')
+      if (storedLastSync) {
+        const stored = parseInt(storedLastSync, 10)
+        if (stored > lastIcalSyncTime.current) {
+          lastIcalSyncTime.current = stored
+        }
+      }
+
       // Prevent syncs within 10 seconds of each other (avoid race conditions)
       const now = Date.now()
       const timeSinceLastSync = now - lastIcalSyncTime.current
       if (timeSinceLastSync < 10000) {
         console.log(`⏭️ Skipping iCal sync (last sync was ${Math.round(timeSinceLastSync / 1000)}s ago)`)
+        return
+      }
+
+      // Skip if another sync is already in progress
+      if (icalSyncInFlight.current) {
+        console.log('⏭️ Skipping iCal sync (already in progress)')
         return
       }
 
@@ -1734,11 +1750,16 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
           const syncTime = Date.now()
           lastIcalSyncTime.current = syncTime
           localStorage.setItem('tigement_last_ical_sync', syncTime.toString())
-          await api.syncCalendar(dayTables)
-          console.log('✅ Calendar events synced')
-          // Mark as enabled on successful sync
-          if (icalEnabledCache.current === null) {
-            icalEnabledCache.current = true
+          icalSyncInFlight.current = true
+          try {
+            await api.syncCalendar(dayTables)
+            console.log('✅ Calendar events synced')
+            // Mark as enabled on successful sync
+            if (icalEnabledCache.current === null) {
+              icalEnabledCache.current = true
+            }
+          } finally {
+            icalSyncInFlight.current = false
           }
         }
       } catch (error: any) {

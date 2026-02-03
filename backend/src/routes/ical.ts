@@ -133,6 +133,12 @@ router.post('/sync', authMiddleware, async (req: AuthRequest, res: Response) => 
     try {
       await client.query('BEGIN')
       
+      // Serialize sync per user to prevent duplicate inserts from concurrent requests
+      await client.query(
+        `SELECT pg_advisory_xact_lock(hashtext('ical_sync_' || $1::text))`,
+        [userId]
+      )
+      
       // Delete all existing calendar events for this user
       await client.query('DELETE FROM calendar_events WHERE user_id = $1', [userId])
 
@@ -306,6 +312,24 @@ router.post('/generate-token', authMiddleware, async (req: AuthRequest, res: Res
       url: `${baseUrl}/api/ical/${token}`
     })
   } catch (error: any) {
+    // Handle race: another request created the token (e.g. double-click)
+    if (error.code === '23505') {
+      const uid = req.user!.id
+      const existing = await query(
+        'SELECT token FROM ical_tokens WHERE user_id = $1',
+        [uid]
+      )
+      if (existing.rows.length > 0) {
+        let base = process.env.BACKEND_URL || process.env.FRONTEND_URL
+        if (!base) {
+          const protocol = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http')
+          const host = req.headers['x-forwarded-host'] || req.headers.host
+          base = `${protocol}://${host}`
+        }
+        const token = existing.rows[0].token
+        return res.json({ token, url: `${base}/api/ical/${token}` })
+      }
+    }
     console.error('Generate token error:', error)
     console.error('Error details:', {
       message: error.message,
