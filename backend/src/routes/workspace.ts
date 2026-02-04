@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { query } from '../db';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
+import { requireScopes } from '../middleware/scopes';
 
 const router = Router();
 
@@ -12,7 +13,7 @@ const saveWorkspaceSchema = z.object({
 });
 
 // Get workspace data
-router.get('/', authMiddleware, async (req: AuthRequest, res) => {
+router.get('/', authMiddleware, requireScopes('workspace:read'), async (req: AuthRequest, res) => {
   try {
     const result = await query(
       'SELECT encrypted_data, version, updated_at FROM workspaces WHERE user_id = $1',
@@ -36,14 +37,15 @@ router.get('/', authMiddleware, async (req: AuthRequest, res) => {
 });
 
 // Save workspace data (upsert)
-router.post('/', authMiddleware, async (req: AuthRequest, res) => {
+router.post('/', authMiddleware, requireScopes('workspace:write'), async (req: AuthRequest, res) => {
   try {
     const { encryptedData, version, clientId } = saveWorkspaceSchema.parse(req.body);
     
     // Validate encrypted data size (empty workspace still encrypts to ~200-300 bytes minimum)
     // Reject suspiciously small data that might indicate corruption or empty state
-    if (encryptedData.length < 100) {
-      console.error(`Invalid encrypted data size: ${encryptedData.length} bytes (too small)`)
+    const encryptedBytes = Buffer.byteLength(encryptedData, 'utf8');
+    if (encryptedBytes < 100) {
+      console.error(`Invalid encrypted data size: ${encryptedBytes} bytes (too small)`)
       return res.status(400).json({ 
         error: 'Invalid encrypted data: data size is too small. This might indicate corrupted or empty data.' 
       });
@@ -66,10 +68,18 @@ router.post('/', authMiddleware, async (req: AuthRequest, res) => {
         });
       }
       
-      await query(
-        'UPDATE workspaces SET encrypted_data = $1, version = $2, updated_at = NOW(), last_client_id = COALESCE($3, last_client_id) WHERE user_id = $4',
-        [encryptedData, version, clientId ?? null, req.user!.id]
+      const updateResult = await query(
+        'UPDATE workspaces SET encrypted_data = $1, version = $2, updated_at = NOW(), last_client_id = COALESCE($3, last_client_id) WHERE user_id = $4 AND version = $5',
+        [encryptedData, version, clientId ?? null, req.user!.id, currentVersion]
       );
+      
+      if (updateResult.rowCount === 0) {
+        return res.status(409).json({ 
+          error: 'Version conflict',
+          currentVersion,
+          message: 'Your local data is outdated. Please sync first.',
+        });
+      }
     } else {
       // Insert new
       await query(

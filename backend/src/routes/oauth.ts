@@ -14,6 +14,32 @@ const router = Router();
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
+// Track recently used OAuth authorization codes to avoid double-processing callbacks
+const usedOAuthCodes = new Map<string, number>();
+const OAUTH_CODE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+function markCodeUsed(code: string) {
+  const now = Date.now();
+  usedOAuthCodes.set(code, now);
+
+  // Clean up old codes
+  for (const [c, ts] of usedOAuthCodes.entries()) {
+    if (now - ts > OAUTH_CODE_TTL_MS) {
+      usedOAuthCodes.delete(c);
+    }
+  }
+}
+
+function isCodeUsed(code: string): boolean {
+  const ts = usedOAuthCodes.get(code);
+  if (!ts) return false;
+  if (Date.now() - ts > OAUTH_CODE_TTL_MS) {
+    usedOAuthCodes.delete(code);
+    return false;
+  }
+  return true;
+}
+
 /**
  * Get available OAuth providers
  * GET /api/auth/oauth/providers
@@ -74,6 +100,14 @@ router.get('/oauth/:provider', (req: Request, res: Response, next) => {
  */
 router.get('/oauth/:provider/callback', (req: Request, res: Response, next) => {
   const provider = req.params.provider;
+  const code = typeof req.query.code === 'string' ? req.query.code : undefined;
+
+  console.log('OAuth callback hit', { provider, code, url: req.originalUrl });
+
+  if (code && isCodeUsed(code)) {
+    console.warn(`⚠️ Duplicate OAuth callback ignored for ${provider} (code already used)`);
+    return res.redirect(`${FRONTEND_URL}/?oauth_error=oauth_code_reused`);
+  }
 
   passport.authenticate(provider, { session: false }, async (err: any, user: any) => {
     if (err) {
@@ -83,6 +117,10 @@ router.get('/oauth/:provider/callback', (req: Request, res: Response, next) => {
 
     if (!user) {
       return res.redirect(`${FRONTEND_URL}/?oauth_error=no_user`);
+    }
+
+    if (code) {
+      markCodeUsed(code);
     }
 
     try {
