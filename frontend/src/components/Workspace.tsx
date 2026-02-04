@@ -107,8 +107,7 @@ import {
   faUmbrella,
   faLeaf,
   faTree,
-  faMountain,
-  faFloppyDisk
+  faMountain
 } from '@fortawesome/free-solid-svg-icons'
 
 interface Task {
@@ -3656,17 +3655,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
                                 disabled={itemId === 'undo' && historyIndex <= 0 || itemId === 'redo' && historyIndex >= history.length - 1 || itemId === 'sync-now' && syncing}
                                 className={`flex-1 px-3 py-2 rounded transition text-sm text-left cursor-move flex items-center gap-2 ${config.className} disabled:opacity-30 disabled:cursor-not-allowed`}
                               >
-                                {itemId === 'sync-now' && (syncing || syncSuccess) ? (
-                                  <>
-                                    <FontAwesomeIcon
-                                      icon={faFloppyDisk}
-                                      className="sync-icon-glow"
-                                    />
-                                    <span>{config.label}</span>
-                                  </>
-                                ) : (
-                                  config.label
-                                )}
+                                {config.label}
                               </button>
                               <button 
                                 onClick={(e) => {
@@ -4068,12 +4057,6 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
                             }`}
                             title="Sync workspace to cloud"
                           >
-                            {(syncing || syncSuccess) && (
-                              <FontAwesomeIcon
-                                icon={faFloppyDisk}
-                                className="sync-icon-glow"
-                              />
-                            )}
                             {syncing 
                               ? (showEmoji ? 'Syncing...' : 'Syncing...') 
                               : syncSuccess 
