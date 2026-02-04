@@ -8,6 +8,7 @@ const router = Router();
 const saveWorkspaceSchema = z.object({
   encryptedData: z.string(),
   version: z.number().int().positive(),
+  clientId: z.string().max(255).optional(),
 });
 
 // Get workspace data
@@ -37,7 +38,7 @@ router.get('/', authMiddleware, async (req: AuthRequest, res) => {
 // Save workspace data (upsert)
 router.post('/', authMiddleware, async (req: AuthRequest, res) => {
   try {
-    const { encryptedData, version } = saveWorkspaceSchema.parse(req.body);
+    const { encryptedData, version, clientId } = saveWorkspaceSchema.parse(req.body);
     
     // Validate encrypted data size (empty workspace still encrypts to ~200-300 bytes minimum)
     // Reject suspiciously small data that might indicate corruption or empty state
@@ -66,14 +67,14 @@ router.post('/', authMiddleware, async (req: AuthRequest, res) => {
       }
       
       await query(
-        'UPDATE workspaces SET encrypted_data = $1, version = $2, updated_at = NOW() WHERE user_id = $3',
-        [encryptedData, version, req.user!.id]
+        'UPDATE workspaces SET encrypted_data = $1, version = $2, updated_at = NOW(), last_client_id = COALESCE($3, last_client_id) WHERE user_id = $4',
+        [encryptedData, version, clientId ?? null, req.user!.id]
       );
     } else {
       // Insert new
       await query(
-        'INSERT INTO workspaces (user_id, encrypted_data, version) VALUES ($1, $2, $3)',
-        [req.user!.id, encryptedData, version]
+        'INSERT INTO workspaces (user_id, encrypted_data, version, last_client_id) VALUES ($1, $2, $3, $4)',
+        [req.user!.id, encryptedData, version, clientId ?? null]
       );
     }
     
@@ -91,17 +92,18 @@ router.post('/', authMiddleware, async (req: AuthRequest, res) => {
 router.get('/version', authMiddleware, async (req: AuthRequest, res) => {
   try {
     const result = await query(
-      'SELECT version, updated_at FROM workspaces WHERE user_id = $1',
+      'SELECT version, updated_at, last_client_id FROM workspaces WHERE user_id = $1',
       [req.user!.id]
     );
     
     if (result.rows.length === 0) {
-      return res.json({ version: 0, updatedAt: null });
+      return res.json({ version: 0, updatedAt: null, lastClientId: null });
     }
     
     res.json({
       version: result.rows[0].version,
       updatedAt: result.rows[0].updated_at,
+      lastClientId: result.rows[0].last_client_id,
     });
   } catch (error) {
     console.error('Check version error:', error);

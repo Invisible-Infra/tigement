@@ -210,10 +210,10 @@ class ApiClient {
     return this.request('/workspace')
   }
 
-  async saveWorkspace(encryptedData: string, version: number): Promise<{ success: boolean; version: number }> {
+  async saveWorkspace(encryptedData: string, version: number, clientId?: string): Promise<{ success: boolean; version: number }> {
     return this.request('/workspace', {
       method: 'POST',
-      body: JSON.stringify({ encryptedData, version }),
+      body: JSON.stringify({ encryptedData, version, clientId }),
     })
   }
 

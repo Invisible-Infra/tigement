@@ -6,6 +6,7 @@
 import { api } from './api'
 import { encryptWorkspace, decryptWorkspace } from './encryption'
 import { encryptionKeyManager } from './encryptionKey'
+import { getSyncClientId } from './syncClientId'
 
 interface ConflictData {
   local: { tables: any[]; settings: any; archivedTables?: any[] }
@@ -146,8 +147,11 @@ class SyncManager {
   private focusDetectionSetup: boolean = false // Track if focus detection was setup
   private readonly VISIBLE_SYNC_INTERVAL = 10000 // 10 seconds when tab is visible
   private readonly HIDDEN_SYNC_INTERVAL = 60000 // 60 seconds when tab is hidden
+  private clientId: string
 
   constructor(config: SyncConfig = { autoSyncInterval: 60000 }) { // Default 1 minute
+    this.clientId = getSyncClientId()
+
     // Start with fast polling if tab is visible
     const initialInterval = document.visibilityState === 'visible' 
       ? 10000  // Fast polling when visible
@@ -616,7 +620,8 @@ class SyncManager {
       // Check remote version first (needed for both empty check and conflict detection)
       console.log('🌐 Checking remote version...')
       const remoteVersion = await api.getWorkspaceVersion()
-      console.log('📌 Remote version:', remoteVersion.version, 'Local version:', this.localVersion)
+      const remoteLastClientId = (remoteVersion as any).lastClientId ?? null
+      console.log('📌 Remote version:', remoteVersion.version, 'Local version:', this.localVersion, 'Last client:', remoteLastClientId)
       
       if (isEmptyData) {
         console.warn('⚠️ Local workspace data is empty (no tables or no meaningful content)')
@@ -672,8 +677,24 @@ class SyncManager {
       // Determine if we need to check for conflicts
       const remoteIsNewer = remoteVersion.version > this.localVersion
       const hasLocalChanges = this.localModified
+      const sameSource = remoteLastClientId != null && remoteLastClientId === this.clientId
 
       if (remoteIsNewer && hasLocalChanges) {
+        if (sameSource) {
+          console.log('✅ Remote is newer but last update came from this client – treating as linear update, pushing local without conflict dialog')
+          const targetVersion = remoteVersion.version + 1
+          await api.saveWorkspace(encryptedData, targetVersion, this.clientId)
+          this.updateLocalVersion(targetVersion)
+          this.localModified = false
+          this.lastSyncTime = new Date()
+          this.lastSyncDirection = 'uploaded'
+          syncSucceeded = true
+          this.config.onSyncSuccess?.()
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('tigement:sync-complete', { detail: { success: true } }))
+          }
+          return
+        }
         console.log('🔍 Potential conflict detected, fetching remote data for comparison...')
         
         // Fetch remote data for comparison
@@ -741,17 +762,21 @@ class SyncManager {
         console.log('🎯 Deep equality result:', isEqual)
         
         if (isEqual) {
-          console.log('✅ Data is identical (normalized) - pulling remote to stay in sync')
-          // Data is essentially the same, but pull remote to ensure perfect sync
-          // This handles cases where only UI fields (position) differ
-          await this.applyRemoteWorkspace(remoteWorkspace)
-          this.localModified = false
-          syncSucceeded = true
-          this.config.onSyncSuccess?.()
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('tigement:sync-complete', { detail: { success: true } }))
+          if (!hasLocalChanges || sameSource) {
+            console.log('✅ Data is identical (normalized) and safe to pull remote to stay in sync')
+            // Data is essentially the same, but pull remote to ensure perfect sync
+            // This handles cases where only UI fields (position) differ
+            await this.applyRemoteWorkspace(remoteWorkspace)
+            this.localModified = false
+            syncSucceeded = true
+            this.config.onSyncSuccess?.()
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('tigement:sync-complete', { detail: { success: true } }))
+            }
+            return
+          } else {
+            console.log('⚠️ Normalized data equal but localModified indicates newer edits – skipping auto-pull')
           }
-          return
         }
 
         // Auto-resolve: only diff is "remote task title empty, local non-empty" (user typed; remote had empty)
@@ -877,7 +902,7 @@ class SyncManager {
           const targetVersion = remoteVersion.version + 1
           console.log('⬆️ Pushing local changes (remote:', remoteVersion.version, '→', targetVersion, ')')
           console.log('📤 Attempting push to version:', targetVersion)
-          const response = await api.saveWorkspace(encryptedData, targetVersion)
+          const response = await api.saveWorkspace(encryptedData, targetVersion, this.clientId)
           // Only update local version after successful push
           this.updateLocalVersion(targetVersion)
           console.log('✅ Push completed!')
@@ -904,14 +929,12 @@ class SyncManager {
       }
     } catch (error: any) {
       console.error('❌ Sync failed:', error)
-      console.error('Error details:', error.message, error.response?.data)
+      console.error('Error details:', error.message, (error as any).response?.data)
       
       // If version conflict and not already retrying, retry once with fresh remote version
       if (error.message?.includes('Version conflict') && !isRetry) {
-        console.log('🔄 Version conflict detected, retrying with fresh remote version...')
-        // Reset syncing flag before retry
+        console.log('🔄 Version conflict detected, retrying with fresh remote version (single retry)')
         this.isSyncing = false
-        // Recursive call with retry flag
         return this.sync(true)
       }
       
