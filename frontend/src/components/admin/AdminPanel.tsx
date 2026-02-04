@@ -375,8 +375,20 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
   const loadUserStats = async (userId: number) => {
     setLoadingStats(true)
     try {
-      const stats = await api.getUserStats(userId)
-      setSelectedUserStats({ userId, ...stats })
+      const [stats, payments, coupons] = await Promise.all([
+        api.getUserStats(userId),
+        api.getUserPayments(userId),
+        api.getUserCouponsUsed(userId)
+      ])
+
+      setSelectedUserStats({
+        userId,
+        ...stats,
+        payments: payments.payments,
+        paymentSummary: payments.summary,
+        couponUsages: coupons.usages,
+        couponSummary: coupons.summary
+      })
     } catch (error: any) {
       alert(`Failed to load stats: ${error.message}`)
       setSelectedUserStats(null)
@@ -1462,6 +1474,191 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
                       ? formatDateWithSettings(selectedUserStats.last_usage)
                       : 'Never'}
                   </div>
+                </div>
+
+                {/* Payment summary & history */}
+                <div className="bg-gray-50 p-4 rounded">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <div className="text-sm text-gray-600 mb-1">Payments</div>
+                      <p className="text-xs text-gray-500">
+                        Includes payment and coupon history for this user.
+                      </p>
+                    </div>
+                    {selectedUserStats.paymentSummary && (
+                      <div className="text-right text-sm text-gray-700">
+                        <div>
+                          Total paid:{' '}
+                          <span className="font-semibold">
+                            {selectedUserStats.paymentSummary.currency || ''}{' '}
+                            {(selectedUserStats.paymentSummary.total_paid || 0).toFixed
+                              ? selectedUserStats.paymentSummary.total_paid.toFixed(2)
+                              : selectedUserStats.paymentSummary.total_paid || 0}
+                          </span>
+                        </div>
+                        {selectedUserStats.paymentSummary.last_payment_at && (
+                          <div>
+                            Last payment:{' '}
+                            {formatDateWithSettings(
+                              selectedUserStats.paymentSummary.last_payment_at
+                            )}
+                          </div>
+                        )}
+                        {selectedUserStats.paymentSummary.current_expires_at && (
+                          <div>
+                            Current expiry:{' '}
+                            {formatDateWithSettings(
+                              selectedUserStats.paymentSummary.current_expires_at
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {selectedUserStats.payments && selectedUserStats.payments.length > 0 ? (
+                    <div className="max-h-60 overflow-auto border border-gray-200 rounded">
+                      <table className="w-full text-xs">
+                        <thead className="bg-gray-100">
+                          <tr>
+                            <th className="px-2 py-1 text-left">Date</th>
+                            <th className="px-2 py-1 text-left">Method</th>
+                            <th className="px-2 py-1 text-left">Plan</th>
+                            <th className="px-2 py-1 text-right">Amount</th>
+                            <th className="px-2 py-1 text-left">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedUserStats.payments.slice(0, 10).map((p: any) => {
+                            const dateSource = p.paid_at || p.created_at
+                            const method =
+                              p.payment_method === 'btcpay'
+                                ? 'BTC Pay'
+                                : p.payment_method === 'stripe'
+                                ? 'Stripe'
+                                : p.payment_method === 'paypal'
+                                ? 'PayPal'
+                                : p.payment_method || 'Unknown'
+
+                            const amount =
+                              typeof p.amount === 'number'
+                                ? p.amount
+                                : parseFloat(p.amount || '0')
+
+                            return (
+                              <tr key={`${p.payment_method || 'pm'}-${p.invoice_id}`} className="border-t">
+                                <td className="px-2 py-1">
+                                  {dateSource
+                                    ? formatDateWithSettings(dateSource)
+                                    : 'N/A'}
+                                </td>
+                                <td className="px-2 py-1">{method}</td>
+                                <td className="px-2 py-1">{p.plan_type || 'N/A'}</td>
+                                <td className="px-2 py-1 text-right">
+                                  {p.currency || ''}{' '}
+                                  {isNaN(amount) ? '-' : amount.toFixed(2)}
+                                </td>
+                                <td className="px-2 py-1">
+                                  <span className="uppercase tracking-wide">
+                                    {p.status}
+                                  </span>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-gray-500">
+                      No payments yet for this user.
+                    </div>
+                  )}
+                </div>
+
+                {/* Coupon usage */}
+                <div className="bg-gray-50 p-4 rounded">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <div className="text-sm text-gray-600 mb-1">Coupon Usage</div>
+                      <p className="text-xs text-gray-500">
+                        Shows which coupons this user has redeemed.
+                      </p>
+                    </div>
+                    {selectedUserStats.couponSummary && (
+                      <div className="text-right text-sm text-gray-700">
+                        <div>
+                          Total used:{' '}
+                          <span className="font-semibold">
+                            {selectedUserStats.couponSummary.total_used || 0}
+                          </span>
+                        </div>
+                        {selectedUserStats.couponSummary.last_code && (
+                          <div>
+                            Last:{' '}
+                            <span className="font-mono">
+                              {selectedUserStats.couponSummary.last_code}
+                            </span>
+                          </div>
+                        )}
+                        {selectedUserStats.couponSummary.last_used_at && (
+                          <div>
+                            Used at:{' '}
+                            {formatDateWithSettings(
+                              selectedUserStats.couponSummary.last_used_at
+                            )}
+                          </div>
+                        )}
+                        {selectedUserStats.couponSummary.referral_allocation && (
+                          <div className="text-xs text-gray-500 mt-1">
+                            Referral allocation:{' '}
+                            {selectedUserStats.couponSummary.referral_allocation
+                              .claimed_coupons || 0}{' '}
+                            claimed /{' '}
+                            {selectedUserStats.couponSummary.referral_allocation
+                              .allocated_coupons || 0}{' '}
+                            allocated
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {selectedUserStats.couponUsages &&
+                  selectedUserStats.couponUsages.length > 0 ? (
+                    <div className="max-h-40 overflow-auto border border-gray-200 rounded">
+                      <table className="w-full text-xs">
+                        <thead className="bg-gray-100">
+                          <tr>
+                            <th className="px-2 py-1 text-left">Code</th>
+                            <th className="px-2 py-1 text-left">Discount</th>
+                            <th className="px-2 py-1 text-left">Used At</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedUserStats.couponUsages
+                            .slice(0, 20)
+                            .map((c: any) => (
+                              <tr key={c.id} className="border-t">
+                                <td className="px-2 py-1 font-mono">{c.code}</td>
+                                <td className="px-2 py-1">
+                                  {c.discount_percent}%{/* discount is per usage */}
+                                </td>
+                                <td className="px-2 py-1">
+                                  {c.used_at
+                                    ? formatDateWithSettings(c.used_at)
+                                    : 'N/A'}
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-gray-500">
+                      No coupons used by this user.
+                    </div>
+                  )}
                 </div>
               </div>
             )}

@@ -161,6 +161,14 @@ router.post('/activate-free', authMiddleware, async (req: AuthRequest, res: Resp
       [userId]
     )
 
+    console.log('Activate-free subscription lookup:', {
+      userId,
+      planType,
+      durationDays,
+      hasExisting: existingSubscription.rows.length > 0,
+      existingRow: existingSubscription.rows[0] || null,
+    })
+
     let expiresAt: Date
     if (existingSubscription.rows.length > 0 && existingSubscription.rows[0].expires_at) {
       const currentExpiry = new Date(existingSubscription.rows[0].expires_at)
@@ -172,6 +180,15 @@ router.post('/activate-free', authMiddleware, async (req: AuthRequest, res: Resp
       expiresAt = new Date(baseDate)
       expiresAt.setDate(expiresAt.getDate() + durationDays)
       
+      console.log('Activate-free extending existing subscription:', {
+        userId,
+        planType,
+        durationDays,
+        currentExpiry,
+        baseDate,
+        newExpiry: expiresAt,
+      })
+      
       // Update existing subscription
       await query(
         'UPDATE subscriptions SET plan = $1, status = $2, expires_at = $3, updated_at = NOW() WHERE user_id = $4',
@@ -182,8 +199,21 @@ router.post('/activate-free', authMiddleware, async (req: AuthRequest, res: Resp
       expiresAt = new Date()
       expiresAt.setDate(expiresAt.getDate() + durationDays)
       
+      console.log('Activate-free creating new subscription:', {
+        userId,
+        planType,
+        durationDays,
+        newExpiry: expiresAt,
+      })
+      
       await query(
-        'INSERT INTO subscriptions (user_id, plan, status, expires_at) VALUES ($1, $2, $3, $4)',
+        `INSERT INTO subscriptions (user_id, plan, status, expires_at)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (user_id) DO UPDATE
+         SET plan = EXCLUDED.plan,
+             status = EXCLUDED.status,
+             expires_at = EXCLUDED.expires_at,
+             updated_at = NOW()`,
         [userId, 'premium', 'active', expiresAt]
       )
     }
@@ -364,15 +394,26 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req: R
       return res.status(200).json({ success: true, message: 'Test webhook received' })
     }
 
-    // Get invoice from database
-    const invoiceResult = await query(
+    // Get invoice from database (BTCPay legacy table first, then multi-gateway table)
+    let invoiceResult = await query(
       'SELECT * FROM btcpay_invoices WHERE invoice_id = $1',
       [invoiceId]
     )
 
     if (invoiceResult.rows.length === 0) {
-      console.error('Invoice not found:', invoiceId)
-      return res.status(404).json({ error: 'Invoice not found' })
+      console.warn('Invoice not found in btcpay_invoices, trying payment_invoices...', { invoiceId })
+
+      const fallbackResult = await query(
+        'SELECT * FROM payment_invoices WHERE invoice_id = $1 AND payment_method = $2',
+        [invoiceId, 'btcpay']
+      )
+
+      if (fallbackResult.rows.length === 0) {
+        console.error('Invoice not found in either btcpay_invoices or payment_invoices:', invoiceId)
+        return res.status(404).json({ error: 'Invoice not found' })
+      }
+
+      invoiceResult = fallbackResult
     }
 
     const invoice = invoiceResult.rows[0]
@@ -433,6 +474,14 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req: R
         [invoice.user_id]
       )
 
+      console.log('BTCPay subscription lookup:', {
+        userId: invoice.user_id,
+        planType: invoice.plan_type,
+        durationDays,
+        hasExisting: existingSubscription.rows.length > 0,
+        existingRow: existingSubscription.rows[0] || null,
+      })
+
       let expiresAt: Date
       if (existingSubscription.rows.length > 0 && existingSubscription.rows[0].expires_at) {
         const currentExpiry = new Date(existingSubscription.rows[0].expires_at)
@@ -444,11 +493,14 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req: R
         expiresAt = new Date(baseDate)
         expiresAt.setDate(expiresAt.getDate() + durationDays)
         
-        console.log(`Extending premium for user ${invoice.user_id}`)
-        console.log(`  Plan type: ${invoice.plan_type}`)
-        console.log(`  Duration: ${durationDays} days`)
-        console.log(`  Current expiry: ${currentExpiry}`)
-        console.log(`  New expiry: ${expiresAt}`)
+        console.log('Extending premium for user (BTCPay):', {
+          userId: invoice.user_id,
+          planType: invoice.plan_type,
+          durationDays,
+          currentExpiry,
+          baseDate,
+          newExpiry: expiresAt,
+        })
         
         // Update existing subscription
         await query(
@@ -460,13 +512,21 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req: R
         expiresAt = new Date()
         expiresAt.setDate(expiresAt.getDate() + durationDays)
         
-        console.log(`Creating new premium subscription for user ${invoice.user_id}`)
-        console.log(`  Plan type: ${invoice.plan_type}`)
-        console.log(`  Duration: ${durationDays} days`)
-        console.log(`  Expires: ${expiresAt}`)
+        console.log('Creating new premium subscription (BTCPay):', {
+          userId: invoice.user_id,
+          planType: invoice.plan_type,
+          durationDays,
+          newExpiry: expiresAt,
+        })
         
         await query(
-          'INSERT INTO subscriptions (user_id, plan, status, expires_at) VALUES ($1, $2, $3, $4)',
+          `INSERT INTO subscriptions (user_id, plan, status, expires_at)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (user_id) DO UPDATE
+           SET plan = EXCLUDED.plan,
+               status = EXCLUDED.status,
+               expires_at = EXCLUDED.expires_at,
+               updated_at = NOW()`,
           [invoice.user_id, 'premium', 'active', expiresAt]
         )
       }
@@ -585,6 +645,14 @@ router.post('/stripe-webhook', express.raw({ type: 'application/json' }), async 
         [invoice.user_id]
       )
 
+      console.log('Stripe subscription lookup:', {
+        userId: invoice.user_id,
+        planType: invoice.plan_type,
+        durationDays,
+        hasExisting: existingSubscription.rows.length > 0,
+        existingRow: existingSubscription.rows[0] || null,
+      })
+
       let expiresAt: Date
       const now = new Date()
       
@@ -599,11 +667,14 @@ router.post('/stripe-webhook', express.raw({ type: 'application/json' }), async 
         expiresAt = new Date(baseDate)
         expiresAt.setDate(expiresAt.getDate() + durationDays)
         
-        console.log(`Extending premium for user ${invoice.user_id}`)
-        console.log(`  Plan type: ${invoice.plan_type}`)
-        console.log(`  Duration: ${durationDays} days`)
-        console.log(`  Current expiry: ${currentExpiry || 'none'}`)
-        console.log(`  New expiry: ${expiresAt}`)
+        console.log('Extending premium for user (Stripe):', {
+          userId: invoice.user_id,
+          planType: invoice.plan_type,
+          durationDays,
+          currentExpiry: currentExpiry || null,
+          baseDate,
+          newExpiry: expiresAt,
+        })
         
         // Update existing subscription
         await query(
@@ -615,13 +686,21 @@ router.post('/stripe-webhook', express.raw({ type: 'application/json' }), async 
         expiresAt = new Date()
         expiresAt.setDate(expiresAt.getDate() + durationDays)
         
-        console.log(`Creating new premium subscription for user ${invoice.user_id}`)
-        console.log(`  Plan type: ${invoice.plan_type}`)
-        console.log(`  Duration: ${durationDays} days`)
-        console.log(`  Expires: ${expiresAt}`)
+        console.log('Creating new premium subscription (Stripe):', {
+          userId: invoice.user_id,
+          planType: invoice.plan_type,
+          durationDays,
+          newExpiry: expiresAt,
+        })
         
         await query(
-          'INSERT INTO subscriptions (user_id, plan, status, expires_at) VALUES ($1, $2, $3, $4)',
+          `INSERT INTO subscriptions (user_id, plan, status, expires_at)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (user_id) DO UPDATE
+           SET plan = EXCLUDED.plan,
+               status = EXCLUDED.status,
+               expires_at = EXCLUDED.expires_at,
+               updated_at = NOW()`,
           [invoice.user_id, 'premium', 'active', expiresAt]
         )
       }
@@ -647,13 +726,23 @@ router.get('/status/:invoiceId', authMiddleware, async (req: AuthRequest, res: R
     const { invoiceId } = req.params
     const userId = req.user!.id
 
-    const result = await query(
+    let result = await query(
       'SELECT * FROM btcpay_invoices WHERE invoice_id = $1 AND user_id = $2',
       [invoiceId, userId]
     )
 
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Invoice not found' })
+      // Support invoices created via multi-gateway endpoint (payment_invoices)
+      const fallback = await query(
+        'SELECT * FROM payment_invoices WHERE invoice_id = $1 AND user_id = $2',
+        [invoiceId, userId]
+      )
+
+      if (fallback.rows.length === 0) {
+        return res.status(404).json({ error: 'Invoice not found' })
+      }
+
+      result = fallback
     }
 
     const invoice = result.rows[0]

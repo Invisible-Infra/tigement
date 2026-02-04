@@ -292,6 +292,14 @@ class ApiClient {
     return this.request(`/admin/users/${userId}/stats`)
   }
 
+  async getUserPayments(userId: number): Promise<{ payments: any[]; summary: any }> {
+    return this.request(`/admin/users/${userId}/payments`)
+  }
+
+  async getUserCouponsUsed(userId: number): Promise<{ usages: any[]; summary: any }> {
+    return this.request(`/admin/users/${userId}/coupons-used`)
+  }
+
   async deleteUser(userId: number): Promise<{ success: boolean, message: string }> {
     return this.request(`/admin/users/${userId}`, {
       method: 'DELETE',

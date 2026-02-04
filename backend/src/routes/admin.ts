@@ -678,6 +678,199 @@ router.get('/users/:id/stats', async (req: AuthRequest, res) => {
   }
 });
 
+// Get detailed payment history for a user (invoices across gateways)
+router.get('/users/:id/payments', async (req: AuthRequest, res) => {
+  try {
+    const userId = parseInt(req.params.id);
+
+    // Ensure user exists
+    const userCheck = await query('SELECT id FROM users WHERE id = $1', [userId]);
+    if (userCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // BTC Pay invoices (legacy table)
+    const btcpayResult = await query(
+      `SELECT 
+        invoice_id,
+        user_id,
+        status,
+        amount,
+        currency,
+        plan_type,
+        created_at,
+        paid_at,
+        'btcpay'::text AS payment_method
+       FROM btcpay_invoices
+       WHERE user_id = $1`,
+      [userId]
+    );
+
+    // Multi-gateway invoices (btcpay/stripe/paypal)
+    const multiResult = await query(
+      `SELECT 
+        invoice_id,
+        user_id,
+        status,
+        amount,
+        currency,
+        plan_type,
+        created_at,
+        paid_at,
+        payment_method
+       FROM payment_invoices
+       WHERE user_id = $1`,
+      [userId]
+    );
+
+    const rawPayments = [...btcpayResult.rows, ...multiResult.rows];
+
+    // Normalize and sort by created_at (desc)
+    const payments = rawPayments
+      .map((p) => ({
+        invoice_id: p.invoice_id,
+        user_id: p.user_id,
+        status: p.status,
+        amount: typeof p.amount === 'string' ? parseFloat(p.amount) : p.amount,
+        currency: p.currency,
+        plan_type: p.plan_type,
+        payment_method: p.payment_method,
+        created_at: p.created_at,
+        paid_at: p.paid_at,
+      }))
+      .sort((a, b) => {
+        const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return bTime - aTime;
+      });
+
+    // Compute payment aggregates
+    const successfulStatuses = new Set([
+      'paid',
+      'confirmed',
+      'InvoicePaymentSettled',
+      'InvoiceSettled',
+      'InvoiceProcessing',
+    ]);
+
+    let totalPaid = 0;
+    let currency: string | null = null;
+
+    for (const p of payments) {
+      if (successfulStatuses.has(p.status) && typeof p.amount === 'number') {
+        totalPaid += p.amount;
+        if (!currency && p.currency) {
+          currency = p.currency;
+        }
+      }
+    }
+
+    const lastPayment = payments.find(
+      (p) => p.paid_at || successfulStatuses.has(p.status)
+    );
+
+    // Subscription snapshot for extra context
+    const subscriptionResult = await query(
+      `SELECT plan, status, started_at, expires_at 
+       FROM subscriptions 
+       WHERE user_id = $1
+       ORDER BY updated_at DESC NULLS LAST, started_at DESC NULLS LAST
+       LIMIT 1`,
+      [userId]
+    );
+
+    const subscription = subscriptionResult.rows[0] || null;
+    const now = new Date();
+    const hasActiveSubscription =
+      subscription &&
+      subscription.plan === 'premium' &&
+      subscription.expires_at &&
+      new Date(subscription.expires_at) > now &&
+      subscription.status === 'active';
+
+    res.json({
+      payments,
+      summary: {
+        total_paid: totalPaid,
+        currency,
+        last_payment_at: lastPayment?.paid_at || lastPayment?.created_at || null,
+        last_method: lastPayment?.payment_method || null,
+        last_plan_type: lastPayment?.plan_type || null,
+        subscription_plan: subscription?.plan || null,
+        subscription_status: subscription?.status || null,
+        current_expires_at: subscription?.expires_at || null,
+        has_active_subscription: !!hasActiveSubscription,
+      },
+    });
+  } catch (error) {
+    console.error('Get user payments error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get coupon usage history for a user
+router.get('/users/:id/coupons-used', async (req: AuthRequest, res) => {
+  try {
+    const userId = parseInt(req.params.id);
+
+    // Ensure user exists
+    const userCheck = await query('SELECT id FROM users WHERE id = $1', [userId]);
+    if (userCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const usageResult = await query(
+      `SELECT 
+        cu.id,
+        cu.coupon_id,
+        cu.user_id,
+        cu.used_at,
+        c.code,
+        c.discount_percent,
+        c.valid_until,
+        c.max_uses
+       FROM coupon_usage cu
+       JOIN coupons c ON cu.coupon_id = c.id
+       WHERE cu.user_id = $1
+       ORDER BY cu.used_at DESC`,
+      [userId]
+    );
+
+    const usages = usageResult.rows;
+
+    const totalUsed = usages.length;
+    const lastUsage = usages[0] || null;
+
+    // Optional: referral coupon allocation snapshot
+    const allocationResult = await query(
+      `SELECT allocated_coupons, claimed_coupons 
+       FROM user_coupon_allocations 
+       WHERE user_id = $1`,
+      [userId]
+    );
+
+    const allocation = allocationResult.rows[0] || null;
+
+    res.json({
+      usages,
+      summary: {
+        total_used: totalUsed,
+        last_code: lastUsage?.code || null,
+        last_used_at: lastUsage?.used_at || null,
+        referral_allocation: allocation
+          ? {
+              allocated_coupons: allocation.allocated_coupons,
+              claimed_coupons: allocation.claimed_coupons,
+            }
+          : null,
+      },
+    });
+  } catch (error) {
+    console.error('Get user coupons-used error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Get dashboard stats
 router.get('/stats', async (req: AuthRequest, res) => {
   try {
