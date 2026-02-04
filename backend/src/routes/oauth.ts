@@ -15,29 +15,32 @@ const router = Router();
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
 // Track recently used OAuth authorization codes to avoid double-processing callbacks
-const usedOAuthCodes = new Map<string, number>();
+// Map from authorization code -> { token: string, ts: number }
+const usedOAuthCodes = new Map<string, { token: string; ts: number }>();
 const OAUTH_CODE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-function markCodeUsed(code: string) {
+function cleanupUsedOAuthCodes() {
   const now = Date.now();
-  usedOAuthCodes.set(code, now);
-
-  // Clean up old codes
-  for (const [c, ts] of usedOAuthCodes.entries()) {
-    if (now - ts > OAUTH_CODE_TTL_MS) {
-      usedOAuthCodes.delete(c);
+  for (const [code, entry] of usedOAuthCodes.entries()) {
+    if (now - entry.ts > OAUTH_CODE_TTL_MS) {
+      usedOAuthCodes.delete(code);
     }
   }
 }
 
-function isCodeUsed(code: string): boolean {
-  const ts = usedOAuthCodes.get(code);
-  if (!ts) return false;
-  if (Date.now() - ts > OAUTH_CODE_TTL_MS) {
+function setCodeToken(code: string, token: string) {
+  usedOAuthCodes.set(code, { token, ts: Date.now() });
+  cleanupUsedOAuthCodes();
+}
+
+function getCodeToken(code: string): string | null {
+  const entry = usedOAuthCodes.get(code);
+  if (!entry) return null;
+  if (Date.now() - entry.ts > OAUTH_CODE_TTL_MS) {
     usedOAuthCodes.delete(code);
-    return false;
+    return null;
   }
-  return true;
+  return entry.token;
 }
 
 /**
@@ -104,9 +107,12 @@ router.get('/oauth/:provider/callback', (req: Request, res: Response, next) => {
 
   console.log('OAuth callback hit', { provider, code, url: req.originalUrl });
 
-  if (code && isCodeUsed(code)) {
-    console.warn(`⚠️ Duplicate OAuth callback ignored for ${provider} (code already used)`);
-    return res.redirect(`${FRONTEND_URL}/?oauth_error=oauth_code_reused`);
+  if (code) {
+    const existingToken = getCodeToken(code);
+    if (existingToken) {
+      console.warn(`⚠️ Duplicate OAuth callback for ${provider} (code already used) – reusing cached token`);
+      return res.redirect(`${FRONTEND_URL}/?oauth_token=${existingToken}`);
+    }
   }
 
   passport.authenticate(provider, { session: false }, async (err: any, user: any) => {
@@ -117,10 +123,6 @@ router.get('/oauth/:provider/callback', (req: Request, res: Response, next) => {
 
     if (!user) {
       return res.redirect(`${FRONTEND_URL}/?oauth_error=no_user`);
-    }
-
-    if (code) {
-      markCodeUsed(code);
     }
 
     try {
@@ -141,6 +143,10 @@ router.get('/oauth/:provider/callback', (req: Request, res: Response, next) => {
         secret,
         { expiresIn: '5m' }
       );
+
+      if (code) {
+        setCodeToken(code, oauthToken);
+      }
 
       // Redirect to frontend with token
       res.redirect(`${FRONTEND_URL}/?oauth_token=${oauthToken}`);
