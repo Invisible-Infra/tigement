@@ -12,6 +12,26 @@ import { query } from '../db'
 
 const router = express.Router()
 
+// Helper: record coupon usage in a race-safe, idempotent way
+async function recordCouponUsage(couponId: number, userId: number) {
+  // Try to insert a usage row; ON CONFLICT ensures we never throw for duplicates
+  const insertResult = await query(
+    `INSERT INTO coupon_usage (coupon_id, user_id)
+     VALUES ($1, $2)
+     ON CONFLICT (coupon_id, user_id) DO NOTHING
+     RETURNING 1`,
+    [couponId, userId]
+  )
+
+  // Only increment current_uses when we actually inserted a new row
+  if (insertResult.rowCount && insertResult.rowCount > 0) {
+    await query(
+      `UPDATE coupons SET current_uses = current_uses + 1 WHERE id = $1`,
+      [couponId]
+    )
+  }
+}
+
 /**
  * GET /api/payment/plans
  * Get available subscription plans
@@ -218,16 +238,8 @@ router.post('/activate-free', authMiddleware, async (req: AuthRequest, res: Resp
       )
     }
 
-    // Track coupon usage
-    await query(
-      `INSERT INTO coupon_usage (coupon_id, user_id) VALUES ($1, $2)`,
-      [coupon.id, userId]
-    )
-
-    await query(
-      `UPDATE coupons SET current_uses = current_uses + 1 WHERE id = $1`,
-      [coupon.id]
-    )
+    // Track coupon usage (idempotent)
+    await recordCouponUsage(coupon.id, userId)
 
     console.log(`✅ Premium activated for free for user ${userId} (${userEmail}) until ${expiresAt} using 100% coupon`)
 
@@ -325,18 +337,9 @@ router.post('/create-invoice', authMiddleware, async (req: AuthRequest, res: Res
       [userId, invoice.id, invoice.status, finalAmount, plan?.currency || 'USD', planType, invoice.checkoutLink]
     )
 
-    // Track coupon usage if coupon was applied
+    // Track coupon usage if coupon was applied (idempotent, at invoice creation)
     if (couponId) {
-      await query(
-        `INSERT INTO coupon_usage (coupon_id, user_id) VALUES ($1, $2)`,
-        [couponId, userId]
-      )
-      
-      // Increment coupon usage count
-      await query(
-        `UPDATE coupons SET current_uses = current_uses + 1 WHERE id = $1`,
-        [couponId]
-      )
+      await recordCouponUsage(couponId, userId)
     }
 
     res.json({
@@ -531,6 +534,17 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req: R
         )
       }
 
+      // If invoice came from multi-gateway table and has coupon metadata, record usage
+      try {
+        const metadata = (invoice as any).metadata || {}
+        const couponId = metadata.couponId || metadata.coupon_id
+        if (couponId) {
+          await recordCouponUsage(Number(couponId), invoice.user_id)
+        }
+      } catch (couponError) {
+        console.error('BTCPay webhook coupon usage recording error:', couponError)
+      }
+
       console.log(`✅ Premium activated for user ${invoice.user_id} until ${expiresAt}`)
     } else {
       console.log(`⏳ Payment not yet confirmed. Event type: ${eventType}`)
@@ -705,6 +719,17 @@ router.post('/stripe-webhook', express.raw({ type: 'application/json' }), async 
         )
       }
 
+      // If a coupon was associated with this invoice, record its usage now (idempotent)
+      try {
+        const metadata = invoice.metadata || {}
+        const couponId = metadata.couponId || metadata.coupon_id
+        if (couponId) {
+          await recordCouponUsage(Number(couponId), invoice.user_id)
+        }
+      } catch (couponError) {
+        console.error('Stripe webhook coupon usage recording error:', couponError)
+      }
+
       console.log(`✅ Premium activated for user ${invoice.user_id} until ${expiresAt} via Stripe`)
     } else {
       console.log(`ℹ️  Unhandled Stripe event type: ${event.type}`)
@@ -826,7 +851,7 @@ router.post('/create-invoice-multi', authMiddleware, async (req: AuthRequest, re
       amount = (plans.premium_monthly?.amount || 9.99) * 6 * 0.85
     }
 
-    // Apply coupon discount
+    // Apply coupon discount (validation only - usage is recorded on successful payment)
     let couponId: number | null = null
     if (couponCode) {
       const couponResult = await query(
@@ -845,10 +870,20 @@ router.post('/create-invoice-multi', authMiddleware, async (req: AuthRequest, re
           [coupon.id, userId]
         )
 
-        if (isValid && usageResult.rows.length === 0) {
-          amount = amount * (1 - coupon.discount_percent / 100)
-          couponId = coupon.id
+        // If coupon is invalid or already used by this user, fail fast with a clear message
+        if (!isValid) {
+          return res.status(400).json({ error: 'Coupon is expired or has reached its maximum uses' })
         }
+
+        if (usageResult.rows.length > 0) {
+          return res.status(400).json({ error: 'You have already used this coupon' })
+        }
+
+        // Apply discount
+        amount = amount * (1 - coupon.discount_percent / 100)
+        couponId = coupon.id
+      } else {
+        return res.status(400).json({ error: 'Invalid coupon code' })
       }
     }
 
@@ -900,15 +935,13 @@ router.post('/create-invoice-multi', authMiddleware, async (req: AuthRequest, re
       [userId, invoiceId, invoice.status || 'new', amount, plan?.currency || 'USD', planType, checkoutUrl, paymentMethod, stripePaymentIntentId]
     )
 
-    // Track coupon usage if applied
+    // Attach coupon metadata to invoice if applied
     if (couponId) {
       await query(
-        `INSERT INTO coupon_usage (coupon_id, user_id) VALUES ($1, $2)`,
-        [couponId, userId]
-      )
-      await query(
-        `UPDATE coupons SET current_uses = current_uses + 1 WHERE id = $1`,
-        [couponId]
+        `UPDATE payment_invoices
+         SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{couponId}', to_jsonb($1::int), true)
+         WHERE invoice_id = $2`,
+        [couponId, invoiceId]
       )
     }
 
