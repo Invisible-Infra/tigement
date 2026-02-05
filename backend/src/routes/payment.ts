@@ -8,14 +8,15 @@ import { adminMiddleware } from '../middleware/admin'
 import { createInvoice, verifyWebhookSignature, getPlans } from '../services/btcpay'
 import { createCheckoutSession as createStripeSession, constructWebhookEvent } from '../services/stripe'
 import { createOrder as createPayPalOrder } from '../services/paypal'
-import { query } from '../db'
+import { query, withTransaction } from '../db'
+import type { PoolClient } from 'pg'
 
 const router = express.Router()
 
-// Helper: record coupon usage in a race-safe, idempotent way
-async function recordCouponUsage(couponId: number, userId: number) {
-  // Try to insert a usage row; ON CONFLICT ensures we never throw for duplicates
-  const insertResult = await query(
+// Helper: record coupon usage in a race-safe, idempotent way (optionally within a transaction)
+async function recordCouponUsage(couponId: number, userId: number, client?: PoolClient) {
+  const run = client ? (sql: string, params?: any[]) => client.query(sql, params) : query
+  const insertResult = await run(
     `INSERT INTO coupon_usage (coupon_id, user_id)
      VALUES ($1, $2)
      ON CONFLICT (coupon_id, user_id) DO NOTHING
@@ -23,12 +24,8 @@ async function recordCouponUsage(couponId: number, userId: number) {
     [couponId, userId]
   )
 
-  // Only increment current_uses when we actually inserted a new row
   if (insertResult.rowCount && insertResult.rowCount > 0) {
-    await query(
-      `UPDATE coupons SET current_uses = current_uses + 1 WHERE id = $1`,
-      [couponId]
-    )
+    await run(`UPDATE coupons SET current_uses = current_uses + 1 WHERE id = $1`, [couponId])
   }
 }
 
@@ -36,12 +33,14 @@ async function recordCouponUsage(couponId: number, userId: number) {
  * GET /api/payment/plans
  * Get available subscription plans
  */
+const roundCurrency = (n: number) => Math.round(n * 100) / 100
+
 router.get('/plans', async (req: Request, res: Response) => {
   try {
     const plans = await getPlans()
-    const monthly = plans.premium_monthly?.amount || 9.99
-    const halfYearly = (monthly * 6 * 0.85) // Calculated: 15% discount
-    const yearly = plans.premium_yearly?.amount || 99.99
+    const monthly = roundCurrency(plans.premium_monthly?.amount || 9.99)
+    const halfYearly = roundCurrency((monthly * 6 * 0.85)) // Calculated: 15% discount
+    const yearly = roundCurrency(plans.premium_yearly?.amount || 99.99)
     
     res.json({
       monthly,
@@ -175,73 +174,42 @@ router.post('/activate-free', authMiddleware, async (req: AuthRequest, res: Resp
       durationDays = 30
     }
 
-    // Check if subscription exists and get current expiration
-    const existingSubscription = await query(
-      'SELECT * FROM subscriptions WHERE user_id = $1',
-      [userId]
-    )
+    // Run subscription update + coupon usage in a single transaction
+    const expiresAt = await withTransaction(async (client) => {
+      const existingSubscription = await client.query(
+        'SELECT * FROM subscriptions WHERE user_id = $1',
+        [userId]
+      )
 
-    console.log('Activate-free subscription lookup:', {
-      userId,
-      planType,
-      durationDays,
-      hasExisting: existingSubscription.rows.length > 0,
-      existingRow: existingSubscription.rows[0] || null,
+      let exp: Date
+      if (existingSubscription.rows.length > 0 && existingSubscription.rows[0].expires_at) {
+        const currentExpiry = new Date(existingSubscription.rows[0].expires_at)
+        const now = new Date()
+        const baseDate = currentExpiry > now ? currentExpiry : now
+        exp = new Date(baseDate)
+        exp.setDate(exp.getDate() + durationDays)
+        await client.query(
+          'UPDATE subscriptions SET plan = $1, status = $2, expires_at = $3, updated_at = NOW() WHERE user_id = $4',
+          ['premium', 'active', exp, userId]
+        )
+      } else {
+        exp = new Date()
+        exp.setDate(exp.getDate() + durationDays)
+        await client.query(
+          `INSERT INTO subscriptions (user_id, plan, status, expires_at)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (user_id) DO UPDATE
+           SET plan = EXCLUDED.plan,
+               status = EXCLUDED.status,
+               expires_at = EXCLUDED.expires_at,
+               updated_at = NOW()`,
+          [userId, 'premium', 'active', exp]
+        )
+      }
+
+      await recordCouponUsage(coupon.id, userId, client)
+      return exp
     })
-
-    let expiresAt: Date
-    if (existingSubscription.rows.length > 0 && existingSubscription.rows[0].expires_at) {
-      const currentExpiry = new Date(existingSubscription.rows[0].expires_at)
-      const now = new Date()
-      
-      // If current expiration is in the future, extend from that date
-      // Otherwise, extend from now
-      const baseDate = currentExpiry > now ? currentExpiry : now
-      expiresAt = new Date(baseDate)
-      expiresAt.setDate(expiresAt.getDate() + durationDays)
-      
-      console.log('Activate-free extending existing subscription:', {
-        userId,
-        planType,
-        durationDays,
-        currentExpiry,
-        baseDate,
-        newExpiry: expiresAt,
-      })
-      
-      // Update existing subscription
-      await query(
-        'UPDATE subscriptions SET plan = $1, status = $2, expires_at = $3, updated_at = NOW() WHERE user_id = $4',
-        ['premium', 'active', expiresAt, userId]
-      )
-    } else {
-      // New subscription - set expiration from now
-      expiresAt = new Date()
-      expiresAt.setDate(expiresAt.getDate() + durationDays)
-      
-      console.log('Activate-free creating new subscription:', {
-        userId,
-        planType,
-        durationDays,
-        newExpiry: expiresAt,
-      })
-      
-      await query(
-        `INSERT INTO subscriptions (user_id, plan, status, expires_at)
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (user_id) DO UPDATE
-         SET plan = EXCLUDED.plan,
-             status = EXCLUDED.status,
-             expires_at = EXCLUDED.expires_at,
-             updated_at = NOW()`,
-        [userId, 'premium', 'active', expiresAt]
-      )
-    }
-
-    // Track coupon usage (idempotent)
-    await recordCouponUsage(coupon.id, userId)
-
-    console.log(`✅ Premium activated for free for user ${userId} (${userEmail}) until ${expiresAt} using 100% coupon`)
 
     res.json({
       success: true,
@@ -315,32 +283,32 @@ router.post('/create-invoice', authMiddleware, async (req: AuthRequest, res: Res
     const plans = await getPlans()
     const plan = plans[backendPlanType as keyof typeof plans]
     
-    // Calculate final amount with discount
-    let amount = plan?.amount
-    let duration = plan?.duration
-    
-    if (!amount && planType === 'half-yearly') {
+    // Calculate final amount with discount (half-yearly: explicit amount/duration)
+    let amount: number
+    const currency = plan?.currency || 'USD'
+    if (planType === 'half-yearly') {
       amount = (plans.premium_monthly?.amount || 9.99) * 6 * 0.85 // 15% discount
-      duration = 180 // days
+    } else {
+      amount = plan?.amount ?? 9.99
     }
 
     // Apply coupon discount
-    const finalAmount = amount! * (1 - discountPercent / 100)
+    const finalAmount = roundCurrency(amount * (1 - discountPercent / 100))
+
+    if (finalAmount <= 0) {
+      return res.status(400).json({ error: 'Invalid amount after discount. Use /activate-free for 100% coupons.' })
+    }
 
     // Create invoice in BTC Pay with discounted price
     const invoice = await createInvoice(userId, userEmail, backendPlanType, finalAmount)
 
-    // Save invoice to database
+    // Save invoice to database (payment_invoices for metadata; webhook records coupon usage)
+    const metadata = couponId ? { couponId } : {}
     await query(
-      `INSERT INTO btcpay_invoices (user_id, invoice_id, status, amount, currency, plan_type, checkout_url, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW() + INTERVAL '1 hour')`,
-      [userId, invoice.id, invoice.status, finalAmount, plan?.currency || 'USD', planType, invoice.checkoutLink]
+      `INSERT INTO payment_invoices (user_id, invoice_id, status, amount, currency, plan_type, checkout_url, payment_method, metadata, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'btcpay', $8, NOW() + INTERVAL '1 hour')`,
+      [userId, invoice.id, invoice.status, finalAmount, currency, planType, invoice.checkoutLink, JSON.stringify(metadata)]
     )
-
-    // Track coupon usage if coupon was applied (idempotent, at invoice creation)
-    if (couponId) {
-      await recordCouponUsage(couponId, userId)
-    }
 
     res.json({
       invoiceId: invoice.id,
@@ -398,25 +366,27 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req: R
     }
 
     // Get invoice from database (BTCPay legacy table first, then multi-gateway table)
-    let invoiceResult = await query(
+    const btcpayResult = await query(
       'SELECT * FROM btcpay_invoices WHERE invoice_id = $1',
       [invoiceId]
     )
 
-    if (invoiceResult.rows.length === 0) {
-      console.warn('Invoice not found in btcpay_invoices, trying payment_invoices...', { invoiceId })
-
+    let invoiceResult: { rows: any[] }
+    let sourceTable: 'btcpay_invoices' | 'payment_invoices'
+    if (btcpayResult.rows.length > 0) {
+      invoiceResult = btcpayResult
+      sourceTable = 'btcpay_invoices'
+    } else {
       const fallbackResult = await query(
         'SELECT * FROM payment_invoices WHERE invoice_id = $1 AND payment_method = $2',
         [invoiceId, 'btcpay']
       )
-
       if (fallbackResult.rows.length === 0) {
         console.error('Invoice not found in either btcpay_invoices or payment_invoices:', invoiceId)
         return res.status(404).json({ error: 'Invoice not found' })
       }
-
       invoiceResult = fallbackResult
+      sourceTable = 'payment_invoices'
     }
 
     const invoice = invoiceResult.rows[0]
@@ -428,29 +398,24 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req: R
       'InvoiceSettled'           // Older BTCPay versions
     ].includes(eventType)
 
-    console.log(`Payment confirmed: ${paymentConfirmed}`)
-    console.log(`Current invoice status in DB: ${invoice.status}`)
-
-    // Check if this invoice has already been processed (idempotency)
-    const alreadyProcessed = invoice.paid_at !== null || 
-      ['InvoicePaymentSettled', 'InvoiceProcessing', 'InvoiceSettled'].includes(invoice.status)
-
-    if (alreadyProcessed && paymentConfirmed) {
-      console.log(`⏭️  Invoice ${invoiceId} already processed. Skipping duplicate webhook.`)
-      return res.json({ received: true, message: 'Already processed' })
-    }
-
-    // Update invoice status in database
+    // Atomic update: only update if paid_at IS NULL to prevent duplicate processing
+    let updateRowCount = 0
     if (paymentConfirmed) {
-      await query(
-        'UPDATE btcpay_invoices SET status = $1, paid_at = NOW() WHERE invoice_id = $2',
+      const updateResult = await query(
+        `UPDATE ${sourceTable} SET status = $1, paid_at = NOW() WHERE invoice_id = $2 AND paid_at IS NULL`,
         [eventType, invoiceId]
       )
+      updateRowCount = updateResult.rowCount ?? 0
     } else {
       await query(
-        'UPDATE btcpay_invoices SET status = $1 WHERE invoice_id = $2',
+        `UPDATE ${sourceTable} SET status = $1 WHERE invoice_id = $2`,
         [eventType, invoiceId]
       )
+    }
+
+    // If payment confirmed but update affected 0 rows, already processed - skip subscription
+    if (paymentConfirmed && updateRowCount === 0) {
+      return res.json({ received: true, message: 'Already processed' })
     }
 
     // If payment is confirmed, activate premium
@@ -623,18 +588,15 @@ router.post('/stripe-webhook', express.raw({ type: 'application/json' }), async 
 
       const invoice = invoiceResult.rows[0]
 
-      // Check if this invoice has already been processed (idempotency)
-      // But we still need to ensure the subscription is updated
-      const alreadyProcessed = invoice.paid_at !== null
-      
-      if (!alreadyProcessed) {
-        // Update invoice status in database
-        await query(
-          'UPDATE payment_invoices SET status = $1, paid_at = NOW() WHERE invoice_id = $2',
-          ['paid', sessionId]
-        )
-      } else {
-        console.log(`⏭️  Invoice ${sessionId} already marked as paid. Checking subscription status...`)
+      // Atomic update: only update if paid_at IS NULL to prevent duplicate webhook processing
+      const updateResult = await query(
+        'UPDATE payment_invoices SET status = $1, paid_at = NOW() WHERE invoice_id = $2 AND payment_method = $3 AND paid_at IS NULL',
+        ['paid', sessionId, 'stripe']
+      )
+      const updateRowCount = updateResult.rowCount ?? 0
+
+      if (updateRowCount === 0) {
+        return res.json({ received: true, message: 'Already processed' })
       }
 
       // Calculate subscription duration based on plan type
@@ -895,6 +857,19 @@ router.post('/create-invoice-multi', authMiddleware, async (req: AuthRequest, re
     }
 
     amount = Math.max(0, amount)
+
+    // $0 after discounts: use activate-free instead of creating payment
+    if (amount === 0) {
+      if (couponCode && couponId) {
+        return res.status(200).json({
+          useActivateFree: true,
+          message: 'Amount is zero. Call POST /api/payment/activate-free with planType and couponCode.',
+          planType,
+          couponCode
+        })
+      }
+      return res.status(400).json({ error: 'Invalid amount. Zero or negative total requires a valid coupon for free activation.' })
+    }
 
     // Create invoice based on payment method
     let invoice: any

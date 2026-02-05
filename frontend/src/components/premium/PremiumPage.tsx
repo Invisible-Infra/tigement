@@ -215,7 +215,19 @@ export function PremiumPage({ onClose }: PremiumPageProps) {
           selectedPaymentMethod,
           couponDiscount ? couponCode.trim() : undefined
         )
-        
+
+        // $0 after discounts: backend says use activate-free
+        if (invoice?.useActivateFree && invoice?.couponCode) {
+          const result = await api.activateFreePremium(invoice.planType, invoice.couponCode)
+          if (result.success) {
+            alert('✅ ' + result.message + ' Refreshing page...')
+            window.location.reload()
+          } else {
+            setError('Failed to activate premium')
+          }
+          return
+        }
+
         // Open payment checkout in new tab
         window.open(invoice.checkoutUrl, '_blank')
         

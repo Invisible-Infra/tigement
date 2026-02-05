@@ -1490,10 +1490,18 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
                         <div>
                           Total paid:{' '}
                           <span className="font-semibold">
-                            {selectedUserStats.paymentSummary.currency || ''}{' '}
-                            {(selectedUserStats.paymentSummary.total_paid || 0).toFixed
-                              ? selectedUserStats.paymentSummary.total_paid.toFixed(2)
-                              : selectedUserStats.paymentSummary.total_paid || 0}
+                            {selectedUserStats.paymentSummary.totals_by_currency
+                              ? Object.entries(
+                                  selectedUserStats.paymentSummary.totals_by_currency
+                                )
+                                  .map(
+                                    ([curr, amt]) =>
+                                      `${curr} ${Number(amt).toFixed(2)}`
+                                  )
+                                  .join(', ') || '0.00'
+                              : `${selectedUserStats.paymentSummary.currency || ''} ${(
+                                  selectedUserStats.paymentSummary.total_paid || 0
+                                ).toFixed(2)}`}
                           </span>
                         </div>
                         {selectedUserStats.paymentSummary.last_payment_at && (

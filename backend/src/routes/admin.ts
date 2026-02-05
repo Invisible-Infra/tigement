@@ -6,6 +6,17 @@ import { adminMiddleware } from '../middleware/admin';
 
 const router = Router();
 
+/** Add months to a date, preserving end-of-month when overflow would occur (e.g. Jan 31 + 1 month -> Feb 28) */
+function addMonthsSafe(date: Date, months: number): Date {
+  const result = new Date(date);
+  const day = result.getDate();
+  result.setMonth(result.getMonth() + months);
+  if (result.getDate() !== day) {
+    result.setDate(0); // Roll back to last day of previous month
+  }
+  return result;
+}
+
 // Apply auth and admin middleware to all routes
 router.use(authMiddleware);
 router.use(adminMiddleware);
@@ -269,8 +280,7 @@ router.put('/users/:id/premium', async (req: AuthRequest, res) => {
 
     if (premium) {
       // Grant premium
-      const expiresAt = new Date();
-      expiresAt.setMonth(expiresAt.getMonth() + months);
+      const expiresAt = addMonthsSafe(new Date(), months);
 
       await query(
         `INSERT INTO subscriptions (user_id, plan, status, expires_at)
@@ -744,7 +754,7 @@ router.get('/users/:id/payments', async (req: AuthRequest, res) => {
         return bTime - aTime;
       });
 
-    // Compute payment aggregates
+    // Compute payment aggregates per currency
     const successfulStatuses = new Set([
       'paid',
       'confirmed',
@@ -753,15 +763,11 @@ router.get('/users/:id/payments', async (req: AuthRequest, res) => {
       'InvoiceProcessing',
     ]);
 
-    let totalPaid = 0;
-    let currency: string | null = null;
-
+    const totalsByCurrency: Record<string, number> = {};
     for (const p of payments) {
       if (successfulStatuses.has(p.status) && typeof p.amount === 'number') {
-        totalPaid += p.amount;
-        if (!currency && p.currency) {
-          currency = p.currency;
-        }
+        const key = p.currency || 'UNKNOWN';
+        totalsByCurrency[key] = (totalsByCurrency[key] || 0) + p.amount;
       }
     }
 
@@ -791,8 +797,7 @@ router.get('/users/:id/payments', async (req: AuthRequest, res) => {
     res.json({
       payments,
       summary: {
-        total_paid: totalPaid,
-        currency,
+        totals_by_currency: totalsByCurrency,
         last_payment_at: lastPayment?.paid_at || lastPayment?.created_at || null,
         last_method: lastPayment?.payment_method || null,
         last_plan_type: lastPayment?.plan_type || null,
@@ -1038,7 +1043,8 @@ router.get('/migration-check', async (req: AuthRequest, res) => {
       `)
       notebooksUsers = result.rows.map(r => r.user_id)
     } catch (error: any) {
-      if (!error.message.includes('column') && !error.message.includes('does not exist')) {
+      const code = (error as { code?: string }).code;
+      if (code !== '42703' && code !== '42P01') {
         throw error
       }
     }
@@ -1052,7 +1058,8 @@ router.get('/migration-check', async (req: AuthRequest, res) => {
       `)
       diariesUsers = result.rows.map(r => r.user_id)
     } catch (error: any) {
-      if (!error.message.includes('column') && !error.message.includes('does not exist')) {
+      const code = (error as { code?: string }).code;
+      if (code !== '42703' && code !== '42P01') {
         throw error
       }
     }
@@ -1066,26 +1073,43 @@ router.get('/migration-check', async (req: AuthRequest, res) => {
       `)
       archivesUsers = result.rows.map(r => r.user_id)
     } catch (error: any) {
-      if (!error.message.includes('column') && !error.message.includes('does not exist')) {
+      const code = (error as { code?: string }).code;
+      if (code !== '42703' && code !== '42P01') {
         throw error
       }
     }
 
-    // Get total counts
-    const totalNotebooks = await query(`
-      SELECT COUNT(*) as count FROM notebooks 
-      WHERE content IS NOT NULL AND content != ''
-    `).catch(() => ({ rows: [{ count: 0 }] }))
-
-    const totalDiaries = await query(`
-      SELECT COUNT(*) as count FROM diary_entries 
-      WHERE content IS NOT NULL AND content != ''
-    `).catch(() => ({ rows: [{ count: 0 }] }))
-
-    const totalArchives = await query(`
-      SELECT COUNT(*) as count FROM archived_tables 
-      WHERE table_data IS NOT NULL
-    `).catch(() => ({ rows: [{ count: 0 }] }))
+    // Get total counts (propagate DB errors; only schema errors are swallowed above)
+    let totalNotebooks: { rows: { count: string }[] }
+    let totalDiaries: { rows: { count: string }[] }
+    let totalArchives: { rows: { count: string }[] }
+    try {
+      totalNotebooks = await query(`
+        SELECT COUNT(*) as count FROM notebooks 
+        WHERE content IS NOT NULL AND content != ''
+      `)
+    } catch (err) {
+      console.error('Migration check: totalNotebooks query failed', err)
+      throw err
+    }
+    try {
+      totalDiaries = await query(`
+        SELECT COUNT(*) as count FROM diary_entries 
+        WHERE content IS NOT NULL AND content != ''
+      `)
+    } catch (err) {
+      console.error('Migration check: totalDiaries query failed', err)
+      throw err
+    }
+    try {
+      totalArchives = await query(`
+        SELECT COUNT(*) as count FROM archived_tables 
+        WHERE table_data IS NOT NULL
+      `)
+    } catch (err) {
+      console.error('Migration check: totalArchives query failed', err)
+      throw err
+    }
 
     // Combine all users
     const allUsersSet = new Set([...notebooksUsers, ...diariesUsers, ...archivesUsers])
