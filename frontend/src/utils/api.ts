@@ -4,6 +4,17 @@
 
 const API_BASE = '/api'
 
+/** Thrown when saveWorkspace gets 409 - includes currentVersion for smarter retries */
+export class VersionConflictError extends Error {
+  constructor(
+    message: string,
+    public readonly currentVersion: number
+  ) {
+    super(message)
+    this.name = 'VersionConflictError'
+  }
+}
+
 export interface User {
   id: number
   email: string
@@ -110,6 +121,12 @@ class ApiClient {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Unknown error' }))
+      if (response.status === 409 && typeof (error as any).currentVersion === 'number') {
+        throw new VersionConflictError(
+          error.error || 'Version conflict',
+          (error as any).currentVersion
+        )
+      }
       throw new Error(error.error || `HTTP error! status: ${response.status}`)
     }
 

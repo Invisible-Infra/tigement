@@ -3,7 +3,7 @@
  * Syncs local workspace to backend with encryption for premium users
  */
 
-import { api } from './api'
+import { api, VersionConflictError } from './api'
 import { encryptWorkspace, decryptWorkspace } from './encryption'
 import { encryptionKeyManager } from './encryptionKey'
 import { getSyncClientId } from './syncClientId'
@@ -552,11 +552,15 @@ class SyncManager {
     }, durationMs)
   }
 
+  private readonly VERSION_CONFLICT_MAX_RETRIES = 5
+  private readonly VERSION_CONFLICT_RETRY_DELAY_MS = 200
+  private readonly VERSION_CONFLICT_RETRY_DELAY_JITTER_MS = 200
+
   /**
    * Manually trigger sync
    */
-  async sync(isRetry: boolean = false): Promise<void> {
-    console.log(isRetry ? '🔄 Retrying sync operation...' : '🔄 Starting sync operation...')
+  async sync(isRetry: boolean = false, retryCount: number = 0): Promise<void> {
+    console.log(isRetry ? `🔄 Retrying sync operation (attempt ${retryCount + 1}/${this.VERSION_CONFLICT_MAX_RETRIES + 1})...` : '🔄 Starting sync operation...')
     
     if (this.isSyncing) {
       console.log('⏭️ Sync already in progress, skipping')
@@ -602,6 +606,7 @@ class SyncManager {
       console.log('🔄 Cleared pending debounce timer')
     }
 
+    let encryptedData: string | null = null
     try {
       // Get local workspace data (always fresh from localStorage)
       console.log('📂 Getting local workspace data...')
@@ -652,7 +657,7 @@ class SyncManager {
 
       // Encrypt data
       console.log('🔒 Encrypting workspace data...')
-      const encryptedData = await encryptWorkspace(localData, encryptionKey)
+      encryptedData = await encryptWorkspace(localData, encryptionKey)
       console.log('✅ Data encrypted successfully')
 
       console.log('📊 Has local changes:', this.localModified)
@@ -931,13 +936,50 @@ class SyncManager {
       console.error('❌ Sync failed:', error)
       console.error('Error details:', error.message, (error as any).response?.data)
       
-      // If version conflict and not already retrying, retry once with fresh remote version
-      if (error.message?.includes('Version conflict') && !isRetry) {
-        console.log('🔄 Version conflict detected, retrying with fresh remote version (single retry)')
-        this.isSyncing = false
-        return this.sync(true)
+      const isVersionConflict = error.message?.includes('Version conflict') || error instanceof VersionConflictError
+      const versionConflictError = error instanceof VersionConflictError ? error : null
+
+      // Fast retry: when we have currentVersion from 409, push directly without full sync
+      if (versionConflictError && encryptedData && retryCount < this.VERSION_CONFLICT_MAX_RETRIES) {
+        const targetVersion = versionConflictError.currentVersion + 1
+        console.log(`🔄 Fast retry: pushing with currentVersion+1 from 409 response (target: ${targetVersion})`)
+        try {
+          await api.saveWorkspace(encryptedData, targetVersion, this.clientId)
+          this.updateLocalVersion(targetVersion)
+          this.localModified = false
+          this.lastSyncTime = new Date()
+          this.lastSyncDirection = 'uploaded'
+          syncSucceeded = true
+          this.config.onSyncSuccess?.()
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('tigement:sync-complete', { detail: { success: true } }))
+          }
+          return
+        } catch (fastRetryError: any) {
+          console.log('🔄 Fast retry failed, falling back to full sync retry')
+          error = fastRetryError
+          // Re-check in case fast retry threw a different error type
+          if (!(error.message?.includes('Version conflict') || error instanceof VersionConflictError)) {
+            // Not a version conflict, don't retry
+            this.config.onSyncError?.(error)
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('tigement:sync-complete', { detail: { success: false } }))
+            }
+            throw error
+          }
+        }
       }
-      
+
+      // Full retry: delay and retry with fresh remote version
+      const stillVersionConflict = error.message?.includes('Version conflict') || error instanceof VersionConflictError
+      if (stillVersionConflict && retryCount < this.VERSION_CONFLICT_MAX_RETRIES) {
+        const delay = this.VERSION_CONFLICT_RETRY_DELAY_MS + Math.random() * this.VERSION_CONFLICT_RETRY_DELAY_JITTER_MS
+        console.log(`🔄 Version conflict detected, retrying with fresh remote version (retry ${retryCount + 1}/${this.VERSION_CONFLICT_MAX_RETRIES}) in ${Math.round(delay)}ms`)
+        this.isSyncing = false
+        await new Promise(r => setTimeout(r, delay))
+        return this.sync(true, retryCount + 1)
+      }
+
       // Check if this is an auth error - stop auto-sync to prevent repeated failures
       if (error.message?.includes('Authentication failed') || 
           error.message?.includes('Session expired')) {
