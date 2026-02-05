@@ -225,9 +225,11 @@ router.get('/users', async (req: AuthRequest, res) => {
       params
     );
 
+    const countWhere = search ? 'WHERE email ILIKE $1' : '';
+    const countParams = search ? [`%${search}%`] : [];
     const countResult = await query(
-      `SELECT COUNT(*) FROM users ${whereClause}`,
-      search ? [`%${search}%`] : []
+      `SELECT COUNT(*) FROM users ${countWhere}`,
+      countParams
     );
 
     res.json({
@@ -468,10 +470,10 @@ router.put('/coupon-settings', async (req: AuthRequest, res) => {
         `INSERT INTO coupon_settings (id, referral_system_enabled, coupons_per_purchase, months_per_coupon, allow_user_overrides)
          VALUES (1, $1, $2, $3, $4)`,
         [
-          referral_system_enabled || false,
-          coupons_per_purchase || 3,
-          months_per_coupon || 1,
-          allow_user_overrides || false
+          referral_system_enabled ?? false,
+          coupons_per_purchase ?? 3,
+          months_per_coupon ?? 1,
+          allow_user_overrides ?? false
         ]
       )
     } else {
@@ -677,8 +679,12 @@ router.get('/users/:id/stats', async (req: AuthRequest, res) => {
     const workspace = workspaceResult.rows[0] || null;
     const user = userResult.rows[0];
 
+    const dataSize = workspace && workspace.data_size != null
+      ? parseInt(String(workspace.data_size), 10)
+      : 0;
+
     res.json({
-      encrypted_data_size: workspace ? parseInt(workspace.data_size) : 0,
+      encrypted_data_size: dataSize,
       last_usage: workspace?.last_usage || null,
       last_login: user.last_login_at || null,
     });
@@ -737,17 +743,20 @@ router.get('/users/:id/payments', async (req: AuthRequest, res) => {
 
     // Normalize and sort by created_at (desc)
     const payments = rawPayments
-      .map((p) => ({
-        invoice_id: p.invoice_id,
-        user_id: p.user_id,
-        status: p.status,
-        amount: typeof p.amount === 'string' ? parseFloat(p.amount) : p.amount,
+      .map((p) => {
+        const raw = typeof p.amount === 'string' ? parseFloat(p.amount) : p.amount;
+        return {
+          invoice_id: p.invoice_id,
+          user_id: p.user_id,
+          status: p.status,
+          amount: Number.isFinite(raw) ? raw : 0,
         currency: p.currency,
         plan_type: p.plan_type,
         payment_method: p.payment_method,
         created_at: p.created_at,
         paid_at: p.paid_at,
-      }))
+      };
+      })
       .sort((a, b) => {
         const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
         const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
@@ -765,7 +774,7 @@ router.get('/users/:id/payments', async (req: AuthRequest, res) => {
 
     const totalsByCurrency: Record<string, number> = {};
     for (const p of payments) {
-      if (successfulStatuses.has(p.status) && typeof p.amount === 'number') {
+      if (successfulStatuses.has(p.status) && Number.isFinite(p.amount)) {
         const key = p.currency || 'UNKNOWN';
         totalsByCurrency[key] = (totalsByCurrency[key] || 0) + p.amount;
       }

@@ -13,6 +13,18 @@ import type { PoolClient } from 'pg'
 
 const router = express.Router()
 
+const DEBUG_PAYMENT = process.env.DEBUG_PAYMENT === 'true' || process.env.DEBUG === 'true'
+
+function maskUserId(userId: number): string {
+  return `user#${userId}`
+}
+
+function debugLog(...args: any[]) {
+  if (DEBUG_PAYMENT) {
+    console.log('[payment]', ...args)
+  }
+}
+
 // Helper: record coupon usage in a race-safe, idempotent way (optionally within a transaction)
 async function recordCouponUsage(couponId: number, userId: number, client?: PoolClient) {
   const run = client ? (sql: string, params?: any[]) => client.query(sql, params) : query
@@ -338,7 +350,7 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req: R
     } else if (typeof req.body === 'string') {
       payload = req.body
     } else {
-      console.error('Unexpected body type:', typeof req.body, req.body)
+      console.error('Unexpected body type:', typeof req.body)
       return res.status(400).json({ error: 'Invalid payload format' })
     }
 
@@ -354,14 +366,11 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req: R
     const invoiceId = event.invoiceId
     const eventType = event.type // BTCPay event type
     
-    console.log('=== BTCPay Webhook Details ===')
-    console.log(`Event Type: ${eventType}`)
-    console.log(`Invoice ID: ${invoiceId}`)
-    console.log(`Full event data:`, JSON.stringify(event, null, 2))
+    debugLog('BTCPay webhook', { eventType, invoiceId: invoiceId?.slice(0, 12) + '...' })
 
     // Handle test webhooks from BTCPay
     if (invoiceId.startsWith('__test__')) {
-      console.log('✅ Test webhook received and verified successfully')
+      debugLog('Test webhook received')
       return res.status(200).json({ success: true, message: 'Test webhook received' })
     }
 
@@ -382,7 +391,7 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req: R
         [invoiceId, 'btcpay']
       )
       if (fallbackResult.rows.length === 0) {
-        console.error('Invoice not found in either btcpay_invoices or payment_invoices:', invoiceId)
+        console.error('Invoice not found in either btcpay_invoices or payment_invoices')
         return res.status(404).json({ error: 'Invoice not found' })
       }
       invoiceResult = fallbackResult
@@ -442,13 +451,7 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req: R
         [invoice.user_id]
       )
 
-      console.log('BTCPay subscription lookup:', {
-        userId: invoice.user_id,
-        planType: invoice.plan_type,
-        durationDays,
-        hasExisting: existingSubscription.rows.length > 0,
-        existingRow: existingSubscription.rows[0] || null,
-      })
+      debugLog('BTCPay subscription', { userId: maskUserId(invoice.user_id), planType: invoice.plan_type, durationDays })
 
       let expiresAt: Date
       if (existingSubscription.rows.length > 0 && existingSubscription.rows[0].expires_at) {
@@ -461,14 +464,7 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req: R
         expiresAt = new Date(baseDate)
         expiresAt.setDate(expiresAt.getDate() + durationDays)
         
-        console.log('Extending premium for user (BTCPay):', {
-          userId: invoice.user_id,
-          planType: invoice.plan_type,
-          durationDays,
-          currentExpiry,
-          baseDate,
-          newExpiry: expiresAt,
-        })
+        debugLog('BTCPay extending subscription', { userId: maskUserId(invoice.user_id), durationDays })
         
         // Update existing subscription
         await query(
@@ -480,12 +476,7 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req: R
         expiresAt = new Date()
         expiresAt.setDate(expiresAt.getDate() + durationDays)
         
-        console.log('Creating new premium subscription (BTCPay):', {
-          userId: invoice.user_id,
-          planType: invoice.plan_type,
-          durationDays,
-          newExpiry: expiresAt,
-        })
+        debugLog('BTCPay creating subscription', { userId: maskUserId(invoice.user_id), durationDays })
         
         await query(
           `INSERT INTO subscriptions (user_id, plan, status, expires_at)
@@ -510,9 +501,9 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req: R
         console.error('BTCPay webhook coupon usage recording error:', couponError)
       }
 
-      console.log(`✅ Premium activated for user ${invoice.user_id} until ${expiresAt}`)
+      debugLog('BTCPay premium activated', { userId: maskUserId(invoice.user_id) })
     } else {
-      console.log(`⏳ Payment not yet confirmed. Event type: ${eventType}`)
+      debugLog('BTCPay payment not yet confirmed', { eventType })
     }
 
     res.json({ received: true })
@@ -553,10 +544,7 @@ router.post('/stripe-webhook', express.raw({ type: 'application/json' }), async 
       return res.status(401).json({ error: 'Invalid signature' })
     }
 
-    console.log('=== Stripe Webhook Details ===')
-    console.log(`Event Type: ${event.type}`)
-    console.log(`Event ID: ${event.id}`)
-    console.log(`Full event data:`, JSON.stringify(event, null, 2))
+    debugLog('Stripe webhook', { eventType: event.type, eventId: event.id?.slice(0, 12) + '...' })
 
     // Handle checkout.session.completed event
     if (event.type === 'checkout.session.completed') {
@@ -565,13 +553,11 @@ router.post('/stripe-webhook', express.raw({ type: 'application/json' }), async 
       const paymentStatus = session.payment_status
       const status = session.status
 
-      console.log(`Session ID: ${sessionId}`)
-      console.log(`Payment Status: ${paymentStatus}`)
-      console.log(`Session Status: ${status}`)
+      debugLog('Stripe session', { sessionId: sessionId?.slice(0, 12) + '...', paymentStatus, status })
 
       // Only process if payment is actually paid and session is complete
       if (paymentStatus !== 'paid' || status !== 'complete') {
-        console.log(`⏳ Payment not yet complete. Payment status: ${paymentStatus}, Session status: ${status}`)
+        debugLog('Stripe payment not yet complete', { paymentStatus, status })
         return res.json({ received: true, message: 'Payment not yet complete' })
       }
 
@@ -582,7 +568,7 @@ router.post('/stripe-webhook', express.raw({ type: 'application/json' }), async 
       )
 
       if (invoiceResult.rows.length === 0) {
-        console.error('Invoice not found for session:', sessionId)
+        console.error('Invoice not found for Stripe session')
         return res.status(404).json({ error: 'Invoice not found' })
       }
 
@@ -621,13 +607,7 @@ router.post('/stripe-webhook', express.raw({ type: 'application/json' }), async 
         [invoice.user_id]
       )
 
-      console.log('Stripe subscription lookup:', {
-        userId: invoice.user_id,
-        planType: invoice.plan_type,
-        durationDays,
-        hasExisting: existingSubscription.rows.length > 0,
-        existingRow: existingSubscription.rows[0] || null,
-      })
+      debugLog('Stripe subscription', { userId: maskUserId(invoice.user_id), planType: invoice.plan_type, durationDays })
 
       let expiresAt: Date
       const now = new Date()
@@ -643,14 +623,7 @@ router.post('/stripe-webhook', express.raw({ type: 'application/json' }), async 
         expiresAt = new Date(baseDate)
         expiresAt.setDate(expiresAt.getDate() + durationDays)
         
-        console.log('Extending premium for user (Stripe):', {
-          userId: invoice.user_id,
-          planType: invoice.plan_type,
-          durationDays,
-          currentExpiry: currentExpiry || null,
-          baseDate,
-          newExpiry: expiresAt,
-        })
+        debugLog('Stripe extending subscription', { userId: maskUserId(invoice.user_id), durationDays })
         
         // Update existing subscription
         await query(
@@ -662,12 +635,7 @@ router.post('/stripe-webhook', express.raw({ type: 'application/json' }), async 
         expiresAt = new Date()
         expiresAt.setDate(expiresAt.getDate() + durationDays)
         
-        console.log('Creating new premium subscription (Stripe):', {
-          userId: invoice.user_id,
-          planType: invoice.plan_type,
-          durationDays,
-          newExpiry: expiresAt,
-        })
+        debugLog('Stripe creating subscription', { userId: maskUserId(invoice.user_id), durationDays })
         
         await query(
           `INSERT INTO subscriptions (user_id, plan, status, expires_at)
@@ -692,9 +660,9 @@ router.post('/stripe-webhook', express.raw({ type: 'application/json' }), async 
         console.error('Stripe webhook coupon usage recording error:', couponError)
       }
 
-      console.log(`✅ Premium activated for user ${invoice.user_id} until ${expiresAt} via Stripe`)
+      debugLog('Stripe premium activated', { userId: maskUserId(invoice.user_id) })
     } else {
-      console.log(`ℹ️  Unhandled Stripe event type: ${event.type}`)
+      debugLog('Unhandled Stripe event type', { eventType: event.type })
     }
 
     res.json({ received: true })
@@ -857,6 +825,7 @@ router.post('/create-invoice-multi', authMiddleware, async (req: AuthRequest, re
     }
 
     amount = Math.max(0, amount)
+    amount = roundCurrency(amount)
 
     // $0 after discounts: use activate-free instead of creating payment
     if (amount === 0) {
