@@ -280,6 +280,11 @@ router.put('/users/:id/premium', async (req: AuthRequest, res) => {
     const userId = parseInt(req.params.id);
     const { premium, months = 12 } = premiumSchema.parse(req.body);
 
+    const userCheck = await query('SELECT id FROM users WHERE id = $1', [userId]);
+    if (userCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
     if (premium) {
       // Grant premium
       const expiresAt = addMonthsSafe(new Date(), months);
@@ -356,10 +361,17 @@ router.put('/users/:id/premium-expiry', async (req: AuthRequest, res) => {
 })
 
 // Create coupon
+const parseValidUntil = (val: unknown): Date | null | undefined => {
+  if (val === undefined || val === '' || val === null) return null;
+  if (val instanceof Date) return isNaN(val.getTime()) ? undefined : val;
+  const parsed = typeof val === 'string' ? Date.parse(val) : NaN;
+  return Number.isFinite(parsed) ? new Date(parsed) : undefined;
+};
+
 const couponSchema = z.object({
   code: z.string().min(3).max(50),
   discount_percent: z.number().int().min(1).max(100),
-  valid_until: z.string().optional(),
+  valid_until: z.preprocess(parseValidUntil, z.date().optional().nullable()),
   max_uses: z.number().int().positive().optional(),
 });
 
@@ -371,7 +383,7 @@ router.post('/coupons', async (req: AuthRequest, res) => {
       `INSERT INTO coupons (code, discount_percent, valid_until, max_uses, created_by)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING *`,
-      [code, discount_percent, valid_until || null, max_uses || null, req.user!.id]
+      [code, discount_percent, valid_until ? valid_until.toISOString() : null, max_uses ?? null, req.user!.id]
     );
 
     res.status(201).json(result.rows[0]);
