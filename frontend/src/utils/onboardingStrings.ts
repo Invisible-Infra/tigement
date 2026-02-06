@@ -24,7 +24,7 @@ export const welcomeModal = {
     'Local-first by default: data stays in your browser; export/backup when needed.',
   ],
   tutorialLink: 'Try the interactive tutorial (example Day + TODO tables)',
-  videoLabel: '▶ Watch 30 sec demo',
+  videoLabel: '▶ Watch short video',
   footnote: 'Free local data can be lost if browser/site data is cleared—use Export/Backup if it matters.',
   buttons: {
     primary: 'Start tutorial',

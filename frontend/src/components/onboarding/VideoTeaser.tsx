@@ -28,6 +28,7 @@ function getYouTubeEmbedUrl(url: string): string | null {
 
 export function VideoTeaser({ videoUrl, label }: VideoTeaserProps) {
   const [showPlayer, setShowPlayer] = useState(false)
+  const [sizePercent, setSizePercent] = useState(80)
   const videoRef = useRef<HTMLVideoElement>(null)
 
   const youtubeEmbedUrl = getYouTubeEmbedUrl(videoUrl)
@@ -75,7 +76,11 @@ export function VideoTeaser({ videoUrl, label }: VideoTeaserProps) {
           }}
         >
           <div
-            className="relative bg-black rounded-lg overflow-hidden max-w-2xl w-full aspect-video"
+            style={{
+              width: `${sizePercent}vw`,
+              maxWidth: '100vw',
+            }}
+            className="relative bg-black rounded-lg overflow-hidden max-h-[90vh] aspect-video"
             onClick={(e) => e.stopPropagation()}
           >
             {isYouTube ? (
@@ -98,11 +103,39 @@ export function VideoTeaser({ videoUrl, label }: VideoTeaserProps) {
             <button
               type="button"
               onClick={handleClose}
-              className="absolute top-2 right-2 w-10 h-10 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full flex items-center justify-center text-xl transition z-10"
+              className="absolute top-2 right-2 w-10 h-10 bg-black bg-opacity-60 hover:bg-opacity-80 text-white rounded-full flex items-center justify-center text-xl transition z-10"
               aria-label="Close"
             >
               ×
             </button>
+            <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-70 px-4 py-2 flex items-center justify-center gap-4 z-10">
+              <button
+                type="button"
+                onClick={() =>
+                  setSizePercent((prev) => {
+                    const next = prev - 10
+                    return next < 60 ? 60 : next
+                  })
+                }
+                className="px-4 py-2 bg-white text-black rounded-md font-semibold shadow-md hover:bg-gray-100 transition"
+                aria-label="Decrease video size"
+              >
+                Zoom −
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setSizePercent((prev) => {
+                    const next = prev + 10
+                    return next > 100 ? 100 : next
+                  })
+                }
+                className="px-4 py-2 bg-white text-black rounded-md font-semibold shadow-md hover:bg-gray-100 transition"
+                aria-label="Increase video size"
+              >
+                Zoom +
+              </button>
+            </div>
           </div>
         </div>
       )}

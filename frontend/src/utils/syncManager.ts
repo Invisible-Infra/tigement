@@ -608,6 +608,7 @@ class SyncManager {
 
     let encryptedData: string | null = null
     let isRetrying = false
+    let usedSameSourcePath = false
     try {
       // Get local workspace data (always fresh from localStorage)
       console.log('📂 Getting local workspace data...')
@@ -686,8 +687,10 @@ class SyncManager {
       const sameSource = remoteLastClientId != null && remoteLastClientId === this.clientId
 
       if (remoteIsNewer && hasLocalChanges) {
-        if (sameSource) {
-          console.log('✅ Remote is newer but last update came from this client – treating as linear update, pushing local without conflict dialog')
+        // Allow the same-source fast path only on the first attempt.
+        if (sameSource && retryCount === 0) {
+          usedSameSourcePath = true
+          console.log('✅ Remote is newer but last update came from this client – treating as linear update, pushing local without conflict dialog (first attempt only)')
           const targetVersion = remoteVersion.version + 1
           await api.saveWorkspace(encryptedData, targetVersion, this.clientId)
           this.updateLocalVersion(targetVersion)
@@ -805,8 +808,26 @@ class SyncManager {
         // REAL CONFLICT: Data is actually different
         console.warn('⚠️ REAL CONFLICT: Remote and local data differ')
         console.log('⚠️ Remote version:', remoteVersion.version, '> Local version:', this.localVersion)
+
+        // If the last update on the server came from this client, prefer local automatically.
+        if (sameSource) {
+          console.log('✅ Same-source REAL CONFLICT detected – auto-resolving by preferring local data and overwriting server')
+          const targetVersion = remoteVersion.version + 1
+          await api.saveWorkspace(encryptedData, targetVersion, this.clientId)
+          // Only update local version after successful push
+          this.updateLocalVersion(targetVersion)
+          this.localModified = false
+          this.lastSyncTime = new Date()
+          this.lastSyncDirection = 'uploaded'
+          syncSucceeded = true
+          this.config.onSyncSuccess?.()
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('tigement:sync-complete', { detail: { success: true } }))
+          }
+          return
+        }
         
-        // Show conflict dialog to user
+        // Show conflict dialog to user (different client / unknown source)
         if (this.config.onConflict) {
           console.log('🤔 Asking user to resolve conflict...')
           const conflictData: ConflictData = {
@@ -939,6 +960,13 @@ class SyncManager {
       
       const isVersionConflict = error.message?.includes('Version conflict') || error instanceof VersionConflictError
       const versionConflictError = error instanceof VersionConflictError ? error : null
+
+      if (usedSameSourcePath && isVersionConflict && retryCount === 0) {
+        console.log('SYNC_CONFLICT_GUARD: Version conflict after same-source path, subsequent retries will use full conflict handling', {
+          retryCount,
+          clientId: this.clientId,
+        })
+      }
 
       // Fast retry: when we have currentVersion from 409, push directly without full sync
       if (versionConflictError && encryptedData && retryCount < this.VERSION_CONFLICT_MAX_RETRIES) {
