@@ -975,7 +975,6 @@ class SyncManager {
       if (stillVersionConflict && retryCount < this.VERSION_CONFLICT_MAX_RETRIES) {
         const delay = this.VERSION_CONFLICT_RETRY_DELAY_MS + Math.random() * this.VERSION_CONFLICT_RETRY_DELAY_JITTER_MS
         console.log(`🔄 Version conflict detected, retrying with fresh remote version (retry ${retryCount + 1}/${this.VERSION_CONFLICT_MAX_RETRIES}) in ${Math.round(delay)}ms`)
-        this.isSyncing = false
         await new Promise(r => setTimeout(r, delay))
         return this.sync(true, retryCount + 1)
       }
