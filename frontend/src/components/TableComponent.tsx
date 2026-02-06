@@ -473,16 +473,26 @@ export function TableComponent({
           
           return (
             <div key={task.id} className="relative">
-              {/* Drop indicator line */}
+              {/* Drop gap - appears between items */}
               {isDropTarget && (
-                <div className="absolute top-0 left-0 right-0 h-0.5 bg-blue-500 z-10 shadow-lg" style={{ marginTop: '-1px' }}>
-                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-2 h-2 bg-blue-500 rounded-full -ml-1"></div>
+                <div
+                  className="min-h-[2.5rem] flex items-center justify-center mx-2 my-1 rounded-lg border-2 border-dashed border-blue-400 bg-blue-50/50"
+                  onDragOver={(e) => { e.preventDefault(); handleDragOver(e, table.id, index) }}
+                  onDrop={(e) => handleDrop(e, table.id, index)}
+                >
+                  <span className="text-blue-500 text-xs">Drop here</span>
                 </div>
               )}
               
               <div
                 data-tutorial-target={tutorialTargets?.taskTargets?.[task.id]?.row}
-                onDragOver={!isMobile ? (e) => handleDragOver(e, table.id, index) : undefined}
+                onDragOver={!isMobile ? (e) => {
+                  e.preventDefault()
+                  const rect = e.currentTarget.getBoundingClientRect()
+                  const midY = rect.top + rect.height / 2
+                  const insertIndex = e.clientY < midY ? index : index + 1
+                  handleDragOver(e, table.id, insertIndex)
+                } : undefined}
                 onDragLeave={!isMobile ? handleDragLeave : undefined}
                 onDrop={!isMobile ? (e) => handleDrop(e, table.id, index) : undefined}
                 ref={(el) => {
@@ -867,17 +877,12 @@ export function TableComponent({
         
         /* Drop zone at end of list */}
         <div 
-          className="min-h-[40px] flex items-center justify-center text-gray-400 text-sm relative"
+          className={`min-h-[40px] flex items-center justify-center text-sm relative ${dropTarget?.tableId === table.id && dropTarget?.index === table.tasks.length ? 'mx-2 my-1 rounded-lg border-2 border-dashed border-blue-400 bg-blue-50/50' : 'text-gray-400'}`}
           onDragOver={(e) => handleDragOver(e, table.id, table.tasks.length)}
           onDrop={(e) => handleDrop(e, table.id, table.tasks.length)}
           data-table-id={table.id}
           data-task-index={table.tasks.length}
         >
-          {dropTarget?.tableId === table.id && dropTarget?.index === table.tasks.length && (
-            <div className="absolute top-0 left-0 right-0 h-0.5 bg-blue-500 z-10 shadow-lg">
-              <div className="absolute left-0 top-1/2 -translate-y-1/2 w-2 h-2 bg-blue-500 rounded-full -ml-1"></div>
-            </div>
-          )}
           {table.tasks.length === 0 && !draggedTask && (
             <span>No tasks yet - drag here or click "ADD TASK" below</span>
           )}

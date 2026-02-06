@@ -3546,11 +3546,13 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
                           
                           return (
                             <div key={itemId} className="relative">
-                              {/* Drop indicator line */}
+                              {/* Drop gap - appears between items */}
                               {isDropTarget && (
-                                <div className="absolute top-0 left-0 right-0 h-0.5 bg-blue-500 z-10" style={{ marginTop: '-2px' }}>
-                                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-2 h-2 bg-blue-500 rounded-full -ml-1"></div>
-                                </div>
+                                <div
+                                  className="min-h-[2rem] flex items-center justify-center my-1 rounded-lg border-2 border-dashed border-blue-400 bg-blue-50/50"
+                                  onDragOver={(e) => { e.preventDefault(); handlePinnedItemDragOver(e, index) }}
+                                  onDrop={(e) => handlePinnedItemDrop(e, index)}
+                                />
                               )}
                               <div 
                                 draggable
@@ -3636,11 +3638,13 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
                         
                         return (
                           <div key={itemId} className="relative">
-                            {/* Drop indicator line */}
+                            {/* Drop gap - appears between items */}
                             {isDropTarget && (
-                              <div className="absolute top-0 left-0 right-0 h-0.5 bg-blue-500 z-10" style={{ marginTop: '-2px' }}>
-                                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-2 h-2 bg-blue-500 rounded-full -ml-1"></div>
-                              </div>
+                              <div
+                                className="min-h-[2rem] flex items-center justify-center my-1 rounded-lg border-2 border-dashed border-blue-400 bg-blue-50/50"
+                                onDragOver={(e) => { e.preventDefault(); handlePinnedItemDragOver(e, index) }}
+                                onDrop={(e) => handlePinnedItemDrop(e, index)}
+                              />
                             )}
                             <div 
                               draggable
