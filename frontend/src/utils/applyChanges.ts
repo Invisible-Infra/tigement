@@ -4,6 +4,7 @@
  */
 
 import { AIChange } from './aiAssistant';
+import { formatDateWithWeekday } from './dateFormat';
 
 export interface ApplyResult {
   success: boolean;
@@ -125,14 +126,8 @@ function findOrCreateTableByDate(workspace: any, date: string): any {
   
   const tablesCount = workspace.tables.length;
   const settings = workspace.settings || {};
-  
-  // Format date for title (DD. MM. YYYY format)
-  const dateObj = new Date(date);
-  const day = dateObj.getDate().toString().padStart(2, '0');
-  const month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
-  const year = dateObj.getFullYear();
-  const formattedTitle = `${day}.${month}. ${year}`;
-  
+  const formattedTitle = formatDateWithWeekday(date, settings.dateFormat);
+
   const newTable = {
     id: `day-${Date.now()}`,
     type: 'day' as const,

@@ -6,6 +6,7 @@ import { DurationPicker } from '../DurationPicker'
 import { getDemoTables, type DemoTable } from '../../utils/onboardingDemoData'
 import { tutorialSteps, tutorialButtons } from '../../utils/onboardingStrings'
 import { loadSettings } from '../../utils/storage'
+import { formatDateWithWeekday } from '../../utils/dateFormat'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faBriefcase, faUser, faHome } from '@fortawesome/free-solid-svg-icons'
 
@@ -160,23 +161,7 @@ export function TutorialWorkspace({
 
   const formatDate = (dateStr: string): string => {
     if (!dateStr) return 'Unknown Date'
-    const dateOnly = dateStr.split('T')[0]
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) return 'Invalid Date'
-    const date = new Date(dateOnly + 'T00:00:00')
-    if (isNaN(date.getTime())) return 'Invalid Date'
-    const day = date.getDate().toString().padStart(2, '0')
-    const month = (date.getMonth() + 1).toString().padStart(2, '0')
-    const year = date.getFullYear()
-    switch (settings.dateFormat) {
-      case 'DD. MM. YYYY':
-        return `${day}. ${month}. ${year}`
-      case 'MM/DD/YYYY':
-        return `${month}/${day}/${year}`
-      case 'YYYY-MM-DD':
-        return `${year}-${month}-${day}`
-      default:
-        return `${day}. ${month}. ${year}`
-    }
+    return formatDateWithWeekday(dateStr, settings.dateFormat)
   }
 
   const getTotalDuration = (table: DemoTable): string => {

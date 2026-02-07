@@ -18,7 +18,7 @@ import { BottomNav } from './BottomNav'
 import { AIPanel } from './AIPanel'
 import { exportToCSV, downloadCSV, importFromCSV } from '../utils/csvUtils'
 import { saveTables, loadTables, saveSettings, loadSettings, saveTaskGroups, loadTaskGroups, saveNotebooks, loadNotebooks, saveArchivedTables, loadArchivedTables, saveDiaryEntries, loadDiaryEntries } from '../utils/storage'
-import { normalizeDate } from '../utils/dateFormat'
+import { normalizeDate, formatDateWithWeekday, formatDateWithSettings, isLegacyDayTitle } from '../utils/dateFormat'
 import { useAuth } from '../contexts/AuthContext'
 import { syncManager } from '../utils/syncManager'
 import { downloadICS } from '../utils/icsExport'
@@ -331,19 +331,26 @@ const getEffectiveBackgroundHex = (el: HTMLElement | null): string => {
   return '#ffffff'
 }
 
+function migrateDayTableTitles(tables: Table[], dateFormat: string): Table[] {
+  return tables.map(t => {
+    if (t.type === 'day' && t.date && isLegacyDayTitle(t.title, t.date, dateFormat)) {
+      return { ...t, title: formatDateWithWeekday(t.date, dateFormat) }
+    }
+    return t
+  })
+}
+
 const getDefaultTables = (): Table[] => {
-  // Get today's date in YYYY-MM-DD format
   const today = new Date()
   const dateStr = today.toISOString().split('T')[0]
-  const day = today.getDate().toString().padStart(2, '0')
-  const month = (today.getMonth() + 1).toString().padStart(2, '0')
-  const year = today.getFullYear()
-  
+  const dateFormat = loadSettings()?.dateFormat || 'DD. MM. YYYY'
+  const title = formatDateWithWeekday(dateStr, dateFormat)
+
   return [
     {
       id: 'day-1',
       type: 'day',
-      title: `${day}.${month}. ${year}`,
+      title,
       date: dateStr,
       startTime: '08:00',
       tasks: [
@@ -849,7 +856,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
     const savedTables = loadTables()
     if (savedTables && savedTables.length > 0) {
       console.log(`📦 Optimistic load: ${savedTables.length} tables from localStorage (auth still loading)`)
-      setTables(savedTables)
+      setTables(migrateDayTableTitles(savedTables, loadSettings()?.dateFormat || 'DD. MM. YYYY'))
       hasLoadedTables.current = true
       restoreCurrentTableIndex(savedTables.length)
       const savedNotebooks = loadNotebooks()
@@ -876,7 +883,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
     const savedTables = loadTables()
     if (savedTables && savedTables.length > 0) {
       console.log(`📦 Loading anonymous tables from localStorage: ${savedTables.length} tables`)
-      setTables(savedTables)
+      setTables(migrateDayTableTitles(savedTables, loadSettings()?.dateFormat || 'DD. MM. YYYY'))
       hasLoadedTables.current = true
       restoreCurrentTableIndex(savedTables.length)
       console.log(`✅ Loaded ${savedTables.length} anonymous tables into React state`)
@@ -934,7 +941,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
         const savedTables = loadTables()
         console.log(`📦 Loading tables from localStorage: ${savedTables?.length || 0} tables`)
         if (savedTables && savedTables.length > 0) {
-          setTables(savedTables)
+          setTables(migrateDayTableTitles(savedTables, loadSettings()?.dateFormat || 'DD. MM. YYYY'))
           hasLoadedTables.current = true
           restoreCurrentTableIndex(savedTables.length)
           console.log(`✅ Loaded ${savedTables.length} tables into React state`)
@@ -982,7 +989,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
       const savedTables = loadTables()
       console.log(`📦 Reloading: ${savedTables?.length || 0} tables found`)
       if (savedTables && savedTables.length > 0) {
-        setTables(savedTables)
+        setTables(migrateDayTableTitles(savedTables, loadSettings()?.dateFormat || 'DD. MM. YYYY'))
         hasLoadedTables.current = true
         restoreCurrentTableIndex(savedTables.length)
         console.log(`✅ Reloaded ${savedTables.length} tables after restore`)
@@ -1024,7 +1031,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
         const savedTables = loadTables()
         console.log(`📦 Immediate check: ${savedTables?.length || 0} tables found`)
       if (savedTables && savedTables.length > 0) {
-        setTables(savedTables)
+        setTables(migrateDayTableTitles(savedTables, loadSettings()?.dateFormat || 'DD. MM. YYYY'))
         hasLoadedTables.current = true
         restoreCurrentTableIndex(savedTables.length)
         console.log(`✅ Loaded ${savedTables.length} tables from restore flag check`)
@@ -1039,7 +1046,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
             if (Array.isArray(parsed) && parsed.length > 0) {
               console.error('❌ First item:', parsed[0])
               // Try to load it anyway if it exists
-              setTables(parsed)
+              setTables(migrateDayTableTitles(parsed, loadSettings()?.dateFormat || 'DD. MM. YYYY'))
               hasLoadedTables.current = true
               restoreCurrentTableIndex(parsed.length)
               console.log(`✅ Loaded ${parsed.length} tables from parsed data`)
@@ -1113,7 +1120,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
       console.log('🔄 Updating workspace state from sync...')
       // Update tables
       if (data.tables) {
-        setTables(data.tables)
+        setTables(migrateDayTableTitles(data.tables, data.settings?.dateFormat || loadSettings()?.dateFormat || 'DD. MM. YYYY'))
         restoreCurrentTableIndex(data.tables.length)
       }
       // Update settings (visibleSpaceIds is client-only: prefer local over remote)
@@ -1202,7 +1209,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
       }
       
       // Single setTables call with merged data
-      setTables(finalTables)
+      setTables(migrateDayTableTitles(finalTables, newSettings?.dateFormat || loadSettings()?.dateFormat || 'DD. MM. YYYY'))
       restoreCurrentTableIndex(finalTables.length)
       // visibleSpaceIds is client-only: never overwrite with remote (remote may have [] which would hide spaces)
       setSettings(prev => ({ ...newSettings, visibleSpaceIds: prev.visibleSpaceIds ?? newSettings.visibleSpaceIds }))
@@ -1556,41 +1563,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
 
   const formatDate = (dateStr: string | null | undefined): string => {
     if (!dateStr) return 'Unknown Date'
-    
-    try {
-      // Handle ISO timestamps by extracting just the date part
-      const dateOnly = dateStr.split('T')[0]
-      
-      // Validate date format (YYYY-MM-DD)
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) {
-        return 'Invalid Date'
-      }
-      
-      const date = new Date(dateOnly + 'T00:00:00')
-      
-      // Check if date is valid
-      if (isNaN(date.getTime())) {
-        return 'Invalid Date'
-      }
-      
-    const day = date.getDate().toString().padStart(2, '0')
-    const month = (date.getMonth() + 1).toString().padStart(2, '0')
-    const year = date.getFullYear()
-    
-    switch (settings.dateFormat) {
-      case 'DD. MM. YYYY':
-        return `${day}. ${month}. ${year}`
-      case 'MM/DD/YYYY':
-        return `${month}/${day}/${year}`
-      case 'YYYY-MM-DD':
-        return `${year}-${month}-${day}`
-      default:
-        return `${day}. ${month}. ${year}`
-      }
-    } catch (error) {
-      console.error('Date formatting error:', error, 'Input:', dateStr)
-      return 'Invalid Date'
-    }
+    return formatDateWithWeekday(dateStr, settings.dateFormat)
   }
 
   // --- Helpers for Markdown export ---
@@ -3320,7 +3293,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
       const csv = e.target?.result as string
       const imported = importFromCSV(csv)
       if (imported.length > 0) {
-        setTables(imported)
+        setTables(migrateDayTableTitles(imported, loadSettings()?.dateFormat || 'DD. MM. YYYY'))
       }
     }
     reader.readAsText(file)
@@ -5065,7 +5038,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
                 } : null
               });
               
-              setTables(updatedWorkspace.tables);
+              setTables(migrateDayTableTitles(updatedWorkspace.tables, updatedWorkspace.settings?.dateFormat || loadSettings()?.dateFormat || 'DD. MM. YYYY'));
               
               console.log('✅ Workspace: setTables called successfully');
             }

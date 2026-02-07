@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faBookOpen } from '@fortawesome/free-solid-svg-icons'
+import { isLegacyDayTitle } from '../utils/dateFormat'
 
 interface Task {
   id: string
@@ -277,7 +278,9 @@ export function TableComponent({
               </div>
               <input
                 type="text"
-                value={table.title}
+                value={isLegacyDayTitle(table.title, table.date, settings?.dateFormat)
+                  ? formatDate(table.date)
+                  : table.title}
                 onChange={(e) => setTables(tables.map(t => 
                   t.id === table.id ? { ...t, title: e.target.value } : t
                 ))}

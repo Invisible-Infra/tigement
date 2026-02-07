@@ -78,6 +78,48 @@ export function formatDateWithSettings(dateStr: string, dateFormat?: string): st
 }
 
 /**
+ * Format a date string with weekday for Day table titles
+ * Uses user's date format preference and browser locale for weekday
+ * @param dateStr - Date string in YYYY-MM-DD format or ISO string
+ * @param dateFormat - Optional date format override (defaults to user settings)
+ * @returns Formatted string like "Saturday, 07. 02. 2026"
+ */
+export function formatDateWithWeekday(dateStr: string, dateFormat?: string): string {
+  const formattedDate = formatDateWithSettings(dateStr, dateFormat)
+  if (formattedDate === 'Invalid Date') return formattedDate
+
+  const normalized = normalizeDate(dateStr)
+  if (!normalized) return formattedDate
+
+  const [year, month, day] = normalized.split('-').map(Number)
+  const date = new Date(year, month - 1, day)
+  const weekday = new Intl.DateTimeFormat(undefined, { weekday: 'long' }).format(date)
+
+  return `${weekday}, ${formattedDate}`
+}
+
+/**
+ * Returns true if the title is a date-only format (no weekday).
+ * Used to detect legacy Day table titles for migration and display override.
+ */
+export function isLegacyDayTitle(title: string, dateStr: string, dateFormat?: string): boolean {
+  if (!title || !dateStr) return false
+  // New format has weekday: "Monday, 09. 02. 2026"
+  if (title.includes(', ')) return false
+  const normalized = normalizeDate(dateStr)
+  if (!normalized) return false
+  const [year, month, day] = normalized.split('-')
+  const fmt = dateFormat || loadSettings()?.dateFormat || 'DD. MM. YYYY'
+  const variants: string[] = []
+  if (fmt === 'DD. MM. YYYY' || fmt === 'DD.MM.YYYY' || !['MM/DD/YYYY', 'YYYY-MM-DD'].includes(fmt)) {
+    variants.push(`${day}. ${month}. ${year}`, `${day}.${month}. ${year}`, `${day}.${month}.${year}`)
+  }
+  if (fmt === 'MM/DD/YYYY') variants.push(`${month}/${day}/${year}`)
+  if (fmt === 'YYYY-MM-DD') variants.push(`${year}-${month}-${day}`)
+  return variants.includes(title.trim())
+}
+
+/**
  * Format a date for display in diary/list views (more readable format)
  * Uses user's date format preference
  * @param dateStr - Date string in YYYY-MM-DD format
