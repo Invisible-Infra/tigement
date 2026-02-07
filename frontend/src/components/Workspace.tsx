@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Settings } from './Settings'
 import { Timer } from './Timer'
 import { SyncConflictDialog } from './SyncConflictDialog'
@@ -504,6 +504,19 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
     // Initialize with actual window width to prevent FOUC
     return typeof window !== 'undefined' && window.innerWidth < 768
   })
+
+  // Restore last opened tab (mobile) whenever tables are loaded from storage or sync
+  const restoreCurrentTableIndex = useCallback((newTablesLength: number) => {
+    try {
+      const saved = localStorage.getItem('tigement_current_page_index')
+      if (saved === null) return
+      const idx = parseInt(saved, 10)
+      if (!isNaN(idx) && idx >= 0 && idx < newTablesLength) {
+        setCurrentTableIndex(idx)
+      }
+    } catch (_) {}
+  }, [])
+
   const [showMenu, setShowMenu] = useState(false)
   const [expandedMenus, setExpandedMenus] = useState<Set<string>>(() => new Set(['workspace']))
   
@@ -825,6 +838,35 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
     }
   }, [user, hasLoadedUser, loading])
 
+  // Optimistic load: when auth is still loading but we have tokens (likely offline), load from localStorage
+  // so the user sees their data immediately instead of a blank screen.
+  useEffect(() => {
+    if (!loading || user || wasAuthenticatedRef.current || hasLoadedTables.current) return
+    if (typeof localStorage === 'undefined') return
+    const hasTokens = !!localStorage.getItem('accessToken')
+    if (!hasTokens) return
+
+    const savedTables = loadTables()
+    if (savedTables && savedTables.length > 0) {
+      console.log(`📦 Optimistic load: ${savedTables.length} tables from localStorage (auth still loading)`)
+      setTables(savedTables)
+      hasLoadedTables.current = true
+      restoreCurrentTableIndex(savedTables.length)
+      const savedNotebooks = loadNotebooks()
+      if (savedNotebooks) {
+        setWorkspaceNotebook(savedNotebooks.workspace || '')
+      }
+      const savedDiaryEntries = loadDiaryEntries()
+      if (savedDiaryEntries && Object.keys(savedDiaryEntries).length > 0) {
+        setDiaryEntries(savedDiaryEntries)
+        setDiaryEntriesList(Object.keys(savedDiaryEntries).map(date => ({
+          date,
+          preview: savedDiaryEntries[date].substring(0, 50)
+        })))
+      }
+    }
+  }, [loading, user, restoreCurrentTableIndex])
+
   // Initialize tables for anonymous users on first load.
   // If there is existing anonymous data in localStorage, load it (including diary/notebook for offline).
   // Otherwise, create the default day + TODO tables.
@@ -836,6 +878,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
       console.log(`📦 Loading anonymous tables from localStorage: ${savedTables.length} tables`)
       setTables(savedTables)
       hasLoadedTables.current = true
+      restoreCurrentTableIndex(savedTables.length)
       console.log(`✅ Loaded ${savedTables.length} anonymous tables into React state`)
       const savedNotebooks = loadNotebooks()
       if (savedNotebooks) {
@@ -857,6 +900,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
       const defaults = getDefaultTables()
       setTables(defaults)
       hasLoadedTables.current = true
+      restoreCurrentTableIndex(defaults.length)
       const savedNotebooks = loadNotebooks()
       if (savedNotebooks) {
         setWorkspaceNotebook(savedNotebooks.workspace || '')
@@ -870,7 +914,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
         })))
       }
     }
-  }, [hasLoadedUser, loading, user, tables.length])
+  }, [hasLoadedUser, loading, user, tables.length, restoreCurrentTableIndex])
 
   // Reload data from localStorage when user logs in
   useEffect(() => {
@@ -892,12 +936,14 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
         if (savedTables && savedTables.length > 0) {
           setTables(savedTables)
           hasLoadedTables.current = true
+          restoreCurrentTableIndex(savedTables.length)
           console.log(`✅ Loaded ${savedTables.length} tables into React state`)
         } else {
           console.warn('⚠️ No tables found in localStorage after login, creating default day + TODO tables')
           const defaults = getDefaultTables()
           setTables(defaults)
           hasLoadedTables.current = true
+          restoreCurrentTableIndex(defaults.length)
         }
       }
       const savedSettings = loadSettings()
@@ -927,7 +973,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
         console.log('🏁 Login data reload complete')
       }, 200)
     }
-  }, [user, hasLoadedUser, loading])
+  }, [user, hasLoadedUser, loading, restoreCurrentTableIndex])
 
   // Listen for restore completion event to reload tables
   useEffect(() => {
@@ -938,6 +984,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
       if (savedTables && savedTables.length > 0) {
         setTables(savedTables)
         hasLoadedTables.current = true
+        restoreCurrentTableIndex(savedTables.length)
         console.log(`✅ Reloaded ${savedTables.length} tables after restore`)
       } else {
         console.error('❌ ERROR: No tables found in localStorage after restore event!')
@@ -968,7 +1015,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
     }
     window.addEventListener('tigement-request-add-day-table', handleRequestAddDayTable)
     window.addEventListener('tigement-request-open-timer', handleRequestOpenTimer)
-    
+
     // Also check immediately if restore flag is set (in case event already fired or fires synchronously)
     const checkRestoreFlag = () => {
       const backupRestored = sessionStorage.getItem('tigement_backup_restored')
@@ -979,6 +1026,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
       if (savedTables && savedTables.length > 0) {
         setTables(savedTables)
         hasLoadedTables.current = true
+        restoreCurrentTableIndex(savedTables.length)
         console.log(`✅ Loaded ${savedTables.length} tables from restore flag check`)
       } else {
         console.error('❌ No tables found even with restore flag set!')
@@ -993,6 +1041,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
               // Try to load it anyway if it exists
               setTables(parsed)
               hasLoadedTables.current = true
+              restoreCurrentTableIndex(parsed.length)
               console.log(`✅ Loaded ${parsed.length} tables from parsed data`)
             }
           } catch (e) {
@@ -1015,7 +1064,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
       window.removeEventListener('tigement-request-add-day-table', handleRequestAddDayTable)
       window.removeEventListener('tigement-request-open-timer', handleRequestOpenTimer)
     }
-  }, [])
+  }, [restoreCurrentTableIndex])
 
   // Save task groups to localStorage whenever they change
   useEffect(() => {
@@ -1065,6 +1114,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
       // Update tables
       if (data.tables) {
         setTables(data.tables)
+        restoreCurrentTableIndex(data.tables.length)
       }
       // Update settings (visibleSpaceIds is client-only: prefer local over remote)
       if (data.settings) {
@@ -1075,7 +1125,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
         setTaskGroups(data.taskGroups)
       }
     })
-  }, [])
+  }, [restoreCurrentTableIndex])
 
   // Detect mobile viewport
   useEffect(() => {
@@ -1153,6 +1203,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
       
       // Single setTables call with merged data
       setTables(finalTables)
+      restoreCurrentTableIndex(finalTables.length)
       // visibleSpaceIds is client-only: never overwrite with remote (remote may have [] which would hide spaces)
       setSettings(prev => ({ ...newSettings, visibleSpaceIds: prev.visibleSpaceIds ?? newSettings.visibleSpaceIds }))
       setTaskGroups(newTaskGroups || defaultTaskGroups)
@@ -1188,7 +1239,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
     
     window.addEventListener('tigement:sync-update', handleSyncUpdate as any)
     return () => window.removeEventListener('tigement:sync-update', handleSyncUpdate as any)
-  }, [])
+  }, [restoreCurrentTableIndex])
 
   // Keep currentTableIndex in bounds when tables change (only adjust if out of bounds)
   useEffect(() => {
@@ -1202,14 +1253,8 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
       isAdjustingIndex.current = true
       setCurrentTableIndex(tables.length - 1)
       setTimeout(() => { isAdjustingIndex.current = false }, 100)
-    } else if (tables.length === 0 && currentTableIndex !== 0) {
-      // No tables, reset to 0
-      console.log(`📱 Resetting index to 0 (no tables)`)
-      isAdjustingIndex.current = true
-      setCurrentTableIndex(0)
-      setTimeout(() => { isAdjustingIndex.current = false }, 100)
     }
-    // Don't adjust if index is valid (prevents unnecessary resets)
+    // Don't reset when tables.length===0 - that races with load and overwrites restore
   }, [tables.length])
 
   // Save to history on table changes (but not during undo/redo)

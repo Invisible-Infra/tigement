@@ -53,6 +53,26 @@ function AppContent() {
   const [showWelcomeModal, setShowWelcomeModal] = useState(false)
   const [showTutorial, setShowTutorial] = useState(false)
   const [tutorialStep, setTutorialStep] = useState(0)
+  const [isOnline, setIsOnline] = useState(() => typeof navigator !== 'undefined' ? navigator.onLine : true)
+
+  // Clear resume-recovery flag when app has successfully rendered (allows future blank recoveries)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && (window as any).__tigementClearBlankReloadFlag) {
+      (window as any).__tigementClearBlankReloadFlag()
+    }
+  }, [])
+
+  // Track online/offline for subtle logo indicator
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true)
+    const handleOffline = () => setIsOnline(false)
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
 
   // Calculate days until premium expires
   const getDaysUntilExpiry = (expiresAt?: string): number | null => {
@@ -439,7 +459,7 @@ function AppContent() {
                 className="font-bold italic inline-block text-white"
                 style={{ fontSize: isMobile ? '14px' : '24px' }}
               >
-                Tig<span className="text-[#4fc3f7] inline-block" style={{ verticalAlign: '-0.1em' }}>≡</span>ment
+                Tig<span className="inline-block" style={{ verticalAlign: '-0.1em', color: isOnline ? '#4fc3f7' : '#ef4444' }} title={isOnline ? undefined : 'Offline – changes saved locally'}>≡</span>ment
               </span>
               <span className="text-[10px] absolute -bottom-2 right-3 !bg-white text-[#2d4a56] px-1.5 py-0.6 font-medium hidden md:block">{version}</span>
             </div>

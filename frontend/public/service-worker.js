@@ -1,9 +1,12 @@
 // Service Worker for Tigement PWA
-const CACHE_NAME = 'tigement-v4'
+const CACHE_NAME = 'tigement-v6'
 const urlsToCache = [
   '/',
   '/index.html',
-  '/favicon.svg'
+  '/favicon.svg',
+  '/resume-recovery.js',
+  '/debug-button.js',
+  '/manifest.json'
 ]
 
 // Install event - cache resources
@@ -25,55 +28,59 @@ self.addEventListener('install', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url)
   
-  // Always bypass ServiceWorker for:
+  // Bypass SW for dev-mode and API - these don't work when cached
   if (
-    url.pathname.startsWith('/@') ||           // Vite special routes
-    url.pathname.startsWith('/src/') ||        // Source files in dev
-    url.pathname.startsWith('/node_modules/') || // Vite dependencies (dev mode)
-    url.pathname.includes('/.vite/') ||        // Vite internal paths
-    url.pathname.startsWith('/api/') ||        // API calls
-    event.request.method !== 'GET'             // Non-GET requests
+    url.pathname.startsWith('/@') ||
+    url.pathname.startsWith('/src/') ||
+    url.pathname.startsWith('/node_modules/') ||
+    url.pathname.includes('/.vite/') ||
+    url.pathname.startsWith('/api/') ||
+    event.request.method !== 'GET'
   ) {
-    // Don't cache dev-mode resources
-    return fetch(event.request)
+    return
   }
   
   // Network-first for HTML files - always get fresh HTML with correct chunk references
+  // When offline: cache-first to avoid long fetch hang on mobile
   if (
     url.pathname.endsWith('.html') ||
     url.pathname === '/' ||
     url.pathname === '/index.html'
   ) {
     event.respondWith(
-      fetch(event.request)
-        .then((response) => {
-          // Cache the new HTML version
+      (async () => {
+        if (!navigator.onLine) {
+          const cached = await caches.match(event.request)
+          if (cached) {
+            console.log('SW: Serving cached HTML (offline)')
+            return cached
+          }
+          return new Response('Offline and no cached version', {
+            status: 503,
+            headers: { 'Content-Type': 'text/html' }
+          })
+        }
+        try {
+          const response = await fetch(event.request)
           const responseToCache = response.clone()
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache)
-          })
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache))
           return response
-        })
-        .catch((error) => {
+        } catch (error) {
           console.error('SW: Network fetch failed for HTML:', error)
-          // Fall back to cached HTML if offline
-          return caches.match(event.request).then(cachedResponse => {
-            if (cachedResponse) {
-              console.log('SW: Serving cached HTML (offline)')
-              return cachedResponse
-            }
-            // Last resort: return error
-            return new Response('Offline and no cached version', { 
-              status: 503,
-              headers: { 'Content-Type': 'text/html' }
-            })
+          const cached = await caches.match(event.request)
+          if (cached) return cached
+          return new Response('Offline and no cached version', {
+            status: 503,
+            headers: { 'Content-Type': 'text/html' }
           })
-        })
+        }
+      })()
     )
     return
   }
   
   // Network-first for dynamic Vite chunks (production builds)
+  // When offline: cache-first to avoid long fetch hang on mobile
   if (
     url.pathname.includes('/assets/') ||       // Vite build assets
     url.pathname.includes('chunk-') ||         // Vite chunk files
@@ -82,31 +89,41 @@ self.addEventListener('fetch', (event) => {
   ) {
     event.respondWith(
       (async () => {
+        if (!navigator.onLine) {
+          const cached = await caches.match(event.request)
+          if (cached) {
+            console.log('SW: Serving cached asset (offline):', event.request.url)
+            return cached
+          }
+          return new Response(JSON.stringify({ error: 'Resource unavailable' }), {
+            status: 503,
+            headers: { 'Content-Type': 'application/json' }
+          })
+        }
+        let timeoutId
         try {
-          const response = await fetch(event.request)
+          const controller = new AbortController()
+          timeoutId = setTimeout(() => controller.abort(), 10000)
+          const response = await fetch(event.request, { signal: controller.signal })
+          clearTimeout(timeoutId)
           if (!response.ok) {
             console.error('SW: Fetch returned non-OK status:', response.status, event.request.url)
           }
-          // Cache the new version
           const responseToCache = response.clone()
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache)
-          })
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache))
           return response
         } catch (error) {
+          if (timeoutId) clearTimeout(timeoutId)
           console.error('SW: Network fetch failed:', error, event.request.url)
-          // Try cache fallback
-          const cachedResponse = await caches.match(event.request)
-          if (cachedResponse) {
+          const cached = await caches.match(event.request)
+          if (cached) {
             console.log('SW: Serving cached version of:', event.request.url)
-            return cachedResponse
+            return cached
           }
-          // If critical resource fails, return error
-          console.error('SW: No cache available for:', event.request.url)
-          return new Response(
-            JSON.stringify({ error: 'Resource unavailable' }),
-            { status: 503, headers: { 'Content-Type': 'application/json' } }
-          )
+          return new Response(JSON.stringify({ error: 'Resource unavailable' }), {
+            status: 503,
+            headers: { 'Content-Type': 'application/json' }
+          })
         }
       })()
     )

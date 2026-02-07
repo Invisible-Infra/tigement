@@ -4,6 +4,14 @@
 
 const API_BASE = '/api'
 
+/** Network/timeout error - caught by isNetworkError() for offline fallback */
+export class NetworkError extends Error {
+  constructor(message: string = 'Failed to fetch') {
+    super(message)
+    this.name = 'TypeError'
+  }
+}
+
 /** Thrown when saveWorkspace gets 409 - includes currentVersion for smarter retries */
 export class VersionConflictError extends Error {
   constructor(
@@ -74,21 +82,28 @@ class ApiClient {
     return this.accessToken
   }
 
-  private async request(endpoint: string, options: RequestInit = {}) {
+  private async request(endpoint: string, options: RequestInit & { timeoutMs?: number } = {}) {
+    const { timeoutMs, ...fetchOptions } = options
     const url = `${API_BASE}${endpoint}`
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
-      ...options.headers,
+      ...fetchOptions.headers,
     }
 
     if (this.accessToken) {
       headers['Authorization'] = `Bearer ${this.accessToken}`
     }
 
-    const response = await fetch(url, {
-      ...options,
-      headers,
-    })
+    const controller = timeoutMs ? new AbortController() : null
+    const timeoutId = timeoutMs ? setTimeout(() => controller?.abort(), timeoutMs) : null
+
+    try {
+      const response = await fetch(url, {
+        ...fetchOptions,
+        headers,
+        signal: controller?.signal,
+      })
+      if (timeoutId) clearTimeout(timeoutId)
 
     // Handle token expiration
     if (response.status === 401 && this.refreshToken) {
@@ -97,7 +112,7 @@ class ApiClient {
       if (refreshed) {
         // Retry original request with new token
         headers['Authorization'] = `Bearer ${this.accessToken}`
-        const retryResponse = await fetch(url, { ...options, headers })
+        const retryResponse = await fetch(url, { ...fetchOptions, headers })
         if (!retryResponse.ok) {
           throw new Error(`HTTP error! status: ${retryResponse.status}`)
         }
@@ -131,6 +146,13 @@ class ApiClient {
     }
 
     return response.json()
+    } catch (err) {
+      if (timeoutId) clearTimeout(timeoutId)
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw new NetworkError('Failed to fetch')
+      }
+      throw err
+    }
   }
 
   // Auth endpoints
@@ -205,7 +227,7 @@ class ApiClient {
   }
 
   async getCurrentUser(): Promise<User> {
-    return this.request('/auth/me')
+    return this.request('/auth/me', { timeoutMs: 5000 })
   }
 
   async requestPasswordReset(email: string): Promise<{ message: string }> {
@@ -565,6 +587,16 @@ class ApiClient {
       throw new Error('Failed to fetch version')
     }
     return response.json()
+  }
+
+  /** Fast reachability check (2s timeout). Does not rely on navigator.onLine. */
+  async checkReachability(): Promise<boolean> {
+    try {
+      await this.request('/version', { timeoutMs: 2000 })
+      return true
+    } catch {
+      return false
+    }
   }
 
   async reportBug(description: string, severity: 'Normal' | 'Severe' | 'Critical', githubHandle?: string, postAnonymously?: boolean, logs?: string): Promise<{ success: boolean; message: string; githubIssueUrl?: string }> {

@@ -10,7 +10,7 @@
   }
   
   function initDebugButton() {
-    // Fetch debug settings from server
+    if (!navigator.onLine) return;
     fetch('/api/announcements/debug-settings')
       .then(res => res.json())
       .then(data => {

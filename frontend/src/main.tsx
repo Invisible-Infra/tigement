@@ -4,6 +4,7 @@ import App from './App'
 import './index.css'
 import './themes.css'
 import { ThemeProvider } from './contexts/ThemeContext'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { logCapture } from './utils/logCapture'
 import { debugLogger } from './utils/debugLogger'
 
@@ -56,16 +57,20 @@ const root = ReactDOM.createRoot(document.getElementById('root')!)
 if (import.meta.env.DEV) {
   root.render(
     <React.StrictMode>
-      <ThemeProvider>
-        <App />
-      </ThemeProvider>
+      <ErrorBoundary>
+        <ThemeProvider>
+          <App />
+        </ThemeProvider>
+      </ErrorBoundary>
     </React.StrictMode>
   )
 } else {
   root.render(
-    <ThemeProvider>
-      <App />
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <App />
+      </ThemeProvider>
+    </ErrorBoundary>
   )
 }
 

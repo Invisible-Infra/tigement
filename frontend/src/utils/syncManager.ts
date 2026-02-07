@@ -180,10 +180,12 @@ class SyncManager {
       if (document.visibilityState === 'visible') {
         console.log('👁️ Tab became visible')
         
-        // 1. Trigger immediate sync for instant conflict detection
+        // 1. Trigger immediate sync for instant conflict detection (skip when offline)
         if (this.syncInterval) {
           if (!this.isSyncing) {
-            if (!this.config.isUserEditing || !this.config.isUserEditing()) {
+            if (typeof navigator !== 'undefined' && !navigator.onLine) {
+              console.log('⏸️ Focus sync skipped - offline')
+            } else if (!this.config.isUserEditing || !this.config.isUserEditing()) {
               // Clear any pending debounced sync to prevent race conditions
               if (this.debounceTimer) {
                 clearTimeout(this.debounceTimer)
@@ -959,11 +961,16 @@ class SyncManager {
         }
       }
     } catch (error: any) {
-      console.error('❌ Sync failed:', error)
-      console.error('Error details:', error.message, (error as any).response?.data)
-      
       const isVersionConflict = error.message?.includes('Version conflict') || error instanceof VersionConflictError
       const versionConflictError = error instanceof VersionConflictError ? error : null
+      const willRetry = isVersionConflict && retryCount < this.VERSION_CONFLICT_MAX_RETRIES
+
+      if (willRetry) {
+        console.warn('⚠️ Version conflict, retrying...', error.message)
+      } else {
+        console.error('❌ Sync failed:', error)
+        console.error('Error details:', error.message, (error as any).response?.data)
+      }
 
       if (usedSameSourcePath && isVersionConflict && retryCount === 0) {
         console.log('SYNC_CONFLICT_GUARD: Version conflict after same-source path, subsequent retries will use full conflict handling', {

@@ -34,15 +34,10 @@ export function OfflineBanner({ isPremium, onSync }: OfflineBannerProps) {
     }
   }, [isPremium, onSync])
 
-  if (online && !syncing && !justSynced) return null
+  // When offline: red logo is the subtle indicator; hide the full banner to avoid clutter
+  if (!online) return null
 
-  if (!online) {
-    return (
-      <div className="flex-shrink-0 bg-amber-600 text-white text-center py-1.5 px-2 text-sm" role="status">
-        Offline – changes saved locally and will sync when back online.
-      </div>
-    )
-  }
+  if (online && !syncing && !justSynced) return null
 
   if (syncing) {
     return (

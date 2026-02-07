@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
-import { api, User } from '../utils/api'
+import { api, User, NetworkError } from '../utils/api'
 import { syncManager, DecryptionFailureError } from '../utils/syncManager'
 import { clearAllData } from '../utils/storage'
 import { encryptionKeyManager } from '../utils/encryptionKey'
@@ -25,6 +25,7 @@ const CACHED_USER_KEY = 'tigement_cached_user'
 
 function isNetworkError(err: unknown): boolean {
   if (!err || typeof err !== 'object') return false
+  if (err instanceof NetworkError) return true
   const e = err as { name?: string; message?: string }
   return e.name === 'TypeError' && (e.message === 'Failed to fetch' || (e.message && e.message.includes('fetch')))
 }
@@ -76,6 +77,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const checkAuth = async () => {
       try {
         if (api.getAccessToken()) {
+          // Offline-first: when browser reports offline, skip network and use cached user immediately
+          if (typeof navigator !== 'undefined' && !navigator.onLine) {
+            try {
+              const cached = localStorage.getItem(CACHED_USER_KEY)
+              if (cached) {
+                const parsed = JSON.parse(cached) as User
+                if (parsed && typeof parsed.id === 'number' && parsed.email) {
+                  console.log('📴 Offline: using cached user immediately (navigator.onLine=false)')
+                  setUser(parsed)
+                }
+              }
+            } catch (_) { /* ignore */ }
+            return
+          }
+          // Reachability check: navigator.onLine is unreliable on mobile (stays true when offline)
+          const reachable = await api.checkReachability()
+          if (!reachable) {
+            try {
+              const cached = localStorage.getItem(CACHED_USER_KEY)
+              if (cached) {
+                const parsed = JSON.parse(cached) as User
+                if (parsed && typeof parsed.id === 'number' && parsed.email) {
+                  console.log('📴 Offline: using cached user (reachability check failed)')
+                  setUser(parsed)
+                }
+              }
+            } catch (_) { /* ignore */ }
+            return
+          }
           console.log('🔐 Access token found, fetching current user...')
           try {
             const currentUser = await api.getCurrentUser()
