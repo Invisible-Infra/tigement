@@ -419,8 +419,8 @@ router.get('/:token', async (req: Request, res: Response) => {
       'X-WR-RELCALID:' + token,
       `X-WR-CALDESC:Task schedule for ${userEmail}`,
       'X-APPLE-CALENDAR-COLOR:#4fc3f7',
-      'REFRESH-INTERVAL;VALUE=DURATION:PT1H',
-      'X-PUBLISHED-TTL:PT1H'
+      'REFRESH-INTERVAL;VALUE=DURATION:PT1M',
+      'X-PUBLISHED-TTL:PT1M'
     ].join('\r\n')
 
     eventsResult.rows.forEach((event: any) => {
@@ -473,9 +473,18 @@ router.get('/:token', async (req: Request, res: Response) => {
 
     ical += '\r\nEND:VCALENDAR\r\n'
 
+    const contentHash = crypto.createHash('sha256').update(ical).digest('hex')
+    const etag = `"${contentHash}"`
+    if (req.headers['if-none-match'] === etag) {
+      res.status(304).end()
+      return
+    }
+    res.set('ETag', etag)
     res.set('Content-Type', 'text/calendar; charset=utf-8; name="Tigement.ics"')
     res.set('Content-Disposition', 'inline; filename="Tigement.ics"')
-    res.set('Cache-Control', 'no-cache, must-revalidate')
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+    res.set('Pragma', 'no-cache')
+    res.set('Expires', '0')
     res.set('X-WR-CALNAME', 'Tigement')
     res.send(ical)
 
