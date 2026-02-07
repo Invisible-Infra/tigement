@@ -450,8 +450,8 @@ export function TableComponent({
         />
       )}
 
-      {/* Task List - hidden when collapsed */}
-      {!(table.collapsed ?? false) && (
+      {/* Task List - hidden when collapsed; on mobile always show expanded (no collapse control on mobile) */}
+      {(!(table.collapsed ?? false) || isMobile) && (
       <div
         onDragOver={(e) => handleDragOver(e, table.id, table.tasks.length)}
         onDragLeave={handleDragLeave}
@@ -883,7 +883,7 @@ export function TableComponent({
         </div>
       </div>
       )}
-      {(table.collapsed ?? false) && (
+      {(table.collapsed ?? false) && !isMobile && (
         <div className="px-4 py-2 text-sm text-gray-500 border-b border-gray-200">
           {table.tasks.length} task{table.tasks.length !== 1 ? 's' : ''}
         </div>
