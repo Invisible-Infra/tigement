@@ -317,6 +317,20 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
     }
   }
 
+  const toggleAdmin = async (userId: number, userEmail: string, currentIsAdmin: boolean) => {
+    const action = currentIsAdmin ? 'Revoke' : 'Grant'
+    if (!confirm(`${action} admin role for ${userEmail}?`)) {
+      return
+    }
+
+    try {
+      await api.setUserAdmin(userId, !currentIsAdmin)
+      loadUsers()
+    } catch (error: any) {
+      alert(`Failed: ${error.message}`)
+    }
+  }
+
   const handleDeleteUser = async (userId: number, userEmail: string) => {
     if (!confirm(`⚠️ DELETE USER AND ALL DATA?\n\nUser: ${userEmail}\n\nThis will permanently delete:\n- User account\n- All tasks and tables\n- Workspace data\n- Subscription info\n- Payment history\n\nThis action CANNOT be undone!`)) {
       return
@@ -547,7 +561,6 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
                               </button>
                               <button
                                 onClick={() => togglePremium(u.id, u.plan, u.subscription_status)}
-                                disabled={u.is_admin}
                                 className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-sm disabled:opacity-30"
                               >
                                 Revoke
@@ -556,12 +569,19 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
                           ) : (
                             <button
                               onClick={() => setEditingUserExpiry({userId: u.id, currentExpiry: null})}
-                              disabled={u.is_admin}
                               className="px-3 py-1 bg-[#4fc3f7] text-white rounded hover:bg-[#3ba3d7] text-sm disabled:opacity-30"
                             >
                               {u.plan === 'premium' && u.subscription_status === 'expired' ? 'Renew' : 'Grant'} Premium
                             </button>
                           )}
+                          <button
+                            onClick={() => toggleAdmin(u.id, u.email, !!u.is_admin)}
+                            disabled={u.id === user?.id && u.is_admin}
+                            className={`px-3 py-1 rounded text-sm disabled:opacity-30 ${u.is_admin ? 'bg-orange-600 hover:bg-orange-700 text-white' : 'bg-gray-500 hover:bg-gray-600 text-white'}`}
+                            title={u.id === user?.id && u.is_admin ? 'Cannot revoke your own admin role' : (u.is_admin ? 'Revoke admin role' : 'Grant admin role')}
+                          >
+                            {u.is_admin ? 'Revoke Admin' : 'Grant Admin'}
+                          </button>
                           <button
                             onClick={() => handleDeleteUser(u.id, u.email)}
                             disabled={u.is_admin}

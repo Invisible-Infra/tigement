@@ -11,7 +11,12 @@ interface LoginFormProps {
 }
 
 export function LoginForm({ onClose, onSwitchToRegister, onSwitchToForgotPassword }: LoginFormProps) {
-  const { login, isAuthenticated } = useAuth()
+  const { login, isAuthenticated, clearAuthError } = useAuth()
+
+  // Clear stale "Session Expired" banner when user opens login modal
+  useEffect(() => {
+    clearAuthError()
+  }, [clearAuthError])
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [twoFactorToken, setTwoFactorToken] = useState('')

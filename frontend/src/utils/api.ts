@@ -105,8 +105,9 @@ class ApiClient {
       })
       if (timeoutId) clearTimeout(timeoutId)
 
-    // Handle token expiration
-    if (response.status === 401 && this.refreshToken) {
+    // Handle token expiration - but NOT for auth endpoints (login/register 401 = invalid credentials)
+    const isAuthEndpoint = endpoint === '/auth/login' || endpoint === '/auth/register'
+    if (response.status === 401 && !isAuthEndpoint && this.refreshToken) {
       // Try to refresh token
       const refreshed = await this.refreshAccessToken()
       if (refreshed) {
@@ -125,7 +126,7 @@ class ApiClient {
         }
         throw new Error('Authentication failed. Please log in again.')
       }
-    } else if (response.status === 401) {
+    } else if (response.status === 401 && !isAuthEndpoint) {
       // No refresh token or first 401 without retry
       console.error('🚨 401 Unauthorized - session expired')
       if (this.onAuthFailureCallback) {
@@ -303,6 +304,13 @@ class ApiClient {
     return this.request(`/admin/users/${userId}/premium-expiry`, {
       method: 'PUT',
       body: JSON.stringify({ expires_at: expiresAt }),
+    })
+  }
+
+  async setUserAdmin(userId: number, isAdmin: boolean): Promise<{ success: boolean, message: string }> {
+    return this.request(`/admin/users/${userId}/admin`, {
+      method: 'PUT',
+      body: JSON.stringify({ is_admin: isAdmin }),
     })
   }
 
@@ -633,6 +641,77 @@ class ApiClient {
   async getOAuthProviders(): Promise<{ providers: { github: boolean; google: boolean; apple: boolean; twitter: boolean; facebook: boolean } }> {
     return this.request('/auth/oauth/providers', {
       method: 'GET',
+    })
+  }
+
+  // Table sharing (premium, E2EE)
+  async setSharingPublicKey(publicKey: string): Promise<{ success: boolean }> {
+    return this.request('/user/sharing-public-key', {
+      method: 'POST',
+      body: JSON.stringify({ publicKey }),
+    })
+  }
+
+  async getPublicKeyByEmail(email: string): Promise<{ userId: number; publicKey: string }> {
+    return this.request(`/user/public-key-by-email?email=${encodeURIComponent(email)}`, {
+      method: 'GET',
+    })
+  }
+
+  async createShare(data: {
+    tableId: string
+    recipientEmail: string
+    permission: 'view' | 'edit'
+    encryptedTableData: string
+    encryptedDek: string
+    wrappedDekForOwner?: string
+  }): Promise<{ success: boolean; sharedTableId: number; added: boolean }> {
+    return this.request('/shares', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async getIncomingShares(): Promise<{ shares: any[] }> {
+    return this.request('/shares/incoming', { method: 'GET' })
+  }
+
+  async getOutgoingShares(): Promise<{ shares: any[] }> {
+    return this.request('/shares/outgoing', { method: 'GET' })
+  }
+
+  async getOwnedShares(): Promise<{ shares: any[] }> {
+    return this.request('/shares/owned', { method: 'GET' })
+  }
+
+  async updateShareData(sharedTableId: number, encryptedTableData: string, version: number): Promise<{ success: boolean; version: number }> {
+    return this.request(`/shares/${sharedTableId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ encryptedTableData, version }),
+    })
+  }
+
+  async revokeShareRecipient(sharedTableId: number, recipientUserId: number): Promise<{ success: boolean }> {
+    return this.request(`/shares/${sharedTableId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ revokeUserId: recipientUserId }),
+    })
+  }
+
+  async updateSharePermission(
+    sharedTableId: number,
+    recipientId: number,
+    permission: 'view' | 'edit'
+  ): Promise<{ success: boolean }> {
+    return this.request(`/shares/${sharedTableId}?recipientId=${recipientId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ permission }),
+    })
+  }
+
+  async deleteShare(sharedTableId: number): Promise<{ success: boolean }> {
+    return this.request(`/shares/${sharedTableId}`, {
+      method: 'DELETE',
     })
   }
 

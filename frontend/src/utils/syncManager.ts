@@ -52,8 +52,21 @@ function deepEqual(a: any, b: any): boolean {
 // Client-only settings keys that must not affect conflict comparison (e.g. visibility per device)
 const CLIENT_ONLY_SETTINGS_KEYS = ['visibleSpaceIds']
 
+/** Tables with _shared are local-only; exclude from sync payload */
+function tablesForSync(tables: any[]): any[] {
+  return (tables || []).filter((t: any) => !t._shared)
+}
+
+/** Merge remote tables with local shared tables (preserve shared tables when applying remote) */
+function mergeSharedTables(remoteTables: any[], localTables: any[]): any[] {
+  const shared = (localTables || []).filter((t: any) => t._shared)
+  const remoteIds = new Set((remoteTables || []).map((t: any) => t.id))
+  const sharedFiltered = shared.filter((t: any) => !remoteIds.has(t.id))
+  return [...(remoteTables || []), ...sharedFiltered]
+}
+
 // Normalize workspace data for comparison (remove UI-specific fields, trim strings, coerce numbers)
-function normalizeWorkspaceData(data: any): any {
+function normalizeWorkspaceData(data: any, excludeShared = false): any {
   if (!data) return null
   
   const rawSettings = data.settings || {}
@@ -61,9 +74,10 @@ function normalizeWorkspaceData(data: any): any {
   for (const k of CLIENT_ONLY_SETTINGS_KEYS) {
     delete settingsForCompare[k]
   }
+  const tablesToNormalize = excludeShared ? tablesForSync(data.tables || []) : (data.tables || [])
 
   const normalized = {
-    tables: (data.tables || []).map((table: any) => {
+    tables: tablesToNormalize.map((table: any) => {
       const t: any = {
         id: table.id,
         type: table.type,
@@ -663,9 +677,10 @@ class SyncManager {
         // If no remote data, allow empty sync (first sync scenario)
       }
 
-      // Encrypt data
+      // Encrypt data (exclude shared tables - they are local-only)
       console.log('🔒 Encrypting workspace data...')
-      encryptedData = await encryptWorkspace(localData, encryptionKey)
+      const dataForSync = { ...localData, tables: tablesForSync(localData.tables || []) }
+      encryptedData = await encryptWorkspace(dataForSync, encryptionKey)
       console.log('✅ Data encrypted successfully')
 
       console.log('📊 Has local changes:', this.localModified)
@@ -764,8 +779,8 @@ class SyncManager {
           )
         }
         
-        // Normalize both datasets for comparison (removes UI-specific fields)
-        const normalizedLocal = normalizeWorkspaceData(localData)
+        // Normalize both datasets for comparison (removes UI-specific fields; exclude shared tables from local)
+        const normalizedLocal = normalizeWorkspaceData(localData, true)
         const normalizedRemote = normalizeWorkspaceData(remoteData)
         
         console.log('🔍 Comparing normalized data...')
@@ -875,10 +890,10 @@ class SyncManager {
               window.dispatchEvent(new CustomEvent('tigement:sync-complete', { detail: { success: true } }))
             }
           } else if (resolution.resolution === 'merge' && resolution.mergedTables) {
-            // User manually merged
+            // User manually merged (exclude shared tables from sync payload)
             console.log('✅ User merged, pushing merged result...')
             const mergedData = {
-              tables: resolution.mergedTables,
+              tables: tablesForSync(resolution.mergedTables),
               settings: localData.settings,
               taskGroups: localData.taskGroups || []
             }
@@ -887,8 +902,10 @@ class SyncManager {
             await api.saveWorkspace(mergedEncrypted, targetVersion)
             // Only update local version after successful push
             this.updateLocalVersion(targetVersion)
-            
-            localStorage.setItem('tigement_tables', JSON.stringify(mergedData.tables))
+            // Restore shared tables in localStorage (mergedData excludes them for sync)
+            const localTables = JSON.parse(localStorage.getItem('tigement_tables') || '[]')
+            const tablesToSave = mergeSharedTables(mergedData.tables, localTables)
+            localStorage.setItem('tigement_tables', JSON.stringify(tablesToSave))
             localStorage.setItem('tigement_settings', JSON.stringify(mergedData.settings))
             if (mergedData.taskGroups) {
               localStorage.setItem('tigement_task_groups', JSON.stringify(mergedData.taskGroups))
@@ -897,7 +914,7 @@ class SyncManager {
             // Update React state via callback instead of reloading
             if (this.config.onStateUpdate) {
               console.log('🔄 Updating React state via callback...')
-              this.config.onStateUpdate(mergedData)
+              this.config.onStateUpdate({ ...mergedData, tables: tablesToSave })
             } else {
               // Fallback to reload if no callback provided (backward compatibility)
               console.log('⚠️ No state update callback, falling back to reload...')
@@ -1051,9 +1068,15 @@ class SyncManager {
 
     console.log('📥 Applying remote workspace data...')
     const decryptedData = await decryptWorkspace(remoteWorkspace.data, encryptionKey)
-    
-    // Save to local storage
-    localStorage.setItem('tigement_tables', JSON.stringify(decryptedData.tables || []))
+    const localTables = (() => {
+      try {
+        const s = localStorage.getItem('tigement_tables')
+        return s ? JSON.parse(s) : []
+      } catch { return [] }
+    })()
+    const tablesToSave = mergeSharedTables(decryptedData.tables || [], localTables)
+    // Save to local storage (merge remote with local shared tables)
+    localStorage.setItem('tigement_tables', JSON.stringify(tablesToSave))
     // Preserve client-only settings (e.g. visibleSpaceIds) when applying remote
     const currentSettings = (() => {
       try {
@@ -1094,7 +1117,7 @@ class SyncManager {
     if (this.config.onStateUpdate) {
       console.log('🔄 Updating React state via callback...')
       this.config.onStateUpdate({
-        tables: decryptedData.tables || [],
+        tables: tablesToSave,
         settings: decryptedData.settings || {},
         taskGroups: decryptedData.taskGroups || [],
         notebooks: decryptedData.notebooks || { workspace: '', tasks: {} },
@@ -1152,9 +1175,16 @@ class SyncManager {
       )
     }
 
-    // Save to local storage
+    // Save to local storage (merge remote with local shared tables)
     console.log('💾 Saving to localStorage...')
-    localStorage.setItem('tigement_tables', JSON.stringify(decryptedData.tables || []))
+    const localTables = (() => {
+      try {
+        const s = localStorage.getItem('tigement_tables')
+        return s ? JSON.parse(s) : []
+      } catch { return [] }
+    })()
+    const tablesToSave = mergeSharedTables(decryptedData.tables || [], localTables)
+    localStorage.setItem('tigement_tables', JSON.stringify(tablesToSave))
     // Preserve client-only settings (e.g. visibleSpaceIds) when applying remote
     const currentSettings = (() => {
       try {
@@ -1223,7 +1253,7 @@ class SyncManager {
     if (this.config.onStateUpdate) {
       console.log('🔄 Updating React state via callback...')
       this.config.onStateUpdate({
-        tables: decryptedData.tables || [],
+        tables: tablesToSave,
         settings: decryptedData.settings || {},
         taskGroups: decryptedData.taskGroups || [],
         notebooks: decryptedData.notebooks || { workspace: '', tasks: {} },
@@ -1288,8 +1318,9 @@ class SyncManager {
     if (!localData) {
       throw new Error('No local data to push')
     }
+    const dataForSync = { ...localData, tables: tablesForSync(localData.tables || []) }
 
-    const encryptedData = await encryptWorkspace(localData, encryptionKey)
+    const encryptedData = await encryptWorkspace(dataForSync, encryptionKey)
     
     this.localVersion++
     await api.saveWorkspace(encryptedData, this.localVersion)

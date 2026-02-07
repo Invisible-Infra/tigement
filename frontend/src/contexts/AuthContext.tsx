@@ -211,6 +211,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               } else {
                 try {
                   console.log('🔄 Loading server data for authenticated user...')
+                  setLoading(false) // Allow Workspace to run login reload before pull
+                  await new Promise<void>(r => setTimeout(r, 0))
                   await syncManager.pull()
                   // pull() will reload the page if data exists
                 } catch (error: any) {
@@ -347,6 +349,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
       try {
         console.log('🔄 Starting initial sync for premium user...')
+        setLoading(false) // Allow Workspace to run login reload before pull
+        await new Promise<void>(r => setTimeout(r, 0))
         await syncManager.pull()
         
         // Check if there's merge data to show (stashed before login)

@@ -23,6 +23,7 @@ import couponsRoutes from './routes/coupons';
 import announcementsRoutes from './routes/announcements';
 import migrationRoutes from './routes/migration';
 import tokensRoutes from './routes/tokens';
+import sharesRoutes from './routes/shares';
 import apiRoutes from './routes/api';
 import docsRoutes from './routes/docs';
 import { runMigrations } from './db/migrate';
@@ -125,6 +126,7 @@ app.use('/api/user', userRoutes);
 app.use('/api/2fa', twoFactorRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/tokens', tokensRoutes);
+app.use('/api/shares', sharesRoutes);
 app.use('/api/v1', apiRoutes);
 // iCal routes re-enabled as opt-in for premium users with E2EE warnings
 app.use('/api/ical', icalRoutes);

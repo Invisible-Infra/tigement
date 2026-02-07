@@ -24,6 +24,7 @@ interface Table {
   size?: { width: number; height: number }
   spaceId?: string | null
   collapsed?: boolean
+  _shared?: { shareId: number; canEdit: boolean; [k: string]: unknown }
 }
 
 interface TaskGroup {
@@ -82,6 +83,8 @@ interface TableComponentProps {
   updateTableDate: (tableId: string, date: string) => void
   setTables: React.Dispatch<React.SetStateAction<Table[]>>
   archiveTable: (tableId: string) => void
+  duplicateTable: (tableId: string) => void
+  shareTable?: (table: Table) => void
   deleteTable: (tableId: string) => void
   toggleTableCollapsed: (tableId: string) => void
   toggleSelectAll: (tableId: string) => void
@@ -132,6 +135,15 @@ interface TableComponentProps {
     dayStart?: string
     taskTargets?: Record<string, { name?: string; duration?: string; dragHandle?: string; row?: string }>
   }
+
+  // Read-only mode (shared table viewer): same layout, no editing
+  readOnly?: boolean
+  ownerEmail?: string
+  // When true, allow table-level operations (move, resize, space assign, collapse) even if readOnly
+  allowTableLayout?: boolean
+  onPushSharedChanges?: (table: Table) => void
+  /** Owner's table that is shared – show Push button even without _shared */
+  isSharedByOwner?: boolean
 }
 
 export function TableComponent({
@@ -168,6 +180,8 @@ export function TableComponent({
   updateTableDate,
   setTables,
   archiveTable,
+  duplicateTable,
+  shareTable,
   deleteTable,
   toggleTableCollapsed,
   toggleSelectAll,
@@ -209,7 +223,13 @@ export function TableComponent({
   getThemeColor,
   tables,
   tutorialTargets,
+  readOnly = false,
+  ownerEmail,
+  allowTableLayout = false,
+  onPushSharedChanges,
+  isSharedByOwner = false,
 }: TableComponentProps) {
+  const canMoveTable = !readOnly || allowTableLayout
   const [spaceDropdownOpen, setSpaceDropdownOpen] = useState(false)
   const spaceDropdownTriggerRef = useRef<HTMLButtonElement>(null)
   const [spaceDropdownRect, setSpaceDropdownRect] = useState<DOMRect | null>(null)
@@ -247,8 +267,8 @@ export function TableComponent({
       {/* Table Header */}
       <div 
         className="bg-[#4a6c7a] text-white px-4 py-3 md:rounded-t-lg flex justify-between items-center gap-3"
-        onMouseDown={!isMobile ? (e) => handleTableDragStart(e, table.id) : undefined}
-        style={{ cursor: !isMobile ? 'grab' : 'default' }}
+        onMouseDown={canMoveTable && !isMobile ? (e) => handleTableDragStart(e, table.id) : undefined}
+        style={{ cursor: canMoveTable && !isMobile ? 'grab' : 'default' }}
       >
         <div className="flex items-center gap-3 flex-1">
           {table.type === 'day' && table.date ? (
@@ -259,42 +279,66 @@ export function TableComponent({
                     {formatDateWithSettings(table.date, settings?.dateFormat)}
                   </span>
                 )}
-                <button
-                  type="button"
-                  onClick={() => document.getElementById(`date-picker-${table.id}`)?.showPicker?.()}
-                  className="bg-transparent border border-white/30 rounded p-1 text-white hover:bg-white/10 cursor-pointer transition"
-                  title="Change date"
-                >
-                  📅
-                </button>
-                <input
-                  type="date"
-                  value={table.date}
-                  onChange={(e) => updateTableDate(table.id, e.target.value)}
-                  className="hidden"
-                  id={`date-picker-${table.id}`}
-                />
+                {!readOnly && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => document.getElementById(`date-picker-${table.id}`)?.showPicker?.()}
+                      className="bg-transparent border border-white/30 rounded p-1 text-white hover:bg-white/10 cursor-pointer transition"
+                      title="Change date"
+                    >
+                      📅
+                    </button>
+                    <input
+                      type="date"
+                      value={table.date}
+                      onChange={(e) => updateTableDate(table.id, e.target.value)}
+                      className="hidden"
+                      id={`date-picker-${table.id}`}
+                    />
+                  </>
+                )}
               </div>
-              <input
-                type="text"
-                value={isLegacyDayTitle(table.title, table.date, settings?.dateFormat)
-                  ? formatDate(table.date)
-                  : table.title}
-                onChange={(e) => setTables(tables.map(t => 
-                  t.id === table.id ? { ...t, title: e.target.value } : t
-                ))}
-                className="table-title-input bg-transparent border-none outline-none text-xl font-bold text-white flex-1"
-              />
+              {readOnly ? (
+                <span className="text-xl font-bold text-white flex-1">
+                  {isLegacyDayTitle(table.title, table.date, settings?.dateFormat)
+                    ? formatDate(table.date)
+                    : table.title}
+                  {ownerEmail && <span className="text-sm font-normal text-white/80 ml-2">From {ownerEmail}</span>}
+                </span>
+              ) : (
+                <input
+                  type="text"
+                  value={isLegacyDayTitle(table.title, table.date, settings?.dateFormat)
+                    ? formatDate(table.date)
+                    : table.title}
+                  onChange={(e) => setTables(tables.map(t => 
+                    t.id === table.id ? { ...t, title: e.target.value } : t
+                  ))}
+                  className="table-title-input bg-transparent border-none outline-none text-xl font-bold text-white flex-1"
+                />
+              )}
             </>
           ) : (
-            <input
-              type="text"
-              value={table.title}
-              onChange={(e) => setTables(tables.map(t => 
-                t.id === table.id ? { ...t, title: e.target.value } : t
-              ))}
-              className="table-title-input bg-transparent border-none outline-none text-xl font-bold text-white flex-1"
-            />
+            <>
+              {readOnly ? (
+                <span className="text-xl font-bold text-white flex-1">
+                  {table.title}
+                </span>
+              ) : (
+                <input
+                  type="text"
+                  value={table.title}
+                  onChange={(e) => setTables(tables.map(t => 
+                    t.id === table.id ? { ...t, title: e.target.value } : t
+                  ))}
+                  className="table-title-input bg-transparent border-none outline-none text-xl font-bold text-white flex-1"
+                />
+              )}
+              {readOnly && ownerEmail && (
+                <span className="text-sm text-white/80">From {ownerEmail}</span>
+              )}
+            </>
           )}
         </div>
         
@@ -306,7 +350,7 @@ export function TableComponent({
           )}
           
           {/* Space assignment dropdown - only in spaces view for TODO tables. Rendered in portal so it is not clipped by overflow. */}
-          {table.type === 'todo' && spaces && handleAssignTableToSpace && (
+          {(canMoveTable || allowTableLayout) && table.type === 'todo' && spaces && handleAssignTableToSpace && (
             <div className="relative">
               <button
                 ref={spaceDropdownTriggerRef}
@@ -384,39 +428,45 @@ export function TableComponent({
             </div>
           )}
           
-          <div className="flex items-center gap-1">
-            {!isMobile && (
+          {(canMoveTable || allowTableLayout) && (
+            <div className="flex items-center gap-1">
+              {!isMobile && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); toggleTableCollapsed(table.id); }}
+                  className="min-h-[32px] min-w-[32px] flex items-center justify-center rounded border border-white/30 bg-white/10 text-white hover:bg-white/20 transition"
+                  title="Collapse/expand tasks"
+                >
+                  <FontAwesomeIcon icon={faMinus} className="text-base" />
+                </button>
+              )}
               <button
-                onClick={(e) => { e.stopPropagation(); toggleTableCollapsed(table.id); }}
-                className="min-h-[32px] min-w-[32px] flex items-center justify-center rounded border border-white/30 bg-white/10 text-white hover:bg-white/20 transition"
-                title="Collapse/expand tasks"
+                onClick={(e) => { e.stopPropagation(); deleteTable(table.id); }}
+                className="min-h-[32px] min-w-[32px] flex items-center justify-center rounded border border-white/30 bg-white/10 text-white hover:bg-red-500/80 hover:border-red-400 transition"
+                title="Delete table"
               >
-                <FontAwesomeIcon icon={faMinus} className="text-base" />
+                <FontAwesomeIcon icon={faXmark} className="text-base" />
               </button>
-            )}
-            <button
-              onClick={(e) => { e.stopPropagation(); deleteTable(table.id); }}
-              className="min-h-[32px] min-w-[32px] flex items-center justify-center rounded border border-white/30 bg-white/10 text-white hover:bg-red-500/80 hover:border-red-400 transition"
-              title="Delete table"
-            >
-              <FontAwesomeIcon icon={faXmark} className="text-base" />
-            </button>
-          </div>
+            </div>
+          )}
         </div>
       </div>
 
       {/* Table Controls Row */}
       <div className={`table-header bg-[#5a7c8a] text-white ${isMobile ? 'px-1 py-1' : 'px-2 py-2'} flex items-center ${isMobile ? 'gap-1' : 'gap-2'} text-xs font-semibold`}>
         {/* Select All Checkbox */}
-        <input
-          type="checkbox"
-          checked={table.tasks.length > 0 && table.tasks.every(task => task.selected)}
-          onChange={() => toggleSelectAll(table.id)}
-          className={isMobile ? "w-3 h-3 flex-shrink-0 cursor-pointer" : "w-4 h-4 cursor-pointer"}
-          title="Select all tasks"
-        />
+        {!readOnly && (
+          <input
+            type="checkbox"
+            checked={table.tasks.length > 0 && table.tasks.every(task => task.selected)}
+            onChange={() => toggleSelectAll(table.id)}
+            className={isMobile ? "w-3 h-3 flex-shrink-0 cursor-pointer" : "w-4 h-4 cursor-pointer"}
+            title="Select all tasks"
+          />
+        )}
+        {readOnly && <span className="w-4 flex-shrink-0" />}
         {/* Checkbox column (w-4) + Up/Down column (fixed width) */}
-        {!isMobile && <span className="text-center" style={{ width: '44px' }}>Up|Dn</span>}
+        {!readOnly && !isMobile && <span className="text-center" style={{ width: '44px' }}>Up|Dn</span>}
+        {readOnly && !isMobile && <span style={{ width: '44px' }} />}
         {table.type === 'day' && (
           <div className="flex flex-shrink-0" style={{ gap: 0 }}>
             <span className="text-center flex-shrink-0" style={{ width: isMobile ? '2.5rem' : '5rem' }}>Start</span>
@@ -428,11 +478,12 @@ export function TableComponent({
         <span className="text-center w-6 flex-shrink-0">Notes</span>
         <span className="text-center" style={{ width: isMobile ? '2.5rem' : '5rem' }}>Duration</span>
         {/* Add/Duplicate/Delete buttons column */}
-        {!isMobile && <span className="text-right" style={{ width: '68px' }}>Add|Dup|Del</span>}
+        {!readOnly && !isMobile && <span className="text-right" style={{ width: '68px' }}>Add|Dup|Del</span>}
+        {readOnly && !isMobile && <span style={{ width: '68px' }} />}
       </div>
 
       {/* Resize handle - desktop only, show in all-in-one and spaces views */}
-      {!isMobile && (
+      {(canMoveTable || allowTableLayout) && !isMobile && (
         <div
           onMouseDown={(e) => handleTableResizeStart(e, table.id)}
           className="absolute bottom-1 right-1 w-3 h-3 cursor-se-resize z-50"
@@ -453,9 +504,9 @@ export function TableComponent({
       {/* Task List - hidden when collapsed; on mobile always show expanded (no collapse control on mobile) */}
       {(!(table.collapsed ?? false) || isMobile) && (
       <div
-        onDragOver={(e) => handleDragOver(e, table.id, table.tasks.length)}
-        onDragLeave={handleDragLeave}
-        onDrop={(e) => handleDrop(e, table.id, table.tasks.length)}
+        onDragOver={!readOnly ? (e) => handleDragOver(e, table.id, table.tasks.length) : undefined}
+        onDragLeave={!readOnly ? handleDragLeave : undefined}
+        onDrop={!readOnly ? (e) => handleDrop(e, table.id, table.tasks.length) : undefined}
       >
         {table.tasks.map((task, index) => {
           const taskTimes = times[index]
@@ -468,7 +519,7 @@ export function TableComponent({
           return (
             <div key={task.id} className="relative">
               {/* Drop gap - appears between items */}
-              {isDropTarget && (
+              {!readOnly && isDropTarget && (
                 <div
                   className="min-h-[2.5rem] flex items-center justify-center mx-2 my-1 rounded-lg border-2 border-dashed border-blue-400 bg-blue-50/50"
                   onDragOver={(e) => { e.preventDefault(); handleDragOver(e, table.id, index) }}
@@ -480,15 +531,15 @@ export function TableComponent({
               
               <div
                 data-tutorial-target={tutorialTargets?.taskTargets?.[task.id]?.row}
-                onDragOver={!isMobile ? (e) => {
+                onDragOver={!readOnly && !isMobile ? (e) => {
                   e.preventDefault()
                   const rect = e.currentTarget.getBoundingClientRect()
                   const midY = rect.top + rect.height / 2
                   const insertIndex = e.clientY < midY ? index : index + 1
                   handleDragOver(e, table.id, insertIndex)
                 } : undefined}
-                onDragLeave={!isMobile ? handleDragLeave : undefined}
-                onDrop={!isMobile ? (e) => handleDrop(e, table.id, index) : undefined}
+                onDragLeave={!readOnly && !isMobile ? handleDragLeave : undefined}
+                onDrop={!readOnly && !isMobile ? (e) => handleDrop(e, table.id, index) : undefined}
                 ref={(el) => {
                   if (!el) return
                   try {
@@ -509,15 +560,21 @@ export function TableComponent({
                 className={`group flex items-center ${isMobile ? 'gap-0.5 px-1 min-w-0' : 'gap-2 px-2'} py-1 border-b hover:bg-gray-50 transition-all ${task.selected ? 'bg-blue-50' : ''} ${isDragging ? 'opacity-60 border-2 border-dashed !border-[#4fc3f7]' : 'border-gray-200'} ${isPast ? 'bg-gray-100' : timeMatchStatus === 'match' ? 'bg-green-200 text-green-900' : timeMatchStatus === 'mismatch' ? 'bg-red-200 text-red-900' : ''} ${isCurrent ? 'font-bold' : ''} ${highlightedTask === task.id ? 'task-highlight-pulse' : ''}`}
               >
               {/* Checkbox */}
-              <input
-                type="checkbox"
-                checked={task.selected}
-                onChange={() => toggleSelect(table.id, task.id)}
-                className={isMobile ? "w-3 h-3 flex-shrink-0" : "w-4 h-4"}
-              />
+              {readOnly ? (
+                <span className={isMobile ? "w-3 h-3 flex-shrink-0" : "w-4 h-4 flex-shrink-0"} />
+              ) : (
+                <input
+                  type="checkbox"
+                  checked={task.selected}
+                  onChange={() => toggleSelect(table.id, task.id)}
+                  className={isMobile ? "w-3 h-3 flex-shrink-0" : "w-4 h-4"}
+                />
+              )}
               
               {/* Up/Down buttons */}
-              {isMobile ? (
+              {readOnly ? (
+                <span className="flex-shrink-0 w-[44px]" />
+              ) : isMobile ? (
                 /* Mobile: Up button before task name */
                 <button
                   onClick={() => moveTaskUp(table.id, index)}
@@ -556,7 +613,24 @@ export function TableComponent({
                 <div style={{ display: 'flex', gap: 0, alignItems: 'center' }}>
                   {/* Start time - editable only for first task */}
                   {index === 0 ? (
-                    settings.useTimePickers ? (
+                    readOnly ? (
+                      <span
+                        style={{
+                          width: isMobile ? '2.5rem' : '5rem',
+                          height: '1.5rem',
+                          lineHeight: '1.5rem',
+                          padding: '0',
+                          margin: '0',
+                          textAlign: 'center',
+                          fontSize: isMobile ? '0.75rem' : '0.875rem',
+                          color: timeColor,
+                          boxSizing: 'border-box',
+                          display: 'block',
+                          flexShrink: 0
+                        }}>
+                        {formatTime(table.startTime || '08:00')}
+                      </span>
+                    ) : settings.useTimePickers ? (
                       <div
                         data-tutorial-target={tutorialTargets?.dayStart}
                         onClick={() => setTimePickerTable(table.id)}
@@ -674,38 +748,71 @@ export function TableComponent({
                 const iconOutline = `drop-shadow(0 0 2px ${outlineColor}) drop-shadow(0 0 2px ${outlineColor}) drop-shadow(0 0 1px ${outlineColor})`
                 
                 return group?.icon && iconMap[group.icon] ? (
-                  <button
-                    onClick={() => setGroupSelectorTask({ tableId: table.id, taskId: task.id })}
-                    className="flex-shrink-0 px-1 hover:opacity-70 transition"
-                    title={`Group: ${group.name}`}
-                  >
-                    <FontAwesomeIcon 
-                      icon={iconMap[group.icon]} 
-                      style={{ 
-                        color: iconColor, 
-                        filter: iconOutline,
-                        WebkitFilter: iconOutline
-                      }} 
-                      size={isMobile ? 'sm' : '1x'} 
-                    />
-                  </button>
+                  readOnly ? (
+                    <span className="flex-shrink-0 px-1">
+                      <FontAwesomeIcon 
+                        icon={iconMap[group.icon]} 
+                        style={{ 
+                          color: iconColor, 
+                          filter: iconOutline,
+                          WebkitFilter: iconOutline
+                        }} 
+                        size={isMobile ? 'sm' : '1x'} 
+                      />
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => setGroupSelectorTask({ tableId: table.id, taskId: task.id })}
+                      className="flex-shrink-0 px-1 hover:opacity-70 transition"
+                      title={`Group: ${group.name}`}
+                    >
+                      <FontAwesomeIcon 
+                        icon={iconMap[group.icon]} 
+                        style={{ 
+                          color: iconColor, 
+                          filter: iconOutline,
+                          WebkitFilter: iconOutline
+                        }} 
+                        size={isMobile ? 'sm' : '1x'} 
+                      />
+                    </button>
+                  )
                 ) : (
-                  <button
-                    onClick={() => setGroupSelectorTask({ tableId: table.id, taskId: task.id })}
-                    className="flex-shrink-0 px-1 text-gray-400 hover:text-gray-600 transition"
-                    title="Set group"
-                  >
-                    <span className={isMobile ? 'text-xs' : 'text-sm'}>●</span>
-                  </button>
+                  readOnly ? (
+                    <span className="flex-shrink-0 px-1 text-gray-400">
+                      <span className={isMobile ? 'text-xs' : 'text-sm'}>●</span>
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => setGroupSelectorTask({ tableId: table.id, taskId: task.id })}
+                      className="flex-shrink-0 px-1 text-gray-400 hover:text-gray-600 transition"
+                      title="Set group"
+                    >
+                      <span className={isMobile ? 'text-xs' : 'text-sm'}>●</span>
+                    </button>
+                  )
                 )
               })()}
 
               {/* Task Name */}
               <div 
                 className={`flex-1 relative min-w-0 ${tutorialTargets ? 'min-w-[8rem]' : ''}`}
-                onMouseEnter={() => setHoveredTask(task.id)}
-                onMouseLeave={() => setHoveredTask(null)}
+                onMouseEnter={!readOnly ? () => setHoveredTask(task.id) : undefined}
+                onMouseLeave={!readOnly ? () => setHoveredTask(null) : undefined}
               >
+                {readOnly ? (
+                  <span
+                    className={`w-full ${isMobile ? 'px-1 text-sm' : 'px-2'} py-1 ${isCurrent ? 'font-bold' : ''}`}
+                    style={{
+                      backgroundColor: task.selected ? 'transparent' : (getTaskGroup(task.group)?.color || 'transparent'),
+                      color: (getTaskGroup(task.group)?.color || timeMatchStatus !== null || task.selected)
+                        ? (task.selected ? '#1f2937' : getContrastColor(getTaskGroup(task.group)?.color || '#ffffff'))
+                        : 'var(--color-text)',
+                    }}
+                  >
+                    {task.title || '\u00A0'}
+                  </span>
+                ) : (
                 <input
                   type="text"
                   data-tutorial-target={tutorialTargets?.taskTargets?.[task.id]?.name}
@@ -744,7 +851,8 @@ export function TableComponent({
                   className={`w-full ${isMobile ? 'px-1 text-sm' : 'px-2'} py-1 outline-none ${isCurrent ? 'font-bold' : ''} ${task.selected ? '' : 'group-hover:!bg-transparent'} ${tutorialTargets ? 'rounded' : 'border-none'}`}
                   placeholder="Task name..."
                 />
-                {hoveredTask === task.id && task.title && (
+                )}
+                {!readOnly && hoveredTask === task.id && task.title && (
                   <div 
                     className="absolute left-0 bottom-full mb-1 bg-gray-900 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-50 pointer-events-none"
                   >
@@ -754,20 +862,32 @@ export function TableComponent({
               </div>
 
               {/* Notebook Icon */}
-              <button
-                onClick={(e) => openTaskNotebook(table.id, task.id, e.currentTarget)}
-                className="flex-shrink-0 px-1 hover:opacity-70 transition"
-                title={task.notebook ? "View notes" : "Add notes"}
-              >
-                <FontAwesomeIcon 
-                  icon={faBookOpen} 
-                  className={task.notebook ? "text-blue-600" : "text-gray-400"}
-                  size={isMobile ? 'sm' : '1x'} 
-                />
-              </button>
+              {readOnly ? (
+                <span className="flex-shrink-0 px-1">
+                  {task.notebook && (
+                    <FontAwesomeIcon 
+                      icon={faBookOpen} 
+                      className="text-blue-600"
+                      size={isMobile ? 'sm' : '1x'} 
+                    />
+                  )}
+                </span>
+              ) : (
+                <button
+                  onClick={(e) => openTaskNotebook(table.id, task.id, e.currentTarget)}
+                  className="flex-shrink-0 px-1 hover:opacity-70 transition"
+                  title={task.notebook ? "View notes" : "Add notes"}
+                >
+                  <FontAwesomeIcon 
+                    icon={faBookOpen} 
+                    className={task.notebook ? "text-blue-600" : "text-gray-400"}
+                    size={isMobile ? 'sm' : '1x'} 
+                  />
+                </button>
+              )}
 
               {/* Mobile: Down button after task name */}
-              {isMobile && (
+              {!readOnly && isMobile && (
                 <button
                   onClick={() => moveTaskDown(table.id, index)}
                   onTouchStart={(e) => handleHandleTouchStart(e, table.id, task.id, index)}
@@ -789,7 +909,19 @@ export function TableComponent({
                   : task.selected ? getContrastColor('#dbeafe')
                   : 'var(--color-text)' // Use theme color for normal rows
                 
-                return settings.useTimePickers ? (
+                return readOnly ? (
+                  <span
+                    className="py-1 text-sm text-center flex-shrink-0"
+                    style={{ 
+                      color: durationColor, 
+                      width: isMobile ? '2.5rem' : '5rem',
+                      padding: '0.25rem 0',
+                      boxSizing: 'border-box'
+                    }}
+                  >
+                    {formatDuration(task.duration)}
+                  </span>
+                ) : settings.useTimePickers ? (
                   <div
                     data-duration-wheel
                     data-tutorial-target={tutorialTargets?.taskTargets?.[task.id]?.duration}
@@ -840,6 +972,9 @@ export function TableComponent({
 
               {/* Add Below / Duplicate / Delete - desktop only, mobile has ADD TASK button at bottom */}
               {!isMobile && (
+                readOnly ? (
+                  <span className="w-[68px] flex-shrink-0" />
+                ) : (
                 <div className="flex gap-1 justify-end w-[68px] flex-shrink-0">
                   <button
                     onClick={() => addTask(table.id, index)}
@@ -863,6 +998,7 @@ export function TableComponent({
                     {showEmoji ? '🗑️' : 'X'}
                   </button>
                 </div>
+                )
               )}
             </div>
             </div>
@@ -871,9 +1007,9 @@ export function TableComponent({
         
         /* Drop zone at end of list */}
         <div 
-          className={`min-h-[40px] flex items-center justify-center text-sm relative ${dropTarget?.tableId === table.id && dropTarget?.index === table.tasks.length ? 'mx-2 my-1 rounded-lg border-2 border-dashed border-blue-400 bg-blue-50/50' : 'text-gray-400'}`}
-          onDragOver={(e) => handleDragOver(e, table.id, table.tasks.length)}
-          onDrop={(e) => handleDrop(e, table.id, table.tasks.length)}
+          className={`min-h-[40px] flex items-center justify-center text-sm relative ${!readOnly && dropTarget?.tableId === table.id && dropTarget?.index === table.tasks.length ? 'mx-2 my-1 rounded-lg border-2 border-dashed border-blue-400 bg-blue-50/50' : 'text-gray-400'}`}
+          onDragOver={!readOnly ? (e) => handleDragOver(e, table.id, table.tasks.length) : undefined}
+          onDrop={!readOnly ? (e) => handleDrop(e, table.id, table.tasks.length) : undefined}
           data-table-id={table.id}
           data-task-index={table.tasks.length}
         >
@@ -890,6 +1026,7 @@ export function TableComponent({
       )}
 
       {/* Table Footer Controls */}
+      {!readOnly && (
       <div className="bg-gray-50 px-4 py-3 rounded-b-lg flex gap-2 flex-wrap items-center">
         {/* Actions Dropdown */}
         <div className="relative">
@@ -914,6 +1051,22 @@ export function TableComponent({
                 Archive Table
               </button>
               <button
+                onClick={() => { duplicateTable(table.id); setBulkActionsOpen(null); }}
+                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 transition border-b border-gray-200"
+                style={{ color: 'var(--color-text)' }}
+              >
+                Duplicate Table
+              </button>
+              {shareTable && (
+                <button
+                  onClick={() => { shareTable(table); setBulkActionsOpen(null); }}
+                  className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 transition border-b border-gray-200"
+                  style={{ color: 'var(--color-text)' }}
+                >
+                  Share Table
+                </button>
+              )}
+              <button
                 onClick={() => { setBulkGroupSelectorTable(table.id); setBulkActionsOpen(null); }}
                 className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 transition border-b border-gray-200"
               >
@@ -935,6 +1088,14 @@ export function TableComponent({
             </div>
           )}
         </div>
+        {onPushSharedChanges && (table._shared?.canEdit || isSharedByOwner) && (
+          <button
+            onClick={() => onPushSharedChanges(table)}
+            className="px-4 py-2 bg-[#4a6c7a] text-white rounded hover:bg-[#3d5d6a] transition text-sm"
+          >
+            Push changes
+          </button>
+        )}
         <button
           onClick={() => addTask(table.id)}
           className="ml-auto px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition text-sm"
@@ -942,6 +1103,7 @@ export function TableComponent({
           ADD TASK
         </button>
       </div>
+      )}
     </div>
   )
 }

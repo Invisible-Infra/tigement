@@ -14,6 +14,8 @@ import { FeatureRequestDialog } from './FeatureRequestDialog'
 import { SplitView } from './SplitView'
 import { SpaceTabs } from './SpaceTabs'
 import { TableComponent } from './TableComponent'
+import { ShareTableModal } from './ShareTableModal'
+import { SharedWithMeSection } from './SharedWithMeSection'
 import { BottomNav } from './BottomNav'
 import { AIPanel } from './AIPanel'
 import { exportToCSV, downloadCSV, importFromCSV } from '../utils/csvUtils'
@@ -21,6 +23,9 @@ import { saveTables, loadTables, saveSettings, loadSettings, saveTaskGroups, loa
 import { normalizeDate, formatDateWithWeekday, formatDateWithSettings, isLegacyDayTitle } from '../utils/dateFormat'
 import { useAuth } from '../contexts/AuthContext'
 import { syncManager } from '../utils/syncManager'
+import { syncSharedTablesForOwner, pushOwnerTableToShare } from '../utils/sharedTablesSync'
+import { pushSharedTableToShare } from '../utils/sharedTableRecipientSync'
+import { fetchSharedTableUpdate } from '../utils/sharedTableRecipientPull'
 import { downloadICS } from '../utils/icsExport'
 import { useTheme } from '../contexts/ThemeContext'
 import { api } from '../utils/api'
@@ -119,6 +124,15 @@ interface Task {
   notebook?: string // notebook content for this task
 }
 
+interface SharedTableMeta {
+  shareId: number
+  canEdit: boolean
+  ownerEmail: string
+  encryptedDek: string
+  ownerPublicKey: string
+  version: number
+}
+
 interface Table {
   id: string
   type: 'day' | 'todo'
@@ -130,6 +144,7 @@ interface Table {
   size?: { width: number; height: number }
   spaceId?: string | null // null or undefined = "All Spaces"
   collapsed?: boolean
+  _shared?: SharedTableMeta
 }
 
 interface TaskGroup {
@@ -387,13 +402,39 @@ interface WorkspaceProps {
 }
 
 export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, onResetOnboarding, onEnableOnboardingAgain, onShowProfile }: WorkspaceProps) {
-  const { user, syncNow, loading, decryptionFailure, authError, clearAuthError } = useAuth()
+  const { user, isPremium, syncNow, loading, decryptionFailure, authError, clearAuthError } = useAuth()
+
+  // Ensure sharing keys exist for logged-in users (needed for both sharing and receiving)
+  useEffect(() => {
+    if (!user) return
+    const stored = localStorage.getItem('tigement_sharing_private_key')
+    if (stored) return
+    ;(async () => {
+      try {
+        const { generateKeyPair } = await import('../utils/sharingCrypto')
+        const { publicKeyBase64, privateKeyBase64 } = await generateKeyPair()
+        localStorage.setItem('tigement_sharing_private_key', privateKeyBase64)
+        localStorage.setItem('tigement_sharing_public_key', publicKeyBase64)
+        api.setSharingPublicKey(publicKeyBase64).catch(() => {})
+      } catch {
+        // Sharing keys generation failed (e.g. SES restricts crypto); user can retry when sharing
+      }
+    })()
+  }, [user?.id])
   const { theme } = useTheme()
   const [syncing, setSyncing] = useState(false)
   const [syncSuccess, setSyncSuccess] = useState(false)
   const [hasLoadedUser, setHasLoadedUser] = useState(false)
   const [lastSyncInfo, setLastSyncInfo] = useState<{ time: Date | null; direction: 'uploaded' | 'downloaded' | null }>({ time: null, direction: null })
-  
+  const [sharedTableIds, setSharedTableIds] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    if (!isPremium || !user) return
+    api.getOwnedShares().then(({ shares }) => {
+      setSharedTableIds(new Set((shares || []).map((s: any) => String(s.source_table_id))))
+    }).catch(() => {})
+  }, [isPremium, user?.id])
+
   // Get text color based on theme for time fields
   const getTimeTextColor = (timeMatchStatus?: 'match' | 'mismatch' | null) => {
     // If there's a time match status, use contrasting colors
@@ -428,7 +469,12 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
   // Helper to conditionally show emoji (hide in terminal theme)
   const showEmoji = theme !== 'terminal'
 
-  const [tables, setTables] = useState<Table[]>([])
+  const [tables, setTables] = useState<Table[]>(() => {
+    if (typeof localStorage === 'undefined') return []
+    const loaded = loadTables()
+    if (!loaded || loaded.length === 0) return []
+    return migrateDayTableTitles(loaded, loadSettings()?.dateFormat || 'DD. MM. YYYY')
+  })
 
   const [draggedTask, setDraggedTask] = useState<{ tableId: string; taskId: string; index: number } | null>(null)
   const [dropTarget, setDropTarget] = useState<{ tableId: string; index: number } | null>(null)
@@ -452,6 +498,9 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
   const dragHandleTimer = useRef<number | null>(null)
   const addTableRef = useRef<(type: 'day' | 'todo') => void>(() => {})
   const isApplyingSyncUpdate = useRef(false)
+  const tablesRef = useRef<Table[]>([])
+  const lastShareUpdateReceivedAt = useRef<Record<number, number>>({})
+  const lastShareEditAt = useRef<Record<number, number>>({})
   const hasLoadedTables = useRef(false)
   const prevTablesHash = useRef<string>('')
   const spacesUpdateFromSettingsRef = useRef(false)
@@ -567,6 +616,9 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
   const [bulkGroupSelectorTable, setBulkGroupSelectorTable] = useState<string | null>(null)
   const [archivedTables, setArchivedTables] = useState<ArchivedTable[]>([])
   const [showArchivedMenu, setShowArchivedMenu] = useState(false)
+  const [showShareModal, setShowShareModal] = useState(false)
+  const [shareModalTable, setShareModalTable] = useState<Table | null>(null)
+  const [showSharedWithMeMenu, setShowSharedWithMeMenu] = useState(false)
   const [archivedSortOrder, setArchivedSortOrder] = useState<'newest' | 'oldest'>(() => {
     const saved = localStorage.getItem('tigement_archived_sort_order')
     return (saved === 'oldest' || saved === 'newest') ? saved : 'newest'
@@ -1170,6 +1222,12 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
         setSyncSuccess(true)
         setLastSyncInfo(syncManager.getLastSyncInfo())
         setTimeout(() => setSyncSuccess(false), 2000)
+        if (isPremium) {
+          const currentTables = tablesRef.current?.length ? tablesRef.current : (syncManager.getLocalWorkspace()?.tables ?? loadTables())
+          syncSharedTablesForOwner(currentTables, (merged) => {
+            setTables(migrateDayTableTitles(merged, loadSettings()?.dateFormat || 'DD. MM. YYYY'))
+          })
+        }
       }
     }
     window.addEventListener('tigement:sync-start', handleSyncStart)
@@ -1178,7 +1236,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
       window.removeEventListener('tigement:sync-start', handleSyncStart)
       window.removeEventListener('tigement:sync-complete', handleSyncComplete as EventListener)
     }
-  }, [])
+  }, [isPremium])
 
   // Listen for sync updates from background sync
   useEffect(() => {
@@ -1196,8 +1254,19 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
       isApplyingSyncUpdate.current = true
       console.log('✅ Applying sync update to workspace')
       
+      // Preserve shared tables when sync overwrites with remote-only (initial pull can run
+      // before Workspace load, so remote has no shared; we must keep them)
+      let sharedToKeep = (tablesRef.current ?? []).filter((t: any) => t._shared)
+      if (sharedToKeep.length === 0) {
+        const fromStorage = loadTables()
+        sharedToKeep = (fromStorage ?? []).filter((t: any) => t._shared)
+      }
+      const remoteIds = new Set((newTables || []).map((t: any) => t.id))
+      sharedToKeep = sharedToKeep.filter((t: any) => !remoteIds.has(t.id))
+      const mergedTables = [...(newTables || []), ...sharedToKeep]
+
       // Merge notebooks into tables BEFORE setting state (single update instead of two)
-      let finalTables = newTables || []
+      let finalTables = mergedTables
       if (newNotebooks?.tasks && Object.keys(newNotebooks.tasks).length > 0) {
         finalTables = finalTables.map(table => ({
           ...table,
@@ -1704,6 +1773,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
       return
     }
     
+    tablesRef.current = tables
     console.log('💾 Auto-saving tables to localStorage:', tables.length, 'tables')
     saveTables(tables)
     
@@ -1719,6 +1789,74 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
     } else {
       // Update hash during sync to prevent false positives after sync completes
       prevTablesHash.current = JSON.stringify(tables)
+    }
+  }, [tables])
+
+  const handlePushSharedChanges = async (table: Table) => {
+    if (table._shared?.canEdit) {
+      const result = await pushSharedTableToShare(table)
+      if (result.success && result.newVersion != null) {
+        lastShareUpdateReceivedAt.current[table._shared!.shareId] = Date.now()
+        setTables(prev => prev.map(t => {
+          if (t.id !== table.id || !t._shared) return t
+          const updated = { ...t, _shared: { ...t._shared, version: result.newVersion! } }
+          if (result.mergedTable) {
+            return { ...result.mergedTable, id: t.id, position: t.position, size: t.size, spaceId: t.spaceId, collapsed: t.collapsed, _shared: updated._shared }
+          }
+          return updated
+        }))
+      } else if (!result.success) {
+        const msg = result.reason === 'missing_keys'
+          ? 'Sharing setup required. Open Shared with me first.'
+          : result.reason === 'missing_meta'
+          ? 'Shared table data incomplete. Try re-adding from Shared with me.'
+          : result.reason === 'crypto'
+          ? 'Encryption failed. Try re-adding the table from Shared with me.'
+          : result.reason === 'forbidden'
+          ? 'Edit permission required. Check premium status.'
+          : result.reason === 'version_conflict'
+          ? 'Push failed: version conflict. Try again.'
+          : 'Push failed: network error. Try again.'
+        alert(msg)
+      }
+    } else if (sharedTableIds.has(table.id)) {
+      const ok = await pushOwnerTableToShare(table)
+      if (!ok) alert('Push failed: version conflict or network error. Try again.')
+    }
+  }
+
+  // Poll share updates for recipient's shared tables
+  useEffect(() => {
+    const sharedTables = tables.filter(t => t._shared)
+    if (!sharedTables.length) return
+
+    const poll = async () => {
+      if (isApplyingSyncUpdate.current) return
+      for (const table of sharedTables) {
+        const meta = table._shared
+        if (!meta) continue
+        const result = await fetchSharedTableUpdate(meta.shareId, meta.version)
+        if (!result) continue
+        const editedAt = lastShareEditAt.current[meta.shareId] ?? 0
+        const receivedAt = lastShareUpdateReceivedAt.current[meta.shareId] ?? 0
+        if (editedAt > receivedAt) continue
+        lastShareUpdateReceivedAt.current[meta.shareId] = Date.now()
+        setTables(prev => prev.map(t =>
+          t.id === table.id && t._shared
+            ? { ...result.table, id: t.id, position: t.position, size: t.size, spaceId: t.spaceId, collapsed: t.collapsed, _shared: { ...t._shared, version: result.version } }
+            : t
+        ))
+      }
+    }
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') poll()
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    const interval = setInterval(poll, 5000)
+    poll()
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      clearInterval(interval)
     }
   }, [tables])
 
@@ -2031,6 +2169,93 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
 
   addTableRef.current = addTable
 
+  const shareTable = (table: Table) => {
+    if (!isPremium) {
+      onShowPremium?.()
+      return
+    }
+    setShareModalTable(table)
+    setShowShareModal(true)
+  }
+
+  const handleDuplicateTableFromShared = (table: any) => {
+    const normalized: Table = {
+      id: `${table.type || 'day'}-${Date.now()}`,
+      type: (table.type || 'day') as 'day' | 'todo',
+      title: table.title || table.name || 'Shared',
+      date: table.date,
+      startTime: table.startTime,
+      tasks: (table.tasks || []).map((t: any, i: number) => ({
+        id: `task-${Date.now()}-${i}`,
+        title: t.title ?? t.name ?? '',
+        duration: t.duration ?? 30,
+        selected: false,
+        group: t.group,
+      })),
+      position: { x: 20 + tables.length * 100, y: 20 + tables.length * 50 },
+    }
+    setTables([...tables, normalized])
+    focusTable(normalized.id)
+  }
+
+  const handleAddSharedToWorkspace = (
+    table: any,
+    meta: { shareId: number; canEdit: boolean; ownerEmail: string; encryptedDek: string; ownerPublicKey: string; version: number }
+  ) => {
+    const tableId = `shared-${meta.shareId}`
+    const existing = tables.find(t => t.id === tableId)
+    if (existing) {
+      focusTable(tableId)
+      setShowSharedWithMeMenu(false)
+      return
+    }
+    const normalized: Table = {
+      id: tableId,
+      type: (table.type || 'day') as 'day' | 'todo',
+      title: table.title || table.name || 'Shared',
+      date: table.date,
+      startTime: table.startTime,
+      tasks: (table.tasks || []).map((t: any, i: number) => ({
+        id: t.id || `task-${Date.now()}-${i}`,
+        title: t.title ?? t.name ?? '',
+        duration: t.duration ?? 30,
+        selected: false,
+        group: taskGroups.some(g => g.id === t.group) ? (t.group || 'general') : 'general',
+      })),
+      position: { x: 20 + tables.length * 100, y: 20 + tables.length * 50 },
+      _shared: meta,
+    }
+    const newTables = [...tables, normalized]
+    setTables(newTables)
+    saveTables(newTables)
+    focusTable(normalized.id)
+    setShowSharedWithMeMenu(false)
+  }
+
+  const duplicateTable = (tableId: string) => {
+    const source = tables.find(t => t.id === tableId)
+    if (!source) return
+    const newTable: Table = {
+      ...source,
+      id: `${source.type}-${Date.now()}`,
+      title: source.type === 'day' ? source.title : `${source.title} (copy)`,
+      tasks: source.tasks.map((t, i) => ({
+        ...t,
+        id: `task-${Date.now()}-${i}`,
+        selected: false
+      })),
+      position: {
+        x: source.position.x + 30,
+        y: source.position.y + 30
+      }
+    }
+    setTables([...tables, newTable])
+    focusTable(newTable.id)
+    if (isMobile) {
+      setCurrentTableIndex(tables.length)
+    }
+  }
+
   const deleteTable = (tableId: string) => {
     if (tables.length === 1) {
       alert('Cannot delete the last table!')
@@ -2048,6 +2273,8 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
   }
 
   const updateTableDate = (tableId: string, date: string) => {
+    const tbl = tables.find(t => t.id === tableId)
+    if (tbl?._shared?.shareId != null) lastShareEditAt.current[tbl._shared.shareId] = Date.now()
     setTables(tables.map(table => {
       if (table.id === tableId) {
         return { ...table, date, title: formatDate(date) }
@@ -2138,6 +2365,8 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
   }
 
   const updateTask = (tableId: string, taskId: string, field: keyof Task, value: any) => {
+    const t = tables.find(x => x.id === tableId)
+    if (t?._shared?.shareId != null) lastShareEditAt.current[t._shared.shareId] = Date.now()
     setTables(prevTables => prevTables.map(table => {
       if (table.id === tableId) {
         return {
@@ -2153,6 +2382,8 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
   }
 
   const updateTableStartTime = (tableId: string, startTime: string) => {
+    const tbl = tables.find(t => t.id === tableId)
+    if (tbl?._shared?.shareId != null) lastShareEditAt.current[tbl._shared.shareId] = Date.now()
     setTables(tables.map(table =>
       table.id === tableId ? { ...table, startTime } : table
     ))
@@ -2447,7 +2678,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
   // Get task group info
   const getTaskGroup = (groupId?: string): TaskGroup | undefined => {
     const id = groupId || 'general'
-    return taskGroups.find(g => g.id === id) || taskGroups[0]
+    return taskGroups.find(g => g.id === id) || taskGroups.find(g => g.id === 'general') || taskGroups[0]
   }
 
   // Change task group
@@ -2533,6 +2764,8 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
 
   // Bulk add selected tasks to group
   const bulkAddToGroup = (tableId: string, groupId: string) => {
+    const tbl = tables.find(t => t.id === tableId)
+    if (tbl?._shared?.shareId != null) lastShareEditAt.current[tbl._shared.shareId] = Date.now()
     setTables(tables.map(table => {
       if (table.id === tableId) {
         return {
@@ -3643,6 +3876,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
                           'statistics': { label: showEmoji ? '📈 Statistics' : 'Statistics', onClick: () => { setShowStatistics(true); isMobile && setShowMenu(false); }, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
                           'ai-chat': { label: showEmoji ? '🤖 AI Assistant' : 'AI Assistant', onClick: () => { setShowAIPanel(true); isMobile && setShowMenu(false); }, className: 'bg-purple-600 text-white hover:bg-purple-700' },
                           'archived': { label: showEmoji ? '📦 Archived' : 'Archived', onClick: () => { setShowArchivedMenu(true); isMobile && setShowMenu(false); }, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
+                          'shared-with-me': { label: showEmoji ? '📤 Shared with me' : 'Shared with me', onClick: () => { setShowSharedWithMeMenu(true); isMobile && setShowMenu(false); }, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
                           'add-tab-group': { label: showEmoji ? '➕ New space' : 'New space', onClick: () => { handleAddSpace(); isMobile && setShowMenu(false); }, className: 'bg-green-600 text-white hover:bg-green-700' },
                           'settings': { label: showEmoji ? '⚙️ Settings' : 'Settings', onClick: () => { setShowSettings(true); isMobile && setShowMenu(false); }, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
                           'edit-groups': { label: showEmoji ? '🏷️ Task groups' : 'Task groups', onClick: () => { setShowGroupsEditor(true); isMobile && setShowMenu(false); }, className: 'bg-white text-gray-800 hover:bg-gray-100 border border-gray-300' },
@@ -3893,6 +4127,20 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
                         {pinnedItems.includes('archived') ? '📍' : '📌'}
                       </button>
                     </div>
+                    {user && (
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => { setShowSharedWithMeMenu(true); isMobile && setShowMenu(false); }} className="flex-1 px-3 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 transition text-sm text-left border border-gray-300">
+                        {showEmoji && '📤 '}Shared with me
+                      </button>
+                      <button 
+                        onClick={() => togglePin('shared-with-me')}
+                        className={`px-2 py-2 rounded transition text-sm ${pinnedItems.includes('shared-with-me') ? 'text-yellow-500 font-bold' : 'text-gray-400 hover:text-gray-600'}`}
+                        title={pinnedItems.includes('shared-with-me') ? 'Unpin' : 'Pin'}
+                      >
+                        {pinnedItems.includes('shared-with-me') ? '📍' : '📌'}
+                      </button>
+                    </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -4355,6 +4603,13 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
                         updateTableDate={updateTableDate}
                         setTables={setTables}
                         archiveTable={archiveTable}
+                        duplicateTable={duplicateTable}
+                        shareTable={table._shared ? undefined : (isPremium ? shareTable : undefined)}
+                        readOnly={table._shared ? !table._shared.canEdit : undefined}
+                        ownerEmail={table._shared?.ownerEmail}
+                        allowTableLayout={!!table._shared}
+                        onPushSharedChanges={(table._shared?.canEdit || sharedTableIds.has(table.id)) ? handlePushSharedChanges : undefined}
+                        isSharedByOwner={sharedTableIds.has(table.id)}
                         deleteTable={deleteTable}
                         toggleTableCollapsed={toggleTableCollapsed}
                         toggleSelectAll={toggleSelectAll}
@@ -4482,6 +4737,13 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
                           updateTableDate={updateTableDate}
                           setTables={setTables}
                           archiveTable={archiveTable}
+                          duplicateTable={duplicateTable}
+                          shareTable={table._shared ? undefined : (isPremium ? shareTable : undefined)}
+                          readOnly={table._shared ? !table._shared.canEdit : undefined}
+                          ownerEmail={table._shared?.ownerEmail}
+                          allowTableLayout={!!table._shared}
+                          onPushSharedChanges={(table._shared?.canEdit || sharedTableIds.has(table.id)) ? handlePushSharedChanges : undefined}
+                          isSharedByOwner={sharedTableIds.has(table.id)}
                           deleteTable={deleteTable}
                           toggleTableCollapsed={toggleTableCollapsed}
                           toggleSelectAll={toggleSelectAll}
@@ -4606,6 +4868,12 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
                 viewMode="all-in-one"
                 spaces={spaces}
                 handleAssignTableToSpace={handleAssignTableToSpace}
+                shareTable={table._shared ? undefined : (isPremium ? shareTable : undefined)}
+                readOnly={table._shared ? !table._shared.canEdit : undefined}
+                ownerEmail={table._shared?.ownerEmail}
+                allowTableLayout={!!table._shared}
+                onPushSharedChanges={(table._shared?.canEdit || sharedTableIds.has(table.id)) ? handlePushSharedChanges : undefined}
+                isSharedByOwner={sharedTableIds.has(table.id)}
                 timePickerTable={timePickerTable}
                 setTimePickerTable={setTimePickerTable}
                 durationPickerTask={durationPickerTask}
@@ -4628,6 +4896,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
                 updateTableDate={updateTableDate}
                 setTables={setTables}
                 archiveTable={archiveTable}
+                duplicateTable={duplicateTable}
                 deleteTable={deleteTable}
                 toggleTableCollapsed={toggleTableCollapsed}
                 toggleSelectAll={toggleSelectAll}
@@ -4851,6 +5120,45 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
       })()}
 
       {/* Archived Tables Menu */}
+      {showShareModal && shareModalTable && (
+        <ShareTableModal
+          table={shareModalTable}
+          onClose={() => { setShowShareModal(false); setShareModalTable(null); }}
+          onSuccess={() => {
+            api.getOwnedShares().then(({ shares }) => {
+              setSharedTableIds(new Set((shares || []).map((s: any) => String(s.source_table_id))))
+            }).catch(() => {})
+          }}
+        />
+      )}
+      {showSharedWithMeMenu && (
+        <SharedWithMeSection
+          onClose={() => setShowSharedWithMeMenu(false)}
+          onDuplicateTable={handleDuplicateTableFromShared}
+          onAddSharedToWorkspace={handleAddSharedToWorkspace}
+          isPremium={!!isPremium}
+          formatDate={formatDate}
+          tableContext={{
+            formatDate,
+            formatTime,
+            parseTime,
+            formatDuration,
+            parseDuration,
+            getTotalDuration,
+            isTaskInPast,
+            isTaskCurrent,
+            getTaskTimeMatchStatus,
+            getTaskGroup,
+            getContrastColor,
+            getEffectiveBackgroundHex,
+            getThemeColor,
+            settings,
+            iconMap,
+            taskGroups,
+            calculateTimes,
+          }}
+        />
+      )}
       {showArchivedMenu && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] overflow-y-auto">

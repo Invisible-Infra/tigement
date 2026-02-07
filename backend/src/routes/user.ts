@@ -270,6 +270,57 @@ router.delete('/account', async (req: AuthRequest, res) => {
   }
 });
 
+// Sharing public key (X25519 for ECDH table sharing)
+const sharingPublicKeySchema = z.object({
+  publicKey: z.string().min(32).max(500),
+});
+
+router.post('/sharing-public-key', async (req: AuthRequest, res) => {
+  try {
+    const { publicKey } = sharingPublicKeySchema.parse(req.body);
+    await query(
+      `INSERT INTO user_public_keys (user_id, public_key) VALUES ($1, $2)
+       ON CONFLICT (user_id) DO UPDATE SET public_key = $2`,
+      [req.user!.id, publicKey]
+    );
+    res.json({ success: true, message: 'Public key saved' });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: 'Invalid input', details: error.errors });
+    }
+    console.error('Sharing public key error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get public key by email (for share creation; requires auth)
+router.get('/public-key-by-email', async (req: AuthRequest, res) => {
+  try {
+    const email = req.query.email as string;
+    if (!email || typeof email !== 'string') {
+      return res.status(400).json({ error: 'email query parameter required' });
+    }
+    const result = await query(
+      `SELECT u.id as user_id, pk.public_key
+       FROM users u
+       LEFT JOIN user_public_keys pk ON u.id = pk.user_id
+       WHERE u.email = $1`,
+      [email.trim().toLowerCase()]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const row = result.rows[0];
+    if (!row.public_key) {
+      return res.status(404).json({ error: 'User has not set up sharing yet' });
+    }
+    res.json({ userId: row.user_id, publicKey: row.public_key });
+  } catch (error) {
+    console.error('Get public key by email error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Rotate encryption key
 const rotateKeySchema = z.object({
   invalidateTokens: z.boolean().default(true),

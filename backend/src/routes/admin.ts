@@ -360,6 +360,50 @@ router.put('/users/:id/premium-expiry', async (req: AuthRequest, res) => {
   }
 })
 
+// Grant/revoke admin role
+const adminRoleSchema = z.object({
+  is_admin: z.boolean(),
+});
+
+router.put('/users/:id/admin', async (req: AuthRequest, res) => {
+  try {
+    const userId = parseInt(req.params.id);
+    const { is_admin } = adminRoleSchema.parse(req.body);
+
+    const userCheck = await query('SELECT id, is_admin FROM users WHERE id = $1', [userId]);
+    if (userCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Prevent admin from revoking their own admin status
+    if (userId === req.user!.id && !is_admin) {
+      return res.status(400).json({ error: 'Cannot revoke your own admin role' });
+    }
+
+    // When revoking admin, ensure at least one admin remains
+    if (!is_admin) {
+      const adminCount = await query(
+        'SELECT COUNT(*) FROM users WHERE is_admin = true',
+        []
+      );
+      const count = parseInt(adminCount.rows[0].count, 10);
+      if (count <= 1) {
+        return res.status(400).json({ error: 'Cannot revoke the last admin' });
+      }
+    }
+
+    await query('UPDATE users SET is_admin = $1 WHERE id = $2', [is_admin, userId]);
+
+    res.json({ success: true, message: is_admin ? 'Admin role granted' : 'Admin role revoked' });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: 'Invalid input', details: error.errors });
+    }
+    console.error('Update admin role error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Create coupon
 const parseValidUntil = (val: unknown): Date | null | undefined => {
   if (val === undefined || val === '' || val === null) return null;

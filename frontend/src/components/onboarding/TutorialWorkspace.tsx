@@ -528,6 +528,7 @@ export function TutorialWorkspace({
                   updateTableDate={() => {}}
                   setTables={setDemoTables as any}
                   archiveTable={() => {}}
+                  duplicateTable={() => {}}
                   deleteTable={() => {}}
                   toggleTableCollapsed={() => {}}
                   toggleSelectAll={() => {}}
