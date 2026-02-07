@@ -1066,9 +1066,9 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
       if (data.tables) {
         setTables(data.tables)
       }
-      // Update settings (merge so visibleSpaceIds is preserved when remote omits it)
+      // Update settings (visibleSpaceIds is client-only: prefer local over remote)
       if (data.settings) {
-        setSettings(prev => ({ ...data.settings, visibleSpaceIds: data.settings.visibleSpaceIds ?? prev.visibleSpaceIds }))
+        setSettings(prev => ({ ...data.settings, visibleSpaceIds: prev.visibleSpaceIds ?? data.settings.visibleSpaceIds }))
       }
       // Update task groups only if server has them (don't clear local groups if server doesn't have any)
       if (data.taskGroups && data.taskGroups.length > 0) {
@@ -1153,7 +1153,8 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
       
       // Single setTables call with merged data
       setTables(finalTables)
-      setSettings(prev => ({ ...newSettings, visibleSpaceIds: newSettings.visibleSpaceIds ?? prev.visibleSpaceIds }))
+      // visibleSpaceIds is client-only: never overwrite with remote (remote may have [] which would hide spaces)
+      setSettings(prev => ({ ...newSettings, visibleSpaceIds: prev.visibleSpaceIds ?? newSettings.visibleSpaceIds }))
       setTaskGroups(newTaskGroups || defaultTaskGroups)
       
       // Update notebook state separately
@@ -1325,6 +1326,28 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
       visibleSpaceIds: undefined
     }
   })
+  
+  // Flush current state to localStorage before sync reads (prevents task edits loss)
+  useEffect(() => {
+    const handleSyncWillStart = () => {
+      saveTables(tables)
+      saveSettings(settings)
+      saveTaskGroups(taskGroups)
+      const taskNotebooks: Record<string, string> = {}
+      for (const table of tables) {
+        for (const task of table.tasks || []) {
+          if (task.notebook) {
+            taskNotebooks[task.id] = task.notebook
+          }
+        }
+      }
+      saveNotebooks({ workspace: workspaceNotebook, tasks: taskNotebooks })
+      saveDiaryEntries(diaryEntries)
+      saveArchivedTables(archivedTables)
+    }
+    window.addEventListener('tigement:sync-will-start', handleSyncWillStart)
+    return () => window.removeEventListener('tigement:sync-will-start', handleSyncWillStart)
+  }, [tables, settings, taskGroups, workspaceNotebook, diaryEntries, archivedTables])
   
   // Auto-show timer on startup if enabled in settings (but not on mobile)
   // MUST be after settings state declaration to avoid "before initialization" error

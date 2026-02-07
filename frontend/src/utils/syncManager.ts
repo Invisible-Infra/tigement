@@ -610,6 +610,10 @@ class SyncManager {
     let isRetrying = false
     let usedSameSourcePath = false
     try {
+      // Allow Workspace to flush its current state to localStorage before we read
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('tigement:sync-will-start'))
+      }
       // Get local workspace data (always fresh from localStorage)
       console.log('📂 Getting local workspace data...')
       const localData = this.getLocalWorkspace()
@@ -1043,7 +1047,22 @@ class SyncManager {
     
     // Save to local storage
     localStorage.setItem('tigement_tables', JSON.stringify(decryptedData.tables || []))
-    localStorage.setItem('tigement_settings', JSON.stringify(decryptedData.settings || {}))
+    // Preserve client-only settings (e.g. visibleSpaceIds) when applying remote
+    const currentSettings = (() => {
+      try {
+        const s = localStorage.getItem('tigement_settings')
+        return s ? JSON.parse(s) : {}
+      } catch {
+        return {}
+      }
+    })()
+    const mergedSettings = { ...(decryptedData.settings || {}) }
+    for (const k of CLIENT_ONLY_SETTINGS_KEYS) {
+      if (currentSettings[k] !== undefined && currentSettings[k] !== null) {
+        mergedSettings[k] = currentSettings[k]
+      }
+    }
+    localStorage.setItem('tigement_settings', JSON.stringify(mergedSettings))
     if (decryptedData.taskGroups) {
       localStorage.setItem('tigement_task_groups', JSON.stringify(decryptedData.taskGroups))
     }
@@ -1129,7 +1148,22 @@ class SyncManager {
     // Save to local storage
     console.log('💾 Saving to localStorage...')
     localStorage.setItem('tigement_tables', JSON.stringify(decryptedData.tables || []))
-    localStorage.setItem('tigement_settings', JSON.stringify(decryptedData.settings || {}))
+    // Preserve client-only settings (e.g. visibleSpaceIds) when applying remote
+    const currentSettings = (() => {
+      try {
+        const s = localStorage.getItem('tigement_settings')
+        return s ? JSON.parse(s) : {}
+      } catch {
+        return {}
+      }
+    })()
+    const mergedSettings = { ...(decryptedData.settings || {}) }
+    for (const k of CLIENT_ONLY_SETTINGS_KEYS) {
+      if (currentSettings[k] !== undefined && currentSettings[k] !== null) {
+        mergedSettings[k] = currentSettings[k]
+      }
+    }
+    localStorage.setItem('tigement_settings', JSON.stringify(mergedSettings))
     
     // Handle AI config sync
     if (decryptedData.aiConfig) {

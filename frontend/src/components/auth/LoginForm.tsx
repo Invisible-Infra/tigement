@@ -47,47 +47,81 @@ export function LoginForm({ onClose, onSwitchToRegister, onSwitchToForgotPasswor
           setLoading(false)
           return
         }
-        // Complete login with 2FA token and trust device setting
-        await login(email, password, twoFactorToken, trustDevice)
-        
+        // Complete login with 2FA token (with retry on mobile network failure)
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            await login(email, password, twoFactorToken, trustDevice)
+            break
+          } catch (e: any) {
+            const isNetworkError =
+              e?.name === 'TypeError' ||
+              e?.name === 'AbortError' ||
+              (typeof e?.message === 'string' &&
+                (e.message.includes('fetch') || e.message.includes('network') || e.message.toLowerCase().includes('cancelled')))
+            if (isNetworkError && attempt === 0) {
+              await new Promise(resolve => setTimeout(resolve, 800))
+              continue
+            }
+            throw e
+          }
+        }
         // Wait for authentication state to update (handle race condition on mobile)
-        // Check token directly since React state updates are batched
         let attempts = 0
         const maxAttempts = 20 // 2 seconds max wait
         while (!api.getAccessToken() && attempts < maxAttempts) {
           await new Promise(resolve => setTimeout(resolve, 100))
           attempts++
         }
-        
-        // Give React a moment to update state, then close
         await new Promise(resolve => setTimeout(resolve, 100))
         onClose()
       } else {
-        // Initial login attempt
-        const response = await login(email, password)
-        
-        // Check if the response indicates 2FA is required
-        if ((response as any)?.requiresTwoFactor) {
-          setRequires2FA(true)
-          setUserId((response as any).userId)
-          setError('')
-        } else {
-          // Wait for authentication state to update (handle race condition on mobile)
-          // Check token directly since React state updates are batched
-          let attempts = 0
-          const maxAttempts = 20 // 2 seconds max wait
-          while (!api.getAccessToken() && attempts < maxAttempts) {
+        // Initial login attempt (with retry on mobile network failure)
+        let lastError: Error | null = null
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            const response = await login(email, password)
+            lastError = null
+
+            // Check if the response indicates 2FA is required
+            if ((response as any)?.requiresTwoFactor) {
+              setRequires2FA(true)
+              setUserId((response as any).userId)
+              setError('')
+              break
+            }
+            // Wait for authentication state to update (handle race condition on mobile)
+            let attempts = 0
+            const maxAttempts = 20 // 2 seconds max wait
+            while (!api.getAccessToken() && attempts < maxAttempts) {
+              await new Promise(resolve => setTimeout(resolve, 100))
+              attempts++
+            }
             await new Promise(resolve => setTimeout(resolve, 100))
-            attempts++
+            onClose()
+            break
+          } catch (e: any) {
+            lastError = e
+            const isNetworkError =
+              e?.name === 'TypeError' ||
+              e?.name === 'AbortError' ||
+              (typeof e?.message === 'string' &&
+                (e.message.includes('fetch') || e.message.includes('network') || e.message.toLowerCase().includes('cancelled')))
+            if (isNetworkError && attempt === 0) {
+              await new Promise(resolve => setTimeout(resolve, 800))
+              continue
+            }
+            throw e
           }
-          
-          // Give React a moment to update state, then close
-          await new Promise(resolve => setTimeout(resolve, 100))
-          onClose()
         }
+        if (lastError) throw lastError
       }
     } catch (err: any) {
-      setError(err.message || 'Login failed. Please check your credentials.')
+      const isNetworkError =
+        err?.name === 'TypeError' ||
+        err?.name === 'AbortError' ||
+        (typeof err?.message === 'string' &&
+          (err.message.includes('fetch') || err.message.includes('network') || err.message.toLowerCase().includes('cancelled')))
+      setError(isNetworkError ? 'Connection failed. Please check your network and try again.' : (err.message || 'Login failed. Please check your credentials.'))
       setLoading(false)
     } finally {
       setLoading(false)
