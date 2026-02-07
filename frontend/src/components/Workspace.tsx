@@ -129,6 +129,7 @@ interface Table {
   position: { x: number; y: number }
   size?: { width: number; height: number }
   spaceId?: string | null // null or undefined = "All Spaces"
+  collapsed?: boolean
 }
 
 interface TaskGroup {
@@ -570,7 +571,6 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
     const saved = localStorage.getItem('tigement_archived_sort_order')
     return (saved === 'oldest' || saved === 'newest') ? saved : 'newest'
   })
-  const [tableActionMenu, setTableActionMenu] = useState<string | null>(null)
   const [showManual, setShowManual] = useState(false)
   const [openNotebooks, setOpenNotebooks] = useState<Array<{ 
     id: string; 
@@ -2041,6 +2041,12 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
     }
   }
 
+  const toggleTableCollapsed = (tableId: string) => {
+    setTables(tables.map(table =>
+      table.id === tableId ? { ...table, collapsed: !(table.collapsed ?? false) } : table
+    ))
+  }
+
   const updateTableDate = (tableId: string, date: string) => {
     setTables(tables.map(table => {
       if (table.id === tableId) {
@@ -2395,6 +2401,10 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
         // Insert at target
         targetTable.tasks.splice(insertIndex, 0, ...tasksToMove)
         
+        // Deselect all tasks in source and target after drop
+        sourceTable.tasks = sourceTable.tasks.map(t => ({ ...t, selected: false }))
+        targetTable.tasks = targetTable.tasks.map(t => ({ ...t, selected: false }))
+        
         return newTables
       })
     }
@@ -2427,8 +2437,8 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
         : [taskAt]
       if (tasksToMove.length === 0) return prev
       const idsToMove = new Set(tasksToMove.map(t => t.id))
-      newTables[sIdx].tasks = newTables[sIdx].tasks.filter(t => !idsToMove.has(t.id))
-      newTables[tIdx].tasks.push(...tasksToMove)
+      newTables[sIdx].tasks = newTables[sIdx].tasks.filter(t => !idsToMove.has(t.id)).map(t => ({ ...t, selected: false }))
+      newTables[tIdx].tasks = [...newTables[tIdx].tasks, ...tasksToMove].map(t => ({ ...t, selected: false }))
       return newTables
     })
     focusTable(targetTableId) // Focus target table when task is moved
@@ -2447,7 +2457,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
         return {
           ...table,
           tasks: table.tasks.map(task =>
-            task.id === taskId ? { ...task, group: groupId } : task
+            task.id === taskId ? { ...task, group: groupId, selected: false } : task
           )
         }
       }
@@ -2528,7 +2538,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
         return {
           ...table,
           tasks: table.tasks.map(task =>
-            task.selected ? { ...task, group: groupId } : task
+            task.selected ? { ...task, group: groupId, selected: false } : task
           )
         }
       }
@@ -2546,15 +2556,6 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
       return () => document.removeEventListener('click', handleClickOutside)
     }
   }, [bulkActionsOpen])
-
-  // Close table action menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = () => setTableActionMenu(null)
-    if (tableActionMenu) {
-      document.addEventListener('click', handleClickOutside)
-      return () => document.removeEventListener('click', handleClickOutside)
-    }
-  }, [tableActionMenu])
 
   // Archive handlers
   const archiveTable = async (tableId: string) => {
@@ -3216,6 +3217,10 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
       
       // Insert at target
       targetTable.tasks.splice(insertIndex, 0, ...tasksToMove)
+      
+      // Deselect all tasks in source and target after drop
+      sourceTable.tasks = sourceTable.tasks.map(t => ({ ...t, selected: false }))
+      targetTable.tasks = targetTable.tasks.map(t => ({ ...t, selected: false }))
       
       return newTables
     })
@@ -4328,8 +4333,6 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
                         showEmoji={showEmoji}
                         iconMap={iconMap}
                         viewMode="spaces"
-                        tableActionMenu={tableActionMenu}
-                        setTableActionMenu={setTableActionMenu}
                         timePickerTable={timePickerTable}
                         setTimePickerTable={setTimePickerTable}
                         durationPickerTask={durationPickerTask}
@@ -4353,6 +4356,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
                         setTables={setTables}
                         archiveTable={archiveTable}
                         deleteTable={deleteTable}
+                        toggleTableCollapsed={toggleTableCollapsed}
                         toggleSelectAll={toggleSelectAll}
                         updateTableStartTime={updateTableStartTime}
                         handleDragOver={handleDragOver}
@@ -4456,8 +4460,6 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
                           viewMode="spaces"
                           spaces={spaces}
                           handleAssignTableToSpace={handleAssignTableToSpace}
-                          tableActionMenu={tableActionMenu}
-                          setTableActionMenu={setTableActionMenu}
                           timePickerTable={timePickerTable}
                           setTimePickerTable={setTimePickerTable}
                           durationPickerTask={durationPickerTask}
@@ -4481,6 +4483,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
                           setTables={setTables}
                           archiveTable={archiveTable}
                           deleteTable={deleteTable}
+                          toggleTableCollapsed={toggleTableCollapsed}
                           toggleSelectAll={toggleSelectAll}
                           updateTableStartTime={updateTableStartTime}
                           handleDragOver={handleDragOver}
@@ -4603,8 +4606,6 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
                 viewMode="all-in-one"
                 spaces={spaces}
                 handleAssignTableToSpace={handleAssignTableToSpace}
-                tableActionMenu={tableActionMenu}
-                setTableActionMenu={setTableActionMenu}
                 timePickerTable={timePickerTable}
                 setTimePickerTable={setTimePickerTable}
                 durationPickerTask={durationPickerTask}
@@ -4628,6 +4629,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
                 setTables={setTables}
                 archiveTable={archiveTable}
                 deleteTable={deleteTable}
+                toggleTableCollapsed={toggleTableCollapsed}
                 toggleSelectAll={toggleSelectAll}
                 updateTableStartTime={updateTableStartTime}
                 handleDragOver={handleDragOver}

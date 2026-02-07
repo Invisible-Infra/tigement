@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { faBookOpen } from '@fortawesome/free-solid-svg-icons'
-import { isLegacyDayTitle } from '../utils/dateFormat'
+import { faBookOpen, faMinus, faXmark } from '@fortawesome/free-solid-svg-icons'
+import { isLegacyDayTitle, formatDateWithSettings } from '../utils/dateFormat'
 
 interface Task {
   id: string
@@ -23,6 +23,7 @@ interface Table {
   position: { x: number; y: number }
   size?: { width: number; height: number }
   spaceId?: string | null
+  collapsed?: boolean
 }
 
 interface TaskGroup {
@@ -55,8 +56,6 @@ interface TableComponentProps {
   spaces?: Space[]
   
   // State setters for dialogs/menus
-  tableActionMenu: string | null
-  setTableActionMenu: (id: string | null) => void
   timePickerTable: string | null
   setTimePickerTable: (id: string | null) => void
   durationPickerTask: { tableId: string; taskId: string } | null
@@ -84,6 +83,7 @@ interface TableComponentProps {
   setTables: React.Dispatch<React.SetStateAction<Table[]>>
   archiveTable: (tableId: string) => void
   deleteTable: (tableId: string) => void
+  toggleTableCollapsed: (tableId: string) => void
   toggleSelectAll: (tableId: string) => void
   updateTableStartTime: (tableId: string, time: string) => void
   handleDragOver: (e: React.DragEvent, tableId: string, index: number) => void
@@ -146,8 +146,6 @@ export function TableComponent({
   iconMap,
   viewMode,
   spaces,
-  tableActionMenu,
-  setTableActionMenu,
   timePickerTable,
   setTimePickerTable,
   durationPickerTask,
@@ -171,6 +169,7 @@ export function TableComponent({
   setTables,
   archiveTable,
   deleteTable,
+  toggleTableCollapsed,
   toggleSelectAll,
   updateTableStartTime,
   handleDragOver,
@@ -257,7 +256,7 @@ export function TableComponent({
               <div className="flex items-center gap-1">
                 {!isMobile && (
                   <span className="text-white text-sm">
-                    {formatDate(table.date)}
+                    {formatDateWithSettings(table.date, settings?.dateFormat)}
                   </span>
                 )}
                 <button
@@ -385,34 +384,23 @@ export function TableComponent({
             </div>
           )}
           
-          <div className="relative">
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                setTableActionMenu(tableActionMenu === table.id ? null : table.id)
-              }}
-              className="text-white hover:text-gray-300 text-xl transition"
-              title="Table actions"
-            >
-              {showEmoji ? '⋮' : '...'}
-            </button>
-            {tableActionMenu === table.id && (
-              <div className="absolute right-0 top-full mt-1 bg-white border border-gray-300 rounded shadow-lg min-w-[120px] z-20">
-                <button
-                  onClick={() => { archiveTable(table.id); setTableActionMenu(null); }}
-                  className="w-full px-3 py-2 text-left text-sm transition border-b border-gray-200 hover:bg-gray-100"
-                  style={{ color: 'var(--color-text)' }}
-                >
-                  Archive
-                </button>
-                <button
-                  onClick={() => { deleteTable(table.id); setTableActionMenu(null); }}
-                  className="w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 transition"
-                >
-                  Delete
-                </button>
-              </div>
+          <div className="flex items-center gap-1">
+            {!isMobile && (
+              <button
+                onClick={(e) => { e.stopPropagation(); toggleTableCollapsed(table.id); }}
+                className="min-h-[32px] min-w-[32px] flex items-center justify-center rounded border border-white/30 bg-white/10 text-white hover:bg-white/20 transition"
+                title="Collapse/expand tasks"
+              >
+                <FontAwesomeIcon icon={faMinus} className="text-base" />
+              </button>
             )}
+            <button
+              onClick={(e) => { e.stopPropagation(); deleteTable(table.id); }}
+              className="min-h-[32px] min-w-[32px] flex items-center justify-center rounded border border-white/30 bg-white/10 text-white hover:bg-red-500/80 hover:border-red-400 transition"
+              title="Delete table"
+            >
+              <FontAwesomeIcon icon={faXmark} className="text-base" />
+            </button>
           </div>
         </div>
       </div>
@@ -430,15 +418,17 @@ export function TableComponent({
         {/* Checkbox column (w-4) + Up/Down column (fixed width) */}
         {!isMobile && <span className="text-center" style={{ width: '44px' }}>Up|Dn</span>}
         {table.type === 'day' && (
-          <>
-            <span className="text-center" style={{ width: isMobile ? '2.5rem' : '5rem' }}>Start</span>
-            <span className="text-center" style={{ width: isMobile ? '2.5rem' : '5rem' }}>Finish</span>
-          </>
+          <div className="flex flex-shrink-0" style={{ gap: 0 }}>
+            <span className="text-center flex-shrink-0" style={{ width: isMobile ? '2.5rem' : '5rem' }}>Start</span>
+            <span className="text-center flex-shrink-0" style={{ width: isMobile ? '2.5rem' : '5rem' }}>Finish</span>
+          </div>
         )}
-        <span className="flex-1 px-2">Job</span>
+        <span className="text-center w-6 flex-shrink-0">Group</span>
+        <span className="flex-1 px-2 min-w-0">Job</span>
+        <span className="text-center w-6 flex-shrink-0">Notes</span>
         <span className="text-center" style={{ width: isMobile ? '2.5rem' : '5rem' }}>Duration</span>
-        {/* Add/Delete buttons column */}
-        {!isMobile && <span className="text-center" style={{ width: '68px' }}>Add|Del</span>}
+        {/* Add/Duplicate/Delete buttons column */}
+        {!isMobile && <span className="text-right" style={{ width: '68px' }}>Add|Dup|Del</span>}
       </div>
 
       {/* Resize handle - desktop only, show in all-in-one and spaces views */}
@@ -460,7 +450,8 @@ export function TableComponent({
         />
       )}
 
-      {/* Task List */}
+      {/* Task List - hidden when collapsed */}
+      {!(table.collapsed ?? false) && (
       <div
         onDragOver={(e) => handleDragOver(e, table.id, table.tasks.length)}
         onDragLeave={handleDragLeave}
@@ -545,7 +536,7 @@ export function TableComponent({
                   draggable={true}
                   onDragStart={(e) => handleDragStart(table.id, task.id, index, e)}
                   onDragEnd={handleDragEnd}
-                  className="flex items-center justify-center px-1 cursor-grab active:cursor-grabbing flex-shrink-0"
+                  className="flex items-center justify-center px-1 cursor-grab active:cursor-grabbing flex-shrink-0 w-[44px]"
                   title="Drag to reorder"
                 >
                   <span className="text-gray-500 hover:text-gray-900 select-none">⋮⋮</span>
@@ -849,7 +840,7 @@ export function TableComponent({
 
               {/* Add Below / Duplicate / Delete - desktop only, mobile has ADD TASK button at bottom */}
               {!isMobile && (
-                <div className="flex gap-1">
+                <div className="flex gap-1 justify-end w-[68px] flex-shrink-0">
                   <button
                     onClick={() => addTask(table.id, index)}
                     className="text-green-600 hover:text-green-800 text-lg px-1"
@@ -891,6 +882,12 @@ export function TableComponent({
           )}
         </div>
       </div>
+      )}
+      {(table.collapsed ?? false) && (
+        <div className="px-4 py-2 text-sm text-gray-500 border-b border-gray-200">
+          {table.tasks.length} task{table.tasks.length !== 1 ? 's' : ''}
+        </div>
+      )}
 
       {/* Table Footer Controls */}
       <div className="bg-gray-50 px-4 py-3 rounded-b-lg flex gap-2 flex-wrap items-center">
@@ -909,6 +906,13 @@ export function TableComponent({
           
           {bulkActionsOpen === table.id && (
             <div className="absolute left-0 bottom-full mb-1 bg-white border border-gray-300 rounded shadow-lg min-w-[180px] z-20">
+              <button
+                onClick={() => { archiveTable(table.id); setBulkActionsOpen(null); }}
+                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 transition border-b border-gray-200"
+                style={{ color: 'var(--color-text)' }}
+              >
+                Archive Table
+              </button>
               <button
                 onClick={() => { setBulkGroupSelectorTable(table.id); setBulkActionsOpen(null); }}
                 className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 transition border-b border-gray-200"

@@ -82,7 +82,6 @@ export function TutorialWorkspace({
   const [demoTables, setDemoTables] = useState<DemoTable[]>(() => getDemoTables())
   const [draggedTask, setDraggedTask] = useState<{ tableId: string; taskId: string; index: number } | null>(null)
   const [dropTarget, setDropTarget] = useState<{ tableId: string; index: number } | null>(null)
-  const [tableActionMenu, setTableActionMenu] = useState<string | null>(null)
   const [timePickerTable, setTimePickerTable] = useState<string | null>(null)
   const [durationPickerTask, setDurationPickerTask] = useState<{ tableId: string; taskId: string } | null>(null)
   const [groupSelectorTask, setGroupSelectorTask] = useState<{ tableId: string; taskId: string } | null>(null)
@@ -301,6 +300,9 @@ export function TutorialWorkspace({
         insertIndex = targetIndex - 1
       }
       newTables[tIdx].tasks.splice(insertIndex, 0, movedTask)
+      // Deselect all tasks in source and target after drop
+      newTables[sIdx].tasks = newTables[sIdx].tasks.map((t) => ({ ...t, selected: false }))
+      newTables[tIdx].tasks = newTables[tIdx].tasks.map((t) => ({ ...t, selected: false }))
       return newTables
     })
 
@@ -340,6 +342,9 @@ export function TutorialWorkspace({
       if (sIdx === -1 || tIdx === -1) return prev
       const [moved] = newTables[sIdx].tasks.splice(taskIndex, 1)
       newTables[tIdx].tasks.push(moved)
+      // Deselect all tasks in source and target after move
+      newTables[sIdx].tasks = newTables[sIdx].tasks.map((t) => ({ ...t, selected: false }))
+      newTables[tIdx].tasks = newTables[tIdx].tasks.map((t) => ({ ...t, selected: false }))
       return newTables
     })
     setMoveMenu(null)
@@ -501,8 +506,6 @@ export function TutorialWorkspace({
                   showEmoji={true}
                   iconMap={iconMap}
                   viewMode="all-in-one"
-                  tableActionMenu={tableActionMenu}
-                  setTableActionMenu={setTableActionMenu}
                   timePickerTable={timePickerTable}
                   setTimePickerTable={setTimePickerTable}
                   durationPickerTask={durationPickerTask}
@@ -526,6 +529,7 @@ export function TutorialWorkspace({
                   setTables={setDemoTables as any}
                   archiveTable={() => {}}
                   deleteTable={() => {}}
+                  toggleTableCollapsed={() => {}}
                   toggleSelectAll={() => {}}
                   updateTableStartTime={updateTableStartTime}
                   handleDragOver={handleDragOver}
