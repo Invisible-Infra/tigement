@@ -330,6 +330,11 @@ router.put('/users/:id/premium-expiry', async (req: AuthRequest, res) => {
       return res.status(400).json({ error: 'Invalid date format' })
     }
 
+    const userCheck = await query('SELECT id FROM users WHERE id = $1', [userId])
+    if (userCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+
     // Check if subscription exists
     const existing = await query(
       'SELECT * FROM subscriptions WHERE user_id = $1',
@@ -619,6 +624,11 @@ router.put('/users/:id/coupon-allocation', async (req: AuthRequest, res) => {
       coupons_per_purchase_override,
       months_per_coupon_override
     } = req.body
+
+    const userCheck = await query('SELECT id FROM users WHERE id = $1', [userId])
+    if (userCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' })
+    }
 
     // Check if allocation exists
     const checkResult = await query(
@@ -1040,10 +1050,14 @@ router.put('/onboarding-settings', async (req: AuthRequest, res) => {
     const { onboarding_video_url } = req.body
     const url = typeof onboarding_video_url === 'string' ? onboarding_video_url.trim() : ''
     
-    await query(
+    const result = await query(
       'UPDATE payment_settings SET onboarding_video_url = $1 WHERE id = 1',
       [url || null]
     )
+    
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Payment settings not found' })
+    }
     
     res.json({ success: true, onboarding_video_url: url })
   } catch (error: any) {
@@ -1081,10 +1095,14 @@ router.put('/debug-settings', async (req: AuthRequest, res) => {
       return res.status(400).json({ error: 'debug_button_enabled must be boolean' })
     }
     
-    await query(
+    const result = await query(
       'UPDATE payment_settings SET debug_button_enabled = $1 WHERE id = 1',
       [debug_button_enabled]
     )
+    
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Payment settings not found' })
+    }
     
     res.json({ success: true, debug_button_enabled })
   } catch (error: any) {

@@ -5,7 +5,7 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
-import { query } from '../db';
+import { query, withTransaction } from '../db';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 
 const router = Router();
@@ -68,42 +68,46 @@ router.post('/', async (req: AuthRequest, res) => {
       return res.status(400).json({ error: 'Cannot share with yourself' });
     }
 
-    const existing = await query(
-      'SELECT id FROM shared_tables WHERE owner_id = $1 AND source_table_id = $2',
-      [req.user!.id, tableId]
-    );
-
-    if (existing.rows.length > 0) {
-      const st = existing.rows[0] as { id: number };
-      const duplicateRecipient = await query(
-        'SELECT id FROM shared_table_recipients WHERE shared_table_id = $1 AND user_id = $2',
-        [st.id, recipientId]
+    const result = await withTransaction(async (client) => {
+      const existing = await client.query(
+        'SELECT id FROM shared_tables WHERE owner_id = $1 AND source_table_id = $2',
+        [req.user!.id, tableId]
       );
-      if (duplicateRecipient.rows.length > 0) {
-        await query(
-          'UPDATE shared_table_recipients SET encrypted_dek = $1, permission = $2 WHERE shared_table_id = $3 AND user_id = $4',
-          [encryptedDek, permission, st.id, recipientId]
+
+      if (existing.rows.length > 0) {
+        const st = existing.rows[0] as { id: number };
+        const duplicateRecipient = await client.query(
+          'SELECT id FROM shared_table_recipients WHERE shared_table_id = $1 AND user_id = $2',
+          [st.id, recipientId]
         );
-        return res.json({ success: true, sharedTableId: st.id, added: false });
+        if (duplicateRecipient.rows.length > 0) {
+          await client.query(
+            'UPDATE shared_table_recipients SET encrypted_dek = $1, permission = $2 WHERE shared_table_id = $3 AND user_id = $4',
+            [encryptedDek, permission, st.id, recipientId]
+          );
+          return { success: true, sharedTableId: st.id, added: false };
+        }
+        await client.query(
+          'INSERT INTO shared_table_recipients (shared_table_id, user_id, encrypted_dek, permission) VALUES ($1, $2, $3, $4)',
+          [st.id, recipientId, encryptedDek, permission]
+        );
+        return { success: true, sharedTableId: st.id, added: true };
       }
-      await query(
+
+      const insertResult = await client.query(
+        `INSERT INTO shared_tables (owner_id, source_table_id, encrypted_table_data, version, wrapped_dek_for_owner)
+         VALUES ($1, $2, $3, 1, $4) RETURNING id`,
+        [req.user!.id, tableId, encryptedTableData, wrappedDekForOwner ?? null]
+      );
+      const st = insertResult.rows[0] as { id: number };
+      await client.query(
         'INSERT INTO shared_table_recipients (shared_table_id, user_id, encrypted_dek, permission) VALUES ($1, $2, $3, $4)',
         [st.id, recipientId, encryptedDek, permission]
       );
-      return res.json({ success: true, sharedTableId: st.id, added: true });
-    }
+      return { success: true, sharedTableId: st.id, added: true };
+    });
 
-    const insertResult = await query(
-      `INSERT INTO shared_tables (owner_id, source_table_id, encrypted_table_data, version, wrapped_dek_for_owner)
-       VALUES ($1, $2, $3, 1, $4) RETURNING id`,
-      [req.user!.id, tableId, encryptedTableData, wrappedDekForOwner ?? null]
-    );
-    const st = insertResult.rows[0] as { id: number };
-    await query(
-      'INSERT INTO shared_table_recipients (shared_table_id, user_id, encrypted_dek, permission) VALUES ($1, $2, $3, $4)',
-      [st.id, recipientId, encryptedDek, permission]
-    );
-    res.json({ success: true, sharedTableId: st.id, added: true });
+    res.json(result);
   } catch (error) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: 'Invalid input', details: error.errors });
@@ -223,9 +227,13 @@ router.patch('/:id', async (req: AuthRequest, res) => {
       if (ownerCheck.rows[0].owner_id !== req.user!.id) return res.status(403).json({ error: 'Forbidden' });
       const recId = req.query.recipientId as string;
       if (!recId) return res.status(400).json({ error: 'recipientId required for permission update' });
+      if (!/^\d+$/.test(recId)) {
+        return res.status(400).json({ error: 'recipientId must be a numeric id' });
+      }
+      const recipientId = parseInt(recId, 10);
       await query(
         'UPDATE shared_table_recipients SET permission = $1 WHERE shared_table_id = $2 AND user_id = $3',
-        [permission, id, parseInt(recId, 10)]
+        [permission, id, recipientId]
       );
       return res.json({ success: true });
     }
@@ -265,6 +273,7 @@ const updateDataSchema = z.object({
 
 router.put('/:id', async (req: AuthRequest, res) => {
   try {
+    if (!(await requirePremium(req, res))) return;
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return res.status(400).json({ error: 'Invalid id' });
     const { encryptedTableData, version } = updateDataSchema.parse(req.body);

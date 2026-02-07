@@ -54,7 +54,13 @@ router.get('/profile', async (req: AuthRequest, res) => {
       `SELECT u.id, u.email, u.created_at, u.is_admin, u.username, u.profile_picture_url,
               s.plan, s.status as subscription_status, s.started_at, s.expires_at
        FROM users u
-       LEFT JOIN subscriptions s ON u.id = s.user_id
+       LEFT JOIN LATERAL (
+         SELECT plan, status, started_at, expires_at
+         FROM subscriptions
+         WHERE user_id = u.id
+         ORDER BY started_at DESC
+         LIMIT 1
+       ) s ON true
        WHERE u.id = $1`,
       [req.user!.id]
     );
@@ -304,7 +310,7 @@ router.get('/public-key-by-email', async (req: AuthRequest, res) => {
       `SELECT u.id as user_id, pk.public_key
        FROM users u
        LEFT JOIN user_public_keys pk ON u.id = pk.user_id
-       WHERE u.email = $1`,
+       WHERE LOWER(u.email) = $1`,
       [email.trim().toLowerCase()]
     );
     if (result.rows.length === 0) {
