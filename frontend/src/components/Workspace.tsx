@@ -1825,6 +1825,8 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
             ? 'Shared table data incomplete. Try re-adding from Shared with me.'
             : result.reason === 'crypto'
             ? 'Encryption failed. Try re-adding the table from Shared with me.'
+            : result.reason === 'no_edit_permission'
+            ? 'You have view-only access. The owner changed your permission. Pull to refresh.'
             : result.reason === 'forbidden'
             ? 'Edit permission required. Check premium status.'
             : result.reason === 'version_conflict'
@@ -1883,6 +1885,18 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
           })
         } else {
           applyPullToTable(table, remoteWithVersion)
+        }
+        const { shares } = await api.getIncomingShares()
+        const share = (shares || []).find((s: any) => s.id === table._shared?.shareId)
+        if (share && table._shared) {
+          const canEdit = isPremium && share.permission === 'edit'
+          setTables((prev) =>
+            prev.map((t) =>
+              t.id === table.id && t._shared
+                ? { ...t, _shared: { ...t._shared, canEdit } }
+                : t
+            )
+          )
         }
         setHasPullableChanges((p) => { const q = { ...p }; delete q[table.id]; return q })
       } else if (sharedTableIds.has(table.id)) {
@@ -1955,6 +1969,20 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
     if (!pullPreviewModal) return
     const { table, remoteTable } = pullPreviewModal
     applyPullToTable(table, remoteTable)
+    if (table._shared) {
+      const { shares } = await api.getIncomingShares()
+      const share = (shares || []).find((s: any) => s.id === table._shared?.shareId)
+      if (share) {
+        const canEdit = isPremium && share.permission === 'edit'
+        setTables((prev) =>
+          prev.map((t) =>
+            t.id === table.id && t._shared
+              ? { ...t, _shared: { ...t._shared, canEdit } }
+              : t
+          )
+        )
+      }
+    }
     const shareVersion = (await api.getOwnedShares()).shares?.find((s: any) => String(s.source_table_id) === table.id)?.version
     if (shareVersion != null) {
       lastKnownShareVersion.current[table.id] = shareVersion
@@ -2010,6 +2038,24 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
             saveTables(next)
             return next
           })
+        }
+        const incomingByShareId = new Map((incoming.shares || []).map((s: any) => [s.id, s]))
+        const needsPermissionUpdate = sharedTables.some((t) => {
+          const s = t._shared && incomingByShareId.get(t._shared.shareId)
+          if (!s) return false
+          const shouldCanEdit = isPremium && s.permission === 'edit'
+          return t._shared.canEdit !== shouldCanEdit
+        })
+        if (needsPermissionUpdate) {
+          setTables((prev) =>
+            prev.map((t) => {
+              const s = t._shared && incomingByShareId.get(t._shared.shareId)
+              if (!s || !t._shared) return t
+              const shouldCanEdit = isPremium && s.permission === 'edit'
+              if (t._shared.canEdit === shouldCanEdit) return t
+              return { ...t, _shared: { ...t._shared, canEdit: shouldCanEdit } }
+            })
+          )
         }
         const updates: Record<string, boolean> = {}
         ;(owned.shares || []).forEach((s: any) => {
@@ -2395,6 +2441,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
         duration: t.duration ?? 30,
         selected: false,
         group: taskGroups.some(g => g.id === t.group) ? (t.group || 'general') : 'general',
+        notebook: t.notebook,
       })),
       position: { x: 20 + tables.length * 100, y: 20 + tables.length * 50 },
       _shared: meta,
@@ -5461,9 +5508,11 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
             />
           )
         } else if (notebook.type === 'task' && notebook.taskId) {
-          const task = tables.flatMap(t => t.tasks).find(tk => tk.id === notebook.taskId)
+          const table = tables.find(t => t.tasks.some((tk: any) => tk.id === notebook.taskId))
+          const task = table?.tasks.find((tk: any) => tk.id === notebook.taskId)
           if (!task) return null
-          
+          const isViewOnlyShared = table?._shared && !table._shared.canEdit
+
           return (
             <Notebook
               key={notebook.id}
@@ -5475,6 +5524,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
               onClose={() => closeNotebook(notebook.id)}
               onPositionChange={(pos) => updateNotebookPosition(notebook.id, pos)}
               zoom={zoom}
+              readOnly={isViewOnlyShared}
             />
           )
         }

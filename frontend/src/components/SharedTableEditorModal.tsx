@@ -7,6 +7,7 @@ import { useState } from 'react'
 import { api } from '../utils/api'
 import { encryptTableWithDEK, unwrapDEKFromOwner } from '../utils/sharingCrypto'
 import { TableComponent } from './TableComponent'
+import { Notebook } from './Notebook'
 import type { SharedTableContext } from './SharedWithMeSection'
 
 const SHARING_PRIVATE_KEY = 'tigement_sharing_private_key'
@@ -67,8 +68,38 @@ export function SharedTableEditorModal({
   const [editedTable, setEditedTable] = useState<any>(() => normalizeTable(table))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [openNotebooks, setOpenNotebooks] = useState<Array<{ taskId: string; taskTitle: string; position: { x: number; y: number } }>>([])
 
   const displayTable = normalizeTable(editedTable)
+
+  const openTaskNotebook = (tableId: string, taskId: string) => {
+    if (openNotebooks.some(nb => nb.taskId === taskId)) return
+    const task = displayTable.tasks.find((t: any) => t.id === taskId)
+    const taskTitle = task?.title || 'Untitled Task'
+    setOpenNotebooks(prev => [...prev, {
+      taskId,
+      taskTitle,
+      position: { x: 150 + prev.length * 50, y: 150 + prev.length * 50 },
+    }])
+  }
+
+  const closeNotebook = (taskId: string) => {
+    setOpenNotebooks(prev => prev.filter(nb => nb.taskId !== taskId))
+  }
+
+  const updateNotebookPosition = (taskId: string, position: { x: number; y: number }) => {
+    setOpenNotebooks(prev => prev.map(nb => nb.taskId === taskId ? { ...nb, position } : nb))
+  }
+
+  const handleSaveTaskNotebook = (taskId: string, content: string) => {
+    if (!canEdit) return
+    setEditedTable((prev: any) => ({
+      ...prev,
+      tasks: prev.tasks.map((t: any) =>
+        t.id === taskId ? { ...t, notebook: content } : t
+      ),
+    }))
+  }
 
   const handleSave = async () => {
     if (!canEdit) return
@@ -120,7 +151,7 @@ export function SharedTableEditorModal({
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[300]" onClick={onClose}>
       <div
-        className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] flex flex-col"
+        className="relative bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="bg-[#4a6c7a] text-white px-6 py-4 rounded-t-lg flex justify-between items-center flex-shrink-0">
@@ -209,7 +240,7 @@ export function SharedTableEditorModal({
             }}
             startMoveLongPress={noop}
             cancelMoveLongPress={noop}
-            openTaskNotebook={noop}
+            openTaskNotebook={openTaskNotebook}
             addTask={isViewOnly ? noop : (tableId, index) => {
               setEditedTable((prev: any) => {
                 const newTask = { id: `task-${Date.now()}`, title: '', duration: ctx.settings?.defaultDuration ?? 30, selected: false }
@@ -249,6 +280,25 @@ export function SharedTableEditorModal({
             ownerEmail={isViewOnly ? ownerEmail : undefined}
           />
         </div>
+        {/* Open notebooks within modal */}
+        {openNotebooks.map(nb => {
+          const task = displayTable.tasks.find((t: any) => t.id === nb.taskId)
+          if (!task) return null
+          return (
+            <Notebook
+              key={nb.taskId}
+              id={`shared-modal-${nb.taskId}`}
+              title={`Notes: ${nb.taskTitle}`}
+              content={task.notebook || ''}
+              position={nb.position}
+              onSave={(content) => handleSaveTaskNotebook(nb.taskId, content)}
+              onClose={() => closeNotebook(nb.taskId)}
+              onPositionChange={(pos) => updateNotebookPosition(nb.taskId, pos)}
+              zoom={1}
+              readOnly={isViewOnly}
+            />
+          )
+        })}
       </div>
     </div>
   )

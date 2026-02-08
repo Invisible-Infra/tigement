@@ -11,7 +11,7 @@ import { ensureSharingKeys } from './sharingKeys'
 
 const SHARING_PRIVATE_KEY = 'tigement_sharing_private_key'
 
-export type PushFailureReason = 'missing_meta' | 'missing_keys' | 'crypto' | 'forbidden' | 'version_conflict' | 'network'
+export type PushFailureReason = 'missing_meta' | 'missing_keys' | 'crypto' | 'forbidden' | 'no_edit_permission' | 'version_conflict' | 'network'
 
 export interface SharedTableMeta {
   shareId: number
@@ -131,6 +131,7 @@ export async function pushSharedTableToShare(
     const is403 = msg.includes('403') || msg.toLowerCase().includes('forbidden') || msg.toLowerCase().includes('permission')
     const isCrypto = msg === 'RECIPIENT_PUSH_CRYPTO_FAILED'
     console.warn('Recipient sync failed:', err)
+    if (msg.includes('No edit permission')) return { success: false, reason: 'no_edit_permission' }
     if (is403) return { success: false, reason: 'forbidden' }
     if (isCrypto) return { success: false, reason: 'crypto' }
     return { success: false, reason: 'network' }

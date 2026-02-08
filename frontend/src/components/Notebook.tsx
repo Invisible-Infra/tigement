@@ -15,11 +15,12 @@ interface NotebookProps {
   onClose: () => void
   onPositionChange: (position: { x: number; y: number }) => void
   zoom?: number
+  readOnly?: boolean
 }
 
-export function Notebook({ id, title, content, position, onSave, onClose, onPositionChange, zoom = 1 }: NotebookProps) {
+export function Notebook({ id, title, content, position, onSave, onClose, onPositionChange, zoom = 1, readOnly = false }: NotebookProps) {
   const [editContent, setEditContent] = useState(content)
-  const [showPreview, setShowPreview] = useState(false)
+  const [showPreview, setShowPreview] = useState(readOnly)
   const [isDragging, setIsDragging] = useState(false)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
   const [isMobile, setIsMobile] = useState(false)
@@ -34,15 +35,16 @@ export function Notebook({ id, title, content, position, onSave, onClose, onPosi
     return () => window.removeEventListener('resize', checkMobile)
   }, [])
 
-  // Auto-save on content change (debounced)
+  // Auto-save on content change (debounced) - skip when readOnly
   useEffect(() => {
+    if (readOnly) return
     const timer = setTimeout(() => {
       if (editContent !== content) {
         onSave(editContent)
       }
     }, 1000)
     return () => clearTimeout(timer)
-  }, [editContent])
+  }, [editContent, readOnly])
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (notebookRef.current && e.target === e.currentTarget) {
@@ -146,12 +148,14 @@ export function Notebook({ id, title, content, position, onSave, onClose, onPosi
       >
         <h3 className="text-sm font-bold truncate flex-1">{title}</h3>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowPreview(!showPreview)}
-            className="px-2 py-1 bg-white/20 hover:bg-white/30 rounded text-xs transition"
-          >
-            {showPreview ? 'Edit' : 'Preview'}
-          </button>
+          {!readOnly && (
+            <button
+              onClick={() => setShowPreview(!showPreview)}
+              className="px-2 py-1 bg-white/20 hover:bg-white/30 rounded text-xs transition"
+            >
+              {showPreview ? 'Edit' : 'Preview'}
+            </button>
+          )}
           <button
             onClick={onClose}
             className="text-xl hover:text-gray-300 px-1"
@@ -164,7 +168,7 @@ export function Notebook({ id, title, content, position, onSave, onClose, onPosi
       {/* Content */}
       <div className="flex flex-col" style={{ height: 'calc(100% - 40px)' }}>
         {/* Editor */}
-        {!showPreview && (
+        {!readOnly && !showPreview && (
           <div className="flex flex-col flex-1">
             <div className="p-2 border-b border-gray-200">
               <MarkdownToolbar onInsert={handleInsert} />
@@ -246,7 +250,7 @@ const hello = 'world';
         )}
 
         {/* Preview */}
-        {showPreview && (
+        {(readOnly || showPreview) && (
           <div className="flex-1 p-3 overflow-auto notebook-preview text-xs">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}

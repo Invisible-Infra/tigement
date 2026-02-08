@@ -877,25 +877,37 @@ export function TableComponent({
 
               {/* Notebook Icon */}
               {readOnly ? (
-                <span className="flex-shrink-0 px-1">
-                  {task.notebook && (
-                    <FontAwesomeIcon 
-                      icon={faBookOpen} 
+                task.notebook ? (
+                  <button
+                    onClick={(e) => openTaskNotebook(table.id, task.id, e.currentTarget)}
+                    className="flex-shrink-0 px-1 hover:opacity-70 transition"
+                    title="View notes"
+                  >
+                    <FontAwesomeIcon
+                      icon={faBookOpen}
                       className="text-blue-600"
-                      size={isMobile ? 'sm' : '1x'} 
+                      size={isMobile ? 'sm' : '1x'}
                     />
-                  )}
-                </span>
+                  </button>
+                ) : (
+                  <span className="flex-shrink-0 px-1" title="No notes">
+                    <FontAwesomeIcon
+                      icon={faBookOpen}
+                      className="text-gray-400"
+                      size={isMobile ? 'sm' : '1x'}
+                    />
+                  </span>
+                )
               ) : (
                 <button
                   onClick={(e) => openTaskNotebook(table.id, task.id, e.currentTarget)}
                   className="flex-shrink-0 px-1 hover:opacity-70 transition"
                   title={task.notebook ? "View notes" : "Add notes"}
                 >
-                  <FontAwesomeIcon 
-                    icon={faBookOpen} 
+                  <FontAwesomeIcon
+                    icon={faBookOpen}
                     className={task.notebook ? "text-blue-600" : "text-gray-400"}
-                    size={isMobile ? 'sm' : '1x'} 
+                    size={isMobile ? 'sm' : '1x'}
                   />
                 </button>
               )}
