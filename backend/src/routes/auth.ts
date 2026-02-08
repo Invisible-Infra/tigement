@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import crypto from 'crypto';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
@@ -90,9 +91,10 @@ router.post('/register', async (req, res) => {
     // Store refresh token hash (never store plaintext)
     const expiresAt = new Date(Date.now() + daysRegister * 24 * 60 * 60 * 1000);
     const tokenHash = await bcrypt.hash(refreshToken, 10);
+    const tokenLookupHash = crypto.createHash('sha256').update(refreshToken, 'utf8').digest('hex');
     await query(
-      'INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)',
-      [user.id, tokenHash, expiresAt]
+      'INSERT INTO refresh_tokens (user_id, token_hash, token_lookup_hash, expires_at) VALUES ($1, $2, $3, $4)',
+      [user.id, tokenHash, tokenLookupHash, expiresAt]
     );
     
     res.status(201).json({
@@ -217,9 +219,10 @@ router.post('/login', async (req, res) => {
     // Store refresh token hash (never store plaintext)
     const expiresAt = new Date(Date.now() + daysLogin * 24 * 60 * 60 * 1000);
     const tokenHash = await bcrypt.hash(refreshToken, 10);
+    const tokenLookupHash = crypto.createHash('sha256').update(refreshToken, 'utf8').digest('hex');
     await query(
-      'INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)',
-      [user.id, tokenHash, expiresAt]
+      'INSERT INTO refresh_tokens (user_id, token_hash, token_lookup_hash, expires_at) VALUES ($1, $2, $3, $4)',
+      [user.id, tokenHash, tokenLookupHash, expiresAt]
     );
     
     // Clean up expired refresh tokens for this user
@@ -296,16 +299,28 @@ router.post('/refresh', async (req, res) => {
     const refreshSecret = getJwtRefreshSecret();
     const decoded = jwt.verify(refreshToken, refreshSecret) as { id: number };
     
-    // Check if token exists in database (compare hash; never store plaintext)
+    const lookupHash = crypto.createHash('sha256').update(refreshToken, 'utf8').digest('hex');
+    
+    // O(1) lookup: find by token_lookup_hash (new tokens)
     const tokenResult = await query(
-      'SELECT token_hash FROM refresh_tokens WHERE user_id = $1 AND expires_at > NOW()',
-      [decoded.id]
+      'SELECT token_hash FROM refresh_tokens WHERE user_id = $1 AND token_lookup_hash = $2 AND expires_at > NOW() LIMIT 1',
+      [decoded.id, lookupHash]
     );
     let tokenMatch = false;
-    for (const r of tokenResult.rows) {
-      if (await bcrypt.compare(refreshToken, r.token_hash)) {
-        tokenMatch = true;
-        break;
+    if (tokenResult.rows.length > 0) {
+      tokenMatch = await bcrypt.compare(refreshToken, tokenResult.rows[0].token_hash);
+    }
+    if (!tokenMatch) {
+      // Fallback: legacy tokens without token_lookup_hash (O(n))
+      const legacyResult = await query(
+        'SELECT token_hash FROM refresh_tokens WHERE user_id = $1 AND token_lookup_hash IS NULL AND expires_at > NOW()',
+        [decoded.id]
+      );
+      for (const r of legacyResult.rows) {
+        if (await bcrypt.compare(refreshToken, r.token_hash)) {
+          tokenMatch = true;
+          break;
+        }
       }
     }
     if (!tokenMatch) {
@@ -343,14 +358,23 @@ router.post('/logout', authMiddleware, async (req: AuthRequest, res) => {
     const { refreshToken } = req.body;
     
     if (refreshToken) {
+      const lookupHash = crypto.createHash('sha256').update(refreshToken, 'utf8').digest('hex');
       const tokenRows = await query(
-        'SELECT id, token_hash FROM refresh_tokens WHERE user_id = $1 AND expires_at > NOW()',
-        [req.user!.id]
+        'SELECT id, token_hash FROM refresh_tokens WHERE user_id = $1 AND token_lookup_hash = $2 AND expires_at > NOW() LIMIT 1',
+        [req.user!.id, lookupHash]
       );
-      for (const r of tokenRows.rows) {
-        if (await bcrypt.compare(refreshToken, r.token_hash)) {
-          await query('DELETE FROM refresh_tokens WHERE id = $1', [r.id]);
-          break;
+      if (tokenRows.rows.length > 0 && await bcrypt.compare(refreshToken, tokenRows.rows[0].token_hash)) {
+        await query('DELETE FROM refresh_tokens WHERE id = $1', [tokenRows.rows[0].id]);
+      } else {
+        const legacyRows = await query(
+          'SELECT id, token_hash FROM refresh_tokens WHERE user_id = $1 AND token_lookup_hash IS NULL AND expires_at > NOW()',
+          [req.user!.id]
+        );
+        for (const r of legacyRows.rows) {
+          if (await bcrypt.compare(refreshToken, r.token_hash)) {
+            await query('DELETE FROM refresh_tokens WHERE id = $1', [r.id]);
+            break;
+          }
         }
       }
     }

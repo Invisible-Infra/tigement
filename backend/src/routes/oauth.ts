@@ -4,6 +4,7 @@
  */
 
 import { Router, Request, Response } from 'express';
+import crypto from 'crypto';
 import passport from 'passport';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
@@ -264,9 +265,10 @@ router.post('/oauth/passphrase', async (req: Request, res: Response) => {
     // Store refresh token hash (never store plaintext)
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     const tokenHash = await bcrypt.hash(refreshToken, 10);
+    const tokenLookupHash = crypto.createHash('sha256').update(refreshToken, 'utf8').digest('hex');
     await query(
-      'INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)',
-      [user.id, tokenHash, expiresAt]
+      'INSERT INTO refresh_tokens (user_id, token_hash, token_lookup_hash, expires_at) VALUES ($1, $2, $3, $4)',
+      [user.id, tokenHash, tokenLookupHash, expiresAt]
     );
 
     // Update last login
