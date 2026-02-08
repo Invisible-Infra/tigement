@@ -6,7 +6,8 @@ const pool = new Pool({
 
 pool.on('error', (err) => {
   console.error('Unexpected error on idle client', err);
-  process.exit(-1);
+  // Do NOT process.exit: it can abort before in-flight HTTP responses are sent,
+  // causing clients to receive 500 with empty body. The pool removes bad clients automatically.
 });
 
 export const query = async (text: string, params?: any[]) => {

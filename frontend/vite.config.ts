@@ -26,11 +26,11 @@ export default defineConfig({
     },
     proxy: {
       '/api': {
-        target: 'http://tigement-backend:3000',
+        target: process.env.VITE_PROXY_TARGET || 'http://tigement-backend:3000',
         changeOrigin: true,
       },
       '/uploads': {
-        target: 'http://tigement-backend:3000',
+        target: process.env.VITE_PROXY_TARGET || 'http://tigement-backend:3000',
         changeOrigin: true,
       }
     }

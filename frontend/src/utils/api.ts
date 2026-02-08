@@ -136,7 +136,13 @@ class ApiClient {
     }
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Unknown error' }))
+      const rawText = await response.text().catch(() => '')
+      let error: { error?: string; currentVersion?: number }
+      try {
+        error = rawText ? JSON.parse(rawText) : { error: 'Unknown error' }
+      } catch (_e) {
+        error = { error: 'Unknown error' }
+      }
       if (response.status === 409 && typeof (error as any).currentVersion === 'number') {
         throw new VersionConflictError(
           error.error || 'Version conflict',
