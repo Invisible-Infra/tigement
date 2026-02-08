@@ -1025,17 +1025,40 @@ router.put('/announcement', async (req: AuthRequest, res) => {
   }
 })
 
+const DEFAULT_PINNED_ITEMS_ALLOWLIST = [
+  'timer', 'notebook', 'diary', 'statistics', 'ai-chat',
+  'archived', 'shared-with-me', 'add-tab-group',
+  'settings', 'edit-groups', 'manual',
+  'export-csv', 'import-csv', 'export-ics', 'sync-now',
+  'undo', 'redo', 'report-bug', 'feature-request'
+] as const
+
+const DEFAULT_PINNED_ITEMS_FALLBACK = ['sync-now', 'settings', 'undo', 'redo']
+
+function parseDefaultPinnedItems(val: unknown): string[] {
+  if (!Array.isArray(val)) return [...DEFAULT_PINNED_ITEMS_FALLBACK]
+  const filtered = val.filter(
+    (id): id is string =>
+      typeof id === 'string' &&
+      DEFAULT_PINNED_ITEMS_ALLOWLIST.includes(id as any)
+  )
+  return filtered
+}
+
 /**
  * GET /api/admin/onboarding-settings
  * Get onboarding settings (admin only)
  */
 router.get('/onboarding-settings', async (req: AuthRequest, res) => {
   try {
-    const result = await query('SELECT onboarding_video_url, trial_premium_days FROM payment_settings WHERE id = 1')
+    const result = await query('SELECT onboarding_video_url, trial_premium_days, default_pinned_items FROM payment_settings WHERE id = 1')
     const row = result.rows[0]
+    const rawPinned = row?.default_pinned_items
+    const default_pinned_items = parseDefaultPinnedItems(rawPinned)
     res.json({
       onboarding_video_url: row?.onboarding_video_url || '',
-      trial_premium_days: row?.trial_premium_days ?? 10
+      trial_premium_days: row?.trial_premium_days ?? 10,
+      default_pinned_items
     })
   } catch (error: any) {
     console.error('Error fetching onboarding settings:', error)
@@ -1049,7 +1072,7 @@ router.get('/onboarding-settings', async (req: AuthRequest, res) => {
  */
 router.put('/onboarding-settings', async (req: AuthRequest, res) => {
   try {
-    const { onboarding_video_url, trial_premium_days } = req.body
+    const { onboarding_video_url, trial_premium_days, default_pinned_items } = req.body
     const url = typeof onboarding_video_url === 'string' ? onboarding_video_url.trim() : ''
     const days = trial_premium_days !== undefined
       ? Math.max(0, Math.min(365, parseInt(String(trial_premium_days), 10) || 10))
@@ -1062,6 +1085,11 @@ router.put('/onboarding-settings', async (req: AuthRequest, res) => {
       updates.push(`trial_premium_days = $${paramIndex++}`)
       values.push(days)
     }
+    if (default_pinned_items !== undefined) {
+      const filtered = parseDefaultPinnedItems(default_pinned_items)
+      updates.push(`default_pinned_items = $${paramIndex++}`)
+      values.push(JSON.stringify(filtered))
+    }
 
     const result = await query(
       `UPDATE payment_settings SET ${updates.join(', ')} WHERE id = 1`,
@@ -1072,9 +1100,11 @@ router.put('/onboarding-settings', async (req: AuthRequest, res) => {
       return res.status(404).json({ error: 'Payment settings not found' })
     }
 
-    const getResult = await query('SELECT trial_premium_days FROM payment_settings WHERE id = 1')
-    const finalDays = getResult.rows[0]?.trial_premium_days ?? 10
-    res.json({ success: true, onboarding_video_url: url, trial_premium_days: finalDays })
+    const getResult = await query('SELECT trial_premium_days, default_pinned_items FROM payment_settings WHERE id = 1')
+    const finalRow = getResult.rows[0]
+    const finalDays = finalRow?.trial_premium_days ?? 10
+    const finalPinned = parseDefaultPinnedItems(finalRow?.default_pinned_items)
+    res.json({ success: true, onboarding_video_url: url, trial_premium_days: finalDays, default_pinned_items: finalPinned })
   } catch (error: any) {
     console.error('Error updating onboarding settings:', error)
     res.status(500).json({ error: 'Failed to update onboarding settings' })

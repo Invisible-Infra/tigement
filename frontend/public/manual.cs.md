@@ -134,6 +134,7 @@ Tip: Potřebujete pevný začátek? Nastavte čas začátku tabulky; ostatní se
 ## Sdílení tabulek (Premium)
 - E2EE sdílení tabulek e-mailem. Příjemci dostanou oprávnění Prohlížet nebo Upravovat.
 - Tlačítko Sdílet v hlavičce tabulky. Příjemci vidí „Sdíleno se mnou“ v postranním panelu.
+- Příjemci bez premium mohou prohlížet sdílené tabulky a stahovat aktualizace; k úpravám je potřeba premium.
 - Pouze prohlížení: otevřít tabulku, bez úprav. Úpravy: živá editace v SharedTableEditorModal nebo přidat do workspace a odeslat změny.
 - Stáhnout změny: majitel i příjemce mohou stáhnout aktualizace. Řešení konfliktů při editaci více příjemci.
 

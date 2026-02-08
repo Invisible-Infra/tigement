@@ -307,7 +307,18 @@ router.get('/public-key-by-email', async (req: AuthRequest, res) => {
       return res.status(400).json({ error: 'email query parameter required' });
     }
     const result = await query(
-      `SELECT u.id as user_id, pk.public_key
+      `SELECT u.id as user_id, pk.public_key,
+              (SELECT s.plan IS NOT NULL AND s.plan = 'premium'
+                 AND (s.status = 'active'
+                   OR ((s.status = 'expired' OR s.status = 'cancelled')
+                     AND s.expires_at IS NOT NULL
+                     AND s.expires_at + COALESCE(
+                       (SELECT premium_grace_period_days FROM payment_settings WHERE id = 1 LIMIT 1), 3
+                     ) * INTERVAL '1 day' >= NOW()))
+               FROM subscriptions s
+               WHERE s.user_id = u.id
+               ORDER BY s.started_at DESC
+               LIMIT 1) as is_premium
        FROM users u
        LEFT JOIN user_public_keys pk ON u.id = pk.user_id
        WHERE LOWER(u.email) = $1`,
@@ -320,7 +331,11 @@ router.get('/public-key-by-email', async (req: AuthRequest, res) => {
     if (!row.public_key) {
       return res.status(404).json({ error: 'User has not set up sharing yet' });
     }
-    res.json({ userId: row.user_id, publicKey: row.public_key });
+    res.json({
+      userId: row.user_id,
+      publicKey: row.public_key,
+      isPremium: !!row.is_premium,
+    });
   } catch (error) {
     console.error('Get public key by email error:', error);
     res.status(500).json({ error: 'Internal server error' });

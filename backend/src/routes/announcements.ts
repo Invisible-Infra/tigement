@@ -53,6 +53,40 @@ router.get('/onboarding-video-url', async (req: Request, res: Response) => {
   }
 })
 
+const DEFAULT_PINNED_ITEMS_ALLOWLIST = [
+  'timer', 'notebook', 'diary', 'statistics', 'ai-chat',
+  'archived', 'shared-with-me', 'add-tab-group',
+  'settings', 'edit-groups', 'manual',
+  'export-csv', 'import-csv', 'export-ics', 'sync-now',
+  'undo', 'redo', 'report-bug', 'feature-request'
+] as const
+
+const DEFAULT_PINNED_ITEMS_FALLBACK = ['sync-now', 'settings', 'undo', 'redo']
+
+/**
+ * Get default pinned items for right menu
+ * GET /api/announcements/default-pinned-items
+ * Public endpoint - no authentication required
+ */
+router.get('/default-pinned-items', async (req: Request, res: Response) => {
+  try {
+    const result = await query('SELECT default_pinned_items FROM payment_settings WHERE id = 1')
+    const raw = result.rows[0]?.default_pinned_items
+    if (!Array.isArray(raw)) {
+      return res.json({ items: DEFAULT_PINNED_ITEMS_FALLBACK })
+    }
+    const items = raw.filter(
+      (id: unknown) =>
+        typeof id === 'string' &&
+        DEFAULT_PINNED_ITEMS_ALLOWLIST.includes(id as any)
+    )
+    res.json({ items })
+  } catch (error: any) {
+    console.error('Error fetching default pinned items:', error)
+    res.json({ items: DEFAULT_PINNED_ITEMS_FALLBACK })
+  }
+})
+
 /**
  * Get debug settings
  * GET /api/announcements/debug-settings

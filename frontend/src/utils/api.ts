@@ -658,7 +658,7 @@ class ApiClient {
     })
   }
 
-  async getPublicKeyByEmail(email: string): Promise<{ userId: number; publicKey: string }> {
+  async getPublicKeyByEmail(email: string): Promise<{ userId: number; publicKey: string; isPremium?: boolean }> {
     return this.request(`/user/public-key-by-email?email=${encodeURIComponent(email)}`, {
       method: 'GET',
     })
@@ -828,6 +828,11 @@ class ApiClient {
     return this.request('/announcements/onboarding-video-url')
   }
 
+  async getDefaultPinnedItems(): Promise<string[]> {
+    const { items } = await this.request('/announcements/default-pinned-items')
+    return Array.isArray(items) ? items : ['sync-now', 'settings', 'undo', 'redo']
+  }
+
   async getAdminAnnouncement(): Promise<any> {
     return this.request('/admin/announcement')
   }
@@ -839,11 +844,11 @@ class ApiClient {
     })
   }
 
-  async getOnboardingSettings(): Promise<{ onboarding_video_url: string; trial_premium_days: number }> {
+  async getOnboardingSettings(): Promise<{ onboarding_video_url: string; trial_premium_days: number; default_pinned_items: string[] }> {
     return this.request('/admin/onboarding-settings')
   }
 
-  async updateOnboardingSettings(data: { onboarding_video_url: string; trial_premium_days?: number }): Promise<any> {
+  async updateOnboardingSettings(data: { onboarding_video_url: string; trial_premium_days?: number; default_pinned_items?: string[] }): Promise<any> {
     return this.request('/admin/onboarding-settings', {
       method: 'PUT',
       body: JSON.stringify(data)

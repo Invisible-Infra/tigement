@@ -25,7 +25,7 @@ interface TimerProps {
   onPositionChange?: (pos: { x: number; y: number }) => void
 }
 
-export function Timer({ onClose, tables, position = { x: window.innerWidth - 350, y: 20 }, onPositionChange }: TimerProps) {
+export function Timer({ onClose, tables, position = { x: window.innerWidth - 350, y: Math.max(20, window.innerHeight - 420) }, onPositionChange }: TimerProps) {
   const [currentTime, setCurrentTime] = useState(new Date())
   const [soundEnabled, setSoundEnabled] = useState(true)
   const [visualEnabled, setVisualEnabled] = useState(true)

@@ -134,6 +134,7 @@ Tip: If you need a hard start for the first task, set the table start time. Ever
 ## Table Sharing (Premium)
 - E2EE share tables by email. Recipients get View or Edit permission.
 - Share button in table header. Recipients see "Shared with me" in sidebar.
+- Non-premium recipients can view shared tables and pull updates, but edit requires premium.
 - View-only: open table, no editing. Edit: live-edit in SharedTableEditorModal or add to workspace and push changes.
 - Pull changes: owner and recipient can pull updates. Conflict resolution when multiple recipients edit.
 

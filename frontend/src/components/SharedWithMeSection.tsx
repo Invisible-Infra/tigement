@@ -153,6 +153,11 @@ export function SharedWithMeSection({ onClose, onDuplicateTable, onAddSharedToWo
               {decryptFailCount} shared table(s) could not be opened. Ask the owner to remove you from the share and add you again.
             </div>
           )}
+          {!loading && !error && shares.some((s) => !s.canEdit && s.permission === 'edit') && (
+            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded text-blue-800 text-sm">
+              Some tables were shared with edit permission, but you have view-only access. Upgrade to premium to edit.
+            </div>
+          )}
           {!loading && !error && shares.length === 0 && (
             <div className="text-center py-8">
               <p className="text-gray-500 mb-4">No tables shared with you yet</p>

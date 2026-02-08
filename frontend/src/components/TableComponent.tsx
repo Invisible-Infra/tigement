@@ -1052,9 +1052,10 @@ export function TableComponent({
       )}
 
       {/* Table Footer Controls */}
-      {!readOnly && (
+      {(!readOnly || (readOnly && onPullSharedChanges && hasPullableChanges && (table._shared || isSharedByOwner))) && (
       <div className="bg-gray-50 px-4 py-3 rounded-b-lg flex gap-2 flex-wrap items-center">
-        {/* Actions Dropdown */}
+        {/* Actions Dropdown - only when editable */}
+        {!readOnly && (
         <div className="relative">
           <button
             onClick={(e) => {
@@ -1114,6 +1115,7 @@ export function TableComponent({
             </div>
           )}
         </div>
+        )}
         {onPushSharedChanges && (table._shared?.canEdit || isSharedByOwner) && (
           <button
             onClick={() => onPushSharedChanges(table)}
@@ -1128,7 +1130,7 @@ export function TableComponent({
             {pushingTableId === table.id ? 'Pushing...' : pushSuccessTableId === table.id ? 'Pushed!' : 'Push changes'}
           </button>
         )}
-        {onPullSharedChanges && hasPullableChanges && (table._shared?.canEdit || isSharedByOwner) && (
+        {onPullSharedChanges && hasPullableChanges && (table._shared || isSharedByOwner) && (
           <div className="flex items-center gap-2">
             {isSharedByOwner && onPullPreviewToggle && (
               <label className="flex items-center gap-1 text-sm cursor-pointer" style={{ color: 'var(--color-text)' }}>
@@ -1149,12 +1151,14 @@ export function TableComponent({
             </button>
           </div>
         )}
+        {!readOnly && (
         <button
           onClick={() => addTask(table.id)}
           className="ml-auto px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition text-sm"
         >
           ADD TASK
         </button>
+        )}
       </div>
       )}
     </div>

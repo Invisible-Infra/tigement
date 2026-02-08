@@ -50,7 +50,7 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
   })
   const [debugSettingsSaved, setDebugSettingsSaved] = useState(false)
 
-  const [onboardingSettings, setOnboardingSettings] = useState({ onboarding_video_url: '', trial_premium_days: 10 })
+  const [onboardingSettings, setOnboardingSettings] = useState({ onboarding_video_url: '', trial_premium_days: 10, default_pinned_items: [] as string[] })
   const [onboardingSettingsSaved, setOnboardingSettingsSaved] = useState(false)
 
   // Coupon form
@@ -265,7 +265,10 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
     setLoading(true)
     try {
       const data = await api.getOnboardingSettings()
-      setOnboardingSettings(data)
+      setOnboardingSettings({
+        ...data,
+        default_pinned_items: data.default_pinned_items ?? []
+      })
     } catch (error) {
       console.error('Failed to load onboarding settings:', error)
     } finally {
@@ -1403,6 +1406,66 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
                     <p className="text-xs text-gray-500 mt-1">
                       Number of days new users get premium trial. Set to 0 to disable trial.
                     </p>
+                  </div>
+
+                  <div className="mt-6">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Default pinned items
+                    </label>
+                    <p className="text-xs text-gray-500 mb-2">
+                      Items shown pinned in the right menu for new users who haven&apos;t customized their pins.
+                    </p>
+                    <div className="mt-2 space-y-3">
+                      {[
+                        { group: 'Go to', items: [
+                          { id: 'timer', label: 'Timer' },
+                          { id: 'notebook', label: 'Notebook' },
+                          { id: 'diary', label: 'Diary' },
+                          { id: 'statistics', label: 'Statistics' },
+                          { id: 'ai-chat', label: 'AI Assistant' } ] },
+                        { group: 'Tables', items: [
+                          { id: 'archived', label: 'Archived' },
+                          { id: 'shared-with-me', label: 'Shared with me' } ] },
+                        { group: 'Organize', items: [
+                          { id: 'add-tab-group', label: 'New space' },
+                          { id: 'edit-groups', label: 'Task groups' },
+                          { id: 'settings', label: 'Settings' } ] },
+                        { group: 'Edit', items: [
+                          { id: 'undo', label: 'Undo' },
+                          { id: 'redo', label: 'Redo' } ] },
+                        { group: 'Data & Sync', items: [
+                          { id: 'export-csv', label: 'Export CSV' },
+                          { id: 'import-csv', label: 'Import CSV' },
+                          { id: 'export-ics', label: 'Export Calendar (.ics)' },
+                          { id: 'sync-now', label: 'Sync now' } ] },
+                        { group: 'Help', items: [
+                          { id: 'manual', label: 'Manual' },
+                          { id: 'report-bug', label: 'Report bug' },
+                          { id: 'feature-request', label: 'Feature request' } ] }
+                      ].map(({ group, items }) => (
+                        <div key={group}>
+                          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">{group}</div>
+                          <div className="flex flex-wrap gap-2">
+                            {items.map(({ id, label }) => (
+                              <label key={id} className="inline-flex items-center gap-1.5 px-2 py-1 bg-gray-50 rounded border border-gray-200 cursor-pointer hover:bg-gray-100">
+                                <input
+                                  type="checkbox"
+                                  checked={onboardingSettings.default_pinned_items.includes(id)}
+                                  onChange={(e) => {
+                                    const next = e.target.checked
+                                      ? [...onboardingSettings.default_pinned_items, id]
+                                      : onboardingSettings.default_pinned_items.filter(x => x !== id)
+                                    setOnboardingSettings({ ...onboardingSettings, default_pinned_items: next })
+                                  }}
+                                  className="rounded"
+                                />
+                                <span className="text-sm">{label}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
 
                   <div className="flex gap-4 pt-6">

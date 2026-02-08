@@ -521,7 +521,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
     } catch (error) {
       console.error('Failed to load timer position:', error)
     }
-    return { x: typeof window !== 'undefined' ? window.innerWidth - 350 : 100, y: 20 }
+    return { x: typeof window !== 'undefined' ? window.innerWidth - 350 : 100, y: typeof window !== 'undefined' ? window.innerHeight - 420 : 20 }
   })
   const [showStatistics, setShowStatistics] = useState(false)
   const [showBugReport, setShowBugReport] = useState(false)
@@ -654,8 +654,9 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
   const [notebookAnimation, setNotebookAnimation] = useState<{ from: { x: number; y: number }; to: { x: number; y: number }; taskId: string } | null>(null)
   const [pinnedItems, setPinnedItems] = useState<string[]>(() => {
     const saved = localStorage.getItem('tigement_pinned_items')
-    const items = saved ? JSON.parse(saved) : ['sync-now', 'settings', 'undo', 'redo']
-    return items.filter((id: string) => id !== 'ai-history')
+    if (!saved) return [] // placeholder; useEffect will fetch admin default
+    const items = JSON.parse(saved)
+    return Array.isArray(items) ? items.filter((id: string) => id !== 'ai-history') : []
   })
   const [openDiaryEntry, setOpenDiaryEntry] = useState<{ date: string; position: { x: number; y: number } } | null>(null)
   const [durationPickerTask, setDurationPickerTask] = useState<{ tableId: string; taskId: string } | null>(null)
@@ -677,6 +678,19 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
     }, 1000) // Update every second for immediate task highlighting
 
     return () => clearInterval(timer)
+  }, [])
+
+  // Fetch default pinned items when user has no saved preference
+  useEffect(() => {
+    if (localStorage.getItem('tigement_pinned_items')) return
+    api.getDefaultPinnedItems()
+      .then((items) => {
+        const filtered = items.filter((id: string) => id !== 'ai-history')
+        setPinnedItems(filtered)
+      })
+      .catch(() => {
+        setPinnedItems(['sync-now', 'settings', 'undo', 'redo'])
+      })
   }, [])
 
   // Sync pinnedItems to localStorage
@@ -1864,7 +1878,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
   const handlePullSharedChanges = async (table: Table) => {
     setPullingTableId(table.id)
     try {
-      if (table._shared?.canEdit) {
+      if (table._shared) {
         const result = await fetchSharedTableUpdate(table._shared.shareId, table._shared.version)
         if (!result) {
           setHasPullableChanges((p) => { const q = { ...p }; delete q[table.id]; return q })
@@ -1983,10 +1997,12 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
         )
       }
     }
-    const shareVersion = (await api.getOwnedShares()).shares?.find((s: any) => String(s.source_table_id) === table.id)?.version
-    if (shareVersion != null) {
-      lastKnownShareVersion.current[table.id] = shareVersion
-    } else if (!table._shared) {
+    if (table._shared) {
+      lastKnownShareVersion.current[table.id] = (remoteTable as any)._version ?? lastKnownShareVersion.current[table.id] ?? 1
+    } else if (isPremium) {
+      const shareVersion = (await api.getOwnedShares()).shares?.find((s: any) => String(s.source_table_id) === table.id)?.version
+      lastKnownShareVersion.current[table.id] = shareVersion ?? (remoteTable as any)._version ?? lastKnownShareVersion.current[table.id] ?? 1
+    } else {
       lastKnownShareVersion.current[table.id] = (remoteTable as any)._version ?? lastKnownShareVersion.current[table.id] ?? 1
     }
     setHasPullableChanges((p) => { const q = { ...p }; delete q[table.id]; return q })
@@ -2023,12 +2039,12 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
   const lastKnownShareVersion = useRef<Record<string, number>>({})
 
   useEffect(() => {
-    if (!isPremium || !user) return
+    if (!user) return
     const check = async () => {
       try {
-        const owned = await api.getOwnedShares()
-        const incoming = await api.getIncomingShares()
-        const validIncomingIds = new Set((incoming.shares || []).map((s: any) => s.id))
+        const ownedShares = isPremium ? ((await api.getOwnedShares()).shares ?? []) : []
+        const incomingShares = (await api.getIncomingShares()).shares ?? []
+        const validIncomingIds = new Set(incomingShares.map((s: any) => s.id))
         const sharedTables = tables.filter((t) => t._shared)
         const toRemove = sharedTables.filter((t) => t._shared && !validIncomingIds.has(t._shared.shareId))
         if (toRemove.length > 0) {
@@ -2039,7 +2055,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
             return next
           })
         }
-        const incomingByShareId = new Map((incoming.shares || []).map((s: any) => [s.id, s]))
+        const incomingByShareId = new Map(incomingShares.map((s: any) => [s.id, s]))
         const needsPermissionUpdate = sharedTables.some((t) => {
           const s = t._shared && incomingByShareId.get(t._shared.shareId)
           if (!s) return false
@@ -2058,14 +2074,14 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
           )
         }
         const updates: Record<string, boolean> = {}
-        ;(owned.shares || []).forEach((s: any) => {
+        ;ownedShares.forEach((s: any) => {
           const tid = String(s.source_table_id)
           const remote = s.version ?? 1
           const last = lastKnownShareVersion.current[tid] ?? remote
           if (remote > last) updates[tid] = true
           lastKnownShareVersion.current[tid] = remote
         })
-        ;(incoming.shares || []).forEach((s: any) => {
+        ;incomingShares.forEach((s: any) => {
           const tid = `shared-${s.id}`
           const remote = s.version ?? 1
           const tbl = tables.find((t) => t.id === tid && t._shared)
@@ -4831,7 +4847,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
                         allowTableLayout={!!table._shared}
                         onPushSharedChanges={(table._shared?.canEdit || sharedTableIds.has(table.id)) ? handlePushSharedChanges : undefined}
                         isSharedByOwner={sharedTableIds.has(table.id)}
-                        onPullSharedChanges={(table._shared?.canEdit || sharedTableIds.has(table.id)) ? handlePullSharedChanges : undefined}
+                        onPullSharedChanges={(table._shared || sharedTableIds.has(table.id)) ? handlePullSharedChanges : undefined}
                         hasPullableChanges={!!hasPullableChanges[table.id]}
                         pullPreviewEnabled={pullPreviewEnabled}
                         onPullPreviewToggle={setPullPreviewEnabled}
@@ -4972,7 +4988,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
                           allowTableLayout={!!table._shared}
                           onPushSharedChanges={(table._shared?.canEdit || sharedTableIds.has(table.id)) ? handlePushSharedChanges : undefined}
                           isSharedByOwner={sharedTableIds.has(table.id)}
-                          onPullSharedChanges={(table._shared?.canEdit || sharedTableIds.has(table.id)) ? handlePullSharedChanges : undefined}
+                          onPullSharedChanges={(table._shared || sharedTableIds.has(table.id)) ? handlePullSharedChanges : undefined}
                           hasPullableChanges={!!hasPullableChanges[table.id]}
                           pullPreviewEnabled={pullPreviewEnabled}
                           onPullPreviewToggle={setPullPreviewEnabled}
@@ -5109,7 +5125,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
                 allowTableLayout={!!table._shared}
                 onPushSharedChanges={(table._shared?.canEdit || sharedTableIds.has(table.id)) ? handlePushSharedChanges : undefined}
                 isSharedByOwner={sharedTableIds.has(table.id)}
-                onPullSharedChanges={(table._shared?.canEdit || sharedTableIds.has(table.id)) ? handlePullSharedChanges : undefined}
+                onPullSharedChanges={(table._shared || sharedTableIds.has(table.id)) ? handlePullSharedChanges : undefined}
                 hasPullableChanges={!!hasPullableChanges[table.id]}
                 pullPreviewEnabled={pullPreviewEnabled}
                 onPullPreviewToggle={setPullPreviewEnabled}

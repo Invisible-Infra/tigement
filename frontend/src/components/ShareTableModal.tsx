@@ -77,6 +77,13 @@ export function ShareTableModal({ table, onClose, onSuccess }: ShareTableModalPr
       await api.setSharingPublicKey(myPub)
       const keyRes = await api.getPublicKeyByEmail(trimEmail)
 
+      if (permission === 'edit' && keyRes.isPremium === false) {
+        if (!confirm('This user has a free account. They will only be able to view the table, not edit. Continue sharing?')) {
+          setLoading(false)
+          return
+        }
+      }
+
       let encryptedTableData: string
       let encryptedDek: string
       let wrappedDekForOwner: string | undefined
