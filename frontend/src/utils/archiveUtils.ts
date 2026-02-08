@@ -8,7 +8,7 @@ import { loadArchivedTables, saveArchivedTables } from './storage'
 export interface ArchivedTable {
   id: string | number
   table_data?: any
-  table_type: 'day' | 'todo'
+  table_type: 'day' | 'list'
   table_date?: string | null
   table_title: string
   task_count: number

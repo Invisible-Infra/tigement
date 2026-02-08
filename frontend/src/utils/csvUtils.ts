@@ -9,7 +9,7 @@ interface Task {
 
 interface Table {
   id: string
-  type: 'day' | 'todo'
+  type: 'day' | 'list'
   title: string
   date?: string
   startTime?: string
@@ -22,7 +22,7 @@ interface Table {
 interface ArchivedTable {
   id: string | number
   table_data?: Table
-  table_type: 'day' | 'todo'
+  table_type: 'day' | 'list'
   table_date?: string | null
   table_title: string
   task_count: number
@@ -204,7 +204,7 @@ export function importFromCSV(csv: string): Table[] {
     if (!tablesMap.has(tableId)) {
       tablesMap.set(tableId, {
         id: tableId,
-        type: (tableType as 'day' | 'todo') || 'todo',
+        type: (tableType === 'day' ? 'day' : 'list') as 'day' | 'list',
         title: tableTitle,
         date: date || undefined,
         startTime: startTime || '08:00',

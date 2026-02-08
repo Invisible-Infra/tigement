@@ -35,7 +35,7 @@ Tigement is optimized for planning a realistic day. You write tasks with duratio
 
 <a id="concepts"></a>
 ## Introduction & Concepts
-- Tables: two types – Day (dated schedule) and TODO (backlog). Each table contains tasks.
+- Tables: two types – Day (dated schedule) and LIST (backlog). Each table contains tasks.
 - Tasks: have a title, optional start/finish (Day), duration, selection state, group and optional notes (notebook).
 - **End-to-End Encryption**: All workspace data is encrypted on your device before syncing. Only you can decrypt it with your password. Even the server owner cannot see your tasks, notes, or any workspace content.
 - Sync: premium users can cloud-sync encrypted workspaces across devices.
@@ -43,7 +43,7 @@ Tigement is optimized for planning a realistic day. You write tasks with duratio
 <a id="getting-started"></a>
 ## Getting Started
 1. Register and log in (email/password or OAuth: Google, GitHub, Apple, X, Facebook).
-2. Add a Day or TODO table from the right sidebar.
+2. Add a Day or LIST table from the right sidebar.
 3. Add tasks; on Day tables, times auto-chain from the table start time.
 4. Use the hamburger on mobile to open the sidebar.
 
@@ -55,13 +55,13 @@ Tigement is optimized for planning a realistic day. You write tasks with duratio
 - Select tasks with the checkbox; use Bulk Actions to add group or delete. When moving a task to another tab (drag or Move menu), all selected tasks move together.
 - Pagination on mobile: fixed bar with Previous/Next and a dropdown to jump.
 - Caret placement fix: click inside task title sets cursor precisely where you click.
-- **View modes**: All-in-one (freeform canvas) or Spaces (days on left, TODO spaces on right). Switch in the sidebar.
-- **Zoom**: Desktop only – 50% to 200%. Split view in Spaces: draggable divider between days and TODO panels.
+- **View modes**: All-in-one (freeform canvas) or Spaces (days on left, LIST spaces on right). Switch in the sidebar.
+- **Zoom**: Desktop only – 50% to 200%. Split view in Spaces: draggable divider between days and LIST panels.
 
 <a id="spaces"></a>
 ## Spaces (Tab Groups)
-- Organize TODO tables by project, context, or category. Each space has a name, icon, and color.
-- In Spaces view: days appear on the left, TODO spaces on the right. Assign each TODO table to a space or "All Spaces."
+- Organize LIST tables by project, context, or category. Each space has a name, icon, and color.
+- In Spaces view: days appear on the left, LIST spaces on the right. Assign each LIST table to a space or "All Spaces."
 - Filter workspace by space in All-in-one view. Split position (left/right panel width) is saved in settings.
 
 <a id="planning-workflow"></a>

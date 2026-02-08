@@ -8,7 +8,7 @@ const router = Router()
 // Validation schemas
 const archiveTableSchema = z.object({
   id: z.string(),
-  type: z.enum(['day', 'todo']),
+  type: z.enum(['day', 'list']),
   title: z.string(),
   date: z.string().optional().nullable(),
   startTime: z.string().optional(),

@@ -10,7 +10,7 @@ interface Task {
 
 interface Table {
   id: string
-  type: 'day' | 'todo'
+  type: 'day' | 'list'
   title: string
   date?: string
   startTime?: string

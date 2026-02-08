@@ -14,7 +14,7 @@ export interface DemoTask {
 
 export interface DemoTable {
   id: string
-  type: 'day' | 'todo'
+  type: 'day' | 'list'
   title: string
   date?: string
   startTime?: string
@@ -43,9 +43,9 @@ export function getDemoTables(): DemoTable[] {
       size: { width: 400, height: 300 },
     },
     {
-      id: 'demo-todo',
-      type: 'todo',
-      title: 'Demo TODO',
+      id: 'demo-list',
+      type: 'list',
+      title: 'Demo LIST',
       tasks: [
         { id: 'demo-email-triage', title: 'Email triage', duration: 20, selected: false },
         { id: 'demo-groceries', title: 'Groceries', duration: 30, selected: false },

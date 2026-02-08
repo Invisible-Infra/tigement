@@ -15,7 +15,7 @@ const SHARING_PRIVATE_KEY = 'tigement_sharing_private_key'
 function normalizeTable(table: any): any {
   const t = table || {}
   const title = t.title ?? t.name ?? 'Untitled'
-  const type = t.type || (t.date ? 'day' : 'todo')
+  const type = t.type || (t.date ? 'day' : 'list')
   return {
     id: t.id || 'shared-1',
     type,

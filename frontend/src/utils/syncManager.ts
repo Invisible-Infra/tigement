@@ -7,6 +7,7 @@ import { api, VersionConflictError } from './api'
 import { encryptWorkspace, decryptWorkspace } from './encryption'
 import { encryptionKeyManager } from './encryptionKey'
 import { getSyncClientId } from './syncClientId'
+import { normalizeTableType } from './storage'
 
 interface ConflictData {
   local: { tables: any[]; settings: any; archivedTables?: any[] }
@@ -57,6 +58,23 @@ function tablesForSync(tables: any[]): any[] {
   return (tables || []).filter((t: any) => !t._shared)
 }
 
+/** Normalize table types for backward compatibility (todo → list) */
+function normalizeRemoteTables(tables: any[]): any[] {
+  return (tables || []).map((t: any) => t && typeof t === 'object' ? { ...t, type: normalizeTableType(t.type) } : t)
+}
+
+/** Normalize archived table types (table_type and table_data.type) */
+function normalizeArchivedTables(archives: any[]): any[] {
+  return (archives || []).map((a: any) => {
+    if (!a || typeof a !== 'object') return a
+    const normalized: any = { ...a, table_type: normalizeTableType(a.table_type) }
+    if (a.table_data && typeof a.table_data === 'object') {
+      normalized.table_data = { ...a.table_data, type: normalizeTableType(a.table_data.type) }
+    }
+    return normalized
+  })
+}
+
 /** Merge remote tables with local shared tables (preserve shared tables when applying remote) */
 function mergeSharedTables(remoteTables: any[], localTables: any[]): any[] {
   const shared = (localTables || []).filter((t: any) => t._shared)
@@ -80,7 +98,7 @@ function normalizeWorkspaceData(data: any, excludeShared = false): any {
     tables: tablesToNormalize.map((table: any) => {
       const t: any = {
         id: table.id,
-        type: table.type,
+        type: normalizeTableType(table.type),
         title: (table.title ?? '').toString().trim(),
         date: table.date,
         startTime: (table.startTime ?? '').toString().trim(),
@@ -1074,7 +1092,7 @@ class SyncManager {
         return s ? JSON.parse(s) : []
       } catch { return [] }
     })()
-    const tablesToSave = mergeSharedTables(decryptedData.tables || [], localTables)
+    const tablesToSave = mergeSharedTables(normalizeRemoteTables(decryptedData.tables || []), localTables)
     // Save to local storage (merge remote with local shared tables)
     localStorage.setItem('tigement_tables', JSON.stringify(tablesToSave))
     // Preserve client-only settings (e.g. visibleSpaceIds) when applying remote
@@ -1104,9 +1122,11 @@ class SyncManager {
       localStorage.setItem('tigement_diary_entries', JSON.stringify(decryptedData.diaries))
       console.log('📔 Restored', Object.keys(decryptedData.diaries).length, 'diary entries from workspace')
     }
+    let normalizedArchives: any[] = []
     if (decryptedData.archivedTables) {
-      localStorage.setItem('tigement_archived_tables', JSON.stringify(decryptedData.archivedTables))
-      console.log('🗄️ Restored', decryptedData.archivedTables.length, 'archived tables from workspace')
+      normalizedArchives = normalizeArchivedTables(decryptedData.archivedTables)
+      localStorage.setItem('tigement_archived_tables', JSON.stringify(normalizedArchives))
+      console.log('🗄️ Restored', normalizedArchives.length, 'archived tables from workspace')
     }
     
     this.updateLocalVersion(remoteWorkspace.version)
@@ -1122,7 +1142,7 @@ class SyncManager {
         taskGroups: decryptedData.taskGroups || [],
         notebooks: decryptedData.notebooks || { workspace: '', tasks: {} },
         diaries: decryptedData.diaries || {},
-        archivedTables: decryptedData.archivedTables || []
+        archivedTables: normalizedArchives
       })
     } else {
       // Fallback to reload if no callback provided (backward compatibility)
@@ -1183,7 +1203,7 @@ class SyncManager {
         return s ? JSON.parse(s) : []
       } catch { return [] }
     })()
-    const tablesToSave = mergeSharedTables(decryptedData.tables || [], localTables)
+    const tablesToSave = mergeSharedTables(normalizeRemoteTables(decryptedData.tables || []), localTables)
     localStorage.setItem('tigement_tables', JSON.stringify(tablesToSave))
     // Preserve client-only settings (e.g. visibleSpaceIds) when applying remote
     const currentSettings = (() => {
@@ -1237,9 +1257,11 @@ class SyncManager {
       localStorage.setItem('tigement_diary_entries', JSON.stringify(decryptedData.diaries))
       console.log('📔 Restored', Object.keys(decryptedData.diaries).length, 'diary entries from workspace')
     }
+    let normalizedArchives: any[] = []
     if (decryptedData.archivedTables) {
-      localStorage.setItem('tigement_archived_tables', JSON.stringify(decryptedData.archivedTables))
-      console.log('🗄️ Restored', decryptedData.archivedTables.length, 'archived tables from workspace')
+      normalizedArchives = normalizeArchivedTables(decryptedData.archivedTables)
+      localStorage.setItem('tigement_archived_tables', JSON.stringify(normalizedArchives))
+      console.log('🗄️ Restored', normalizedArchives.length, 'archived tables from workspace')
     }
 
     this.updateLocalVersion(remote.version)
@@ -1258,7 +1280,7 @@ class SyncManager {
         taskGroups: decryptedData.taskGroups || [],
         notebooks: decryptedData.notebooks || { workspace: '', tasks: {} },
         diaries: decryptedData.diaries || {},
-        archivedTables: decryptedData.archivedTables || []
+        archivedTables: normalizedArchives
       })
     } else {
       // Fallback to reload if no callback provided (backward compatibility)

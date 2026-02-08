@@ -15,7 +15,7 @@ interface Task {
 
 interface Table {
   id: string
-  type: 'day' | 'todo'
+  type: 'day' | 'list'
   title: string
   date?: string
   startTime?: string
@@ -363,8 +363,8 @@ export function TableComponent({
             </div>
           )}
           
-          {/* Space assignment dropdown - only in spaces view for TODO tables. Rendered in portal so it is not clipped by overflow. */}
-          {(canMoveTable || allowTableLayout) && table.type === 'todo' && spaces && handleAssignTableToSpace && (
+          {/* Space assignment dropdown - only in spaces view for LIST tables. Rendered in portal so it is not clipped by overflow. */}
+          {(canMoveTable || allowTableLayout) && table.type === 'list' && spaces && handleAssignTableToSpace && (
             <div className="relative">
               <button
                 ref={spaceDropdownTriggerRef}

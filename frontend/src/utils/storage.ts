@@ -22,6 +22,11 @@ export interface StorageSettings {
   visibleSpaceIds?: string[]
 }
 
+/** Normalize table type for backward compatibility: 'todo' → 'list' */
+export function normalizeTableType(type: string): 'day' | 'list' {
+  return type === 'day' ? 'day' : 'list'
+}
+
 export function saveTables(tables: any[]): void {
   try {
     localStorage.setItem(STORAGE_KEYS.TABLES, JSON.stringify(tables))
@@ -33,7 +38,11 @@ export function saveTables(tables: any[]): void {
 export function loadTables(): any[] | null {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.TABLES)
-    return data ? JSON.parse(data) : null
+    const parsed = data ? JSON.parse(data) : null
+    if (parsed && Array.isArray(parsed)) {
+      return parsed.map((t: any) => t && typeof t === 'object' ? { ...t, type: normalizeTableType(t.type) } : t)
+    }
+    return parsed
   } catch (error) {
     console.error('Failed to load tables:', error)
     return null
@@ -146,7 +155,18 @@ export function saveArchivedTables(archives: any[]): void {
 export function loadArchivedTables(): any[] | null {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.ARCHIVED_TABLES)
-    return data ? JSON.parse(data) : null
+    const parsed = data ? JSON.parse(data) : null
+    if (parsed && Array.isArray(parsed)) {
+      return parsed.map((a: any) => {
+        if (!a || typeof a !== 'object') return a
+        const normalized: any = { ...a, table_type: normalizeTableType(a.table_type) }
+        if (a.table_data && typeof a.table_data === 'object') {
+          normalized.table_data = { ...a.table_data, type: normalizeTableType(a.table_data.type) }
+        }
+        return normalized
+      })
+    }
+    return parsed
   } catch (error) {
     console.error('Failed to load archived tables:', error)
     return null

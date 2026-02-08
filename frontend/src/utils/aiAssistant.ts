@@ -8,7 +8,7 @@ import { TASK_MANAGEMENT_SYSTEM_PROMPT, DATA_ANALYSIS_SYSTEM_PROMPT } from './ai
 
 export interface Table {
   id: string;
-  type: 'day' | 'todo';
+  type: 'day' | 'list';
   title: string;
   date?: string;
   startTime?: string;

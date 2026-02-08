@@ -138,7 +138,7 @@ interface SharedTableMeta {
 
 interface Table {
   id: string
-  type: 'day' | 'todo'
+  type: 'day' | 'list'
   title: string
   date?: string
   startTime?: string // HH:MM for first task (only for day tables)
@@ -167,7 +167,7 @@ interface Space {
 interface ArchivedTable {
   id: string | number // number for backend IDs, string for temporary local IDs
   table_data?: Table // Optional - backend archives fetch on restore
-  table_type: 'day' | 'todo'
+  table_type: 'day' | 'list'
   table_date?: string | null
   table_title: string
   task_count: number
@@ -381,9 +381,9 @@ const getDefaultTables = (): Table[] => {
       position: { x: 20, y: 20 }
     },
     {
-      id: 'todo-1',
-      type: 'todo',
-      title: 'TODO',
+      id: 'list-1',
+      type: 'list',
+      title: 'LIST',
       tasks: [
         { id: 'task-5', title: '', duration: 30, selected: false },
         { id: 'task-6', title: '', duration: 30, selected: false },
@@ -499,7 +499,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
   const [hoveredTask, setHoveredTask] = useState<string | null>(null)
   const handleLongPressTimer = useRef<number | null>(null)
   const dragHandleTimer = useRef<number | null>(null)
-  const addTableRef = useRef<(type: 'day' | 'todo') => void>(() => {})
+  const addTableRef = useRef<(type: 'day' | 'list') => void>(() => {})
   const isApplyingSyncUpdate = useRef(false)
   const tablesRef = useRef<Table[]>([])
   const lastShareUpdateReceivedAt = useRef<Record<number, number>>({})
@@ -942,7 +942,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
 
   // Initialize tables for anonymous users on first load.
   // If there is existing anonymous data in localStorage, load it (including diary/notebook for offline).
-  // Otherwise, create the default day + TODO tables.
+  // Otherwise, create the default day + LIST tables.
   useEffect(() => {
     if (!hasLoadedUser || loading || user || wasAuthenticatedRef.current) return
 
@@ -969,7 +969,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
     }
 
     if (!hasLoadedTables.current && tables.length === 0) {
-      console.log('🆕 No existing tables for anonymous user, creating default day + TODO tables')
+      console.log('🆕 No existing tables for anonymous user, creating default day + LIST tables')
       const defaults = getDefaultTables()
       setTables(defaults)
       hasLoadedTables.current = true
@@ -1012,7 +1012,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
           restoreCurrentTableIndex(savedTables.length)
           console.log(`✅ Loaded ${savedTables.length} tables into React state`)
         } else {
-          console.warn('⚠️ No tables found in localStorage after login, creating default day + TODO tables')
+          console.warn('⚠️ No tables found in localStorage after login, creating default day + LIST tables')
           const defaults = getDefaultTables()
           setTables(defaults)
           hasLoadedTables.current = true
@@ -2323,7 +2323,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
     focusTable(tableId)
   }
 
-  const addTable = (type: 'day' | 'todo') => {
+  const addTable = (type: 'day' | 'list') => {
     // Smart date selection for Day tables
     let newDate: Date
     if (type === 'day') {
@@ -2358,7 +2358,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
     const baseTable = {
       id: `${type}-${Date.now()}`,
       type,
-      title: type === 'day' ? formatDate(dateStr!) : 'TODO',
+      title: type === 'day' ? formatDate(dateStr!) : 'LIST',
       tasks: Array(settings.defaultTasksCount).fill(null).map((_, i) => ({
         id: `task-${Date.now()}-${i}`,
         title: '',
@@ -2401,7 +2401,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
   const handleDuplicateTableFromShared = (table: any) => {
     const normalized: Table = {
       id: `${table.type || 'day'}-${Date.now()}`,
-      type: (table.type || 'day') as 'day' | 'todo',
+      type: (table.type || 'day') as 'day' | 'list',
       title: table.title || table.name || 'Shared',
       date: table.date,
       startTime: table.startTime,
@@ -2431,7 +2431,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
     }
     const normalized: Table = {
       id: tableId,
-      type: (table.type || 'day') as 'day' | 'todo',
+      type: (table.type || 'day') as 'day' | 'list',
       title: table.title || table.name || 'Shared',
       date: table.date,
       startTime: table.startTime,
@@ -3917,7 +3917,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
       return
     }
     
-    if (!confirm('Delete this space? TODO tables will remain but become visible in all spaces.')) {
+    if (!confirm('Delete this space? LIST tables will remain but become visible in all spaces.')) {
       return
     }
     
@@ -4008,10 +4008,10 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
                 Add Day
               </button>
               <button
-                onClick={() => { addTable('todo'); isMobile && setShowMenu(false); }}
+                onClick={() => { addTable('list'); isMobile && setShowMenu(false); }}
                 className="w-full px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition text-sm text-left"
               >
-                Add TODO
+                Add LIST
               </button>
               <button
                 onClick={() => { setShowTimer(prev => !prev); isMobile && setShowMenu(false); }}
@@ -4207,7 +4207,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
                             ? 'bg-white shadow text-gray-900 font-medium'
                             : 'text-gray-600 hover:text-gray-900'
                         }`}
-                        title="Spaces view: days left, TODO spaces right"
+                        title="Spaces view: days left, LIST spaces right"
                       >
                         📐 Spaces
                       </button>
@@ -4755,7 +4755,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
       
       {/* Main Workspace Area */}
       {!isMobile && viewMode === 'spaces' ? (
-        // SPACES VIEW: Split layout with days left, TODO spaces right
+        // SPACES VIEW: Split layout with days left, LIST spaces right
         <div className="flex-1 overflow-hidden">
           <SplitView
             leftContent={
@@ -4908,9 +4908,9 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
                   onMouseUp={handleTableDragEnd}
                   onMouseLeave={handleTableDragEnd}
                 >
-                  {/* Render TODO tables in right panel (filtered by space) */}
+                  {/* Render LIST tables in right panel (filtered by space) */}
                   {tables.filter(t => 
-                    t.type === 'todo' &&
+                    t.type === 'list' &&
                     (t.spaceId === activeSpaceId || !t.spaceId)
                   ).map(table => {
                     const isDraggingTable = draggedTable?.id === table.id
@@ -5049,8 +5049,8 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
           >
           {(isMobile ? [tables[currentTableIndex]].filter(Boolean) : tables)
             .filter(table => {
-              // In all-in-one view on DESKTOP only, filter TODO tables by visible spaces
-              if (!isMobile && viewMode === 'all-in-one' && table.type === 'todo') {
+              // In all-in-one view on DESKTOP only, filter LIST tables by visible spaces
+              if (!isMobile && viewMode === 'all-in-one' && table.type === 'list') {
                 return !table.spaceId || visibleSpaces.has(table.spaceId)
               }
               return true
@@ -5956,7 +5956,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
     {/* Mobile Bottom Navigation */}
     {isMobile && (
       <BottomNav
-        onAddTodo={() => addTable('todo')}
+        onAddList={() => addTable('list')}
         onAddDay={() => addTable('day')}
         onOpenNotebook={openWorkspaceNotebook}
         onOpenTimer={() => setShowTimer(true)}

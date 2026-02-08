@@ -5,11 +5,11 @@
 // - applyMerge(server, plan)
 //
 // Rules agreed with user:
-// - If a local table matches server by title+date (day) or title (todo), DO NOT merge into it; create a duplicate copy with a new id
+// - If a local table matches server by title+date (day) or title (list), DO NOT merge into it; create a duplicate copy with a new id
 // - For same-table task title conflicts, keep both; suffix the local one with " (local)"
 // - Notebooks concatenate with a separator containing a timestamp; server text is never overwritten
 
-export type TableType = 'day' | 'todo'
+export type TableType = 'day' | 'list'
 
 export interface MergeTask {
   id: string
@@ -85,7 +85,7 @@ const tableKey = (t: MergeTable): string => {
   if (t.type === 'day') {
     return `day|${(t.date || '').trim()}|${(t.title || '').trim().toLowerCase()}`
   }
-  return `todo|${(t.title || '').trim().toLowerCase()}`
+  return `list|${(t.title || '').trim().toLowerCase()}`
 }
 
 export interface MergePlan {

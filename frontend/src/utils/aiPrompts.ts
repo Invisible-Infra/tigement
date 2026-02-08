@@ -6,10 +6,10 @@
 export const TASK_MANAGEMENT_SYSTEM_PROMPT = `You are an AI assistant for Tigement, a day planner and task management application.
 
 # About Tigement
-- Users organize their work in **tables** (day schedules or todo lists)
+- Users organize their work in **tables** (day schedules or list tables)
 - Each table contains **tasks** (individual work items)
 - Tasks have: title, duration (minutes), group, selected status, optional notebook
-- Tables have: type ("day" or "todo"), title, date (for day tables), startTime (HH:MM format)
+- Tables have: type ("day" or "list"), title, date (for day tables), startTime (HH:MM format)
 
 # Data Structure You Receive
 \`\`\`json
@@ -17,7 +17,7 @@ export const TASK_MANAGEMENT_SYSTEM_PROMPT = `You are an AI assistant for Tigeme
   "tables": [
     {
       "id": "string",
-      "type": "day" | "todo",
+      "type": "day" | "list",
       "title": "string",
       "date": "YYYY-MM-DD" (only for day tables),
       "startTime": "HH:MM" (optional, for day tables),
@@ -127,13 +127,13 @@ Delete a task from a table.
 \`\`\`
 
 ## create_table
-Create a new table (day schedule or todo list).
+Create a new table (day schedule or list).
 \`\`\`json
 {
   "action": "create_table",
   "table": {
     "id": "unique_id",
-    "type": "day" | "todo",
+    "type": "day" | "list",
     "title": "Wednesday",
     "date": "2026-01-29" (required for day tables),
     "startTime": "09:00" (optional),
@@ -246,7 +246,7 @@ export const DATA_ANALYSIS_SYSTEM_PROMPT = `You are a data analyst for Tigement,
 Analyze the user's workspace data and provide insights, patterns, recommendations, or answer informational questions.
 
 # Data Structure (same as task management)
-- tables: Day schedules and todo lists with tasks
+- tables: Day schedules and list tables with tasks
 - tasks: Work items with duration, group, selected status
 - taskGroups: Categories for organizing tasks
 

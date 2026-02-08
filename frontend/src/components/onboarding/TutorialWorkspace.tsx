@@ -198,9 +198,9 @@ export function TutorialWorkspace({
       case 6:
         return true // User must reorder - we detect via moveTaskUp/Down or handleDrop
       case 7:
-        return true // User must move TODO→Day
+        return true // User must move LIST→Day
       case 8:
-        return true // User must move Day→TODO
+        return true // User must move Day→LIST
       case 9:
         return true // Final - any button
       default:
@@ -306,10 +306,10 @@ export function TutorialWorkspace({
       return newTables
     })
 
-    if (step === 8 && draggedTask.tableId === 'demo-todo' && targetTableId === 'demo-day') {
+    if (step === 8 && draggedTask.tableId === 'demo-list' && targetTableId === 'demo-day') {
       onStepChange(step + 1)
     }
-    if (step === 9 && draggedTask.tableId === 'demo-day' && targetTableId === 'demo-todo') {
+    if (step === 9 && draggedTask.tableId === 'demo-day' && targetTableId === 'demo-list') {
       onStepChange(step + 1)
     }
 
@@ -348,10 +348,10 @@ export function TutorialWorkspace({
       return newTables
     })
     setMoveMenu(null)
-    if (step === 8 && sourceTableId === 'demo-todo' && targetTableId === 'demo-day') {
+    if (step === 8 && sourceTableId === 'demo-list' && targetTableId === 'demo-day') {
       onStepChange(step + 1)
     }
-    if (step === 9 && sourceTableId === 'demo-day' && targetTableId === 'demo-todo') {
+    if (step === 9 && sourceTableId === 'demo-day' && targetTableId === 'demo-list') {
       onStepChange(step + 1)
     }
   }
@@ -420,10 +420,10 @@ export function TutorialWorkspace({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [onFinish])
 
-  // On mobile, auto-switch table for steps 8 (TODO) and 9 (Day)
+  // On mobile, auto-switch table for steps 8 (LIST) and 9 (Day)
   useEffect(() => {
     if (!isMobile) return
-    if (step === 8) setCurrentTableIndex(Math.max(0, demoTables.findIndex((t) => t.id === 'demo-todo')))
+    if (step === 8) setCurrentTableIndex(Math.max(0, demoTables.findIndex((t) => t.id === 'demo-list')))
     else if (step === 9) setCurrentTableIndex(Math.max(0, demoTables.findIndex((t) => t.id === 'demo-day')))
   }, [isMobile, step, demoTables])
 

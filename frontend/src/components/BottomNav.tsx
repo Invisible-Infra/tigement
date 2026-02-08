@@ -2,7 +2,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faPlus, faCalendar, faBook, faClock, faEllipsisH } from '@fortawesome/free-solid-svg-icons'
 
 interface BottomNavProps {
-  onAddTodo: () => void
+  onAddList: () => void
   onAddDay: () => void
   onOpenNotebook: () => void
   onOpenTimer: () => void
@@ -11,7 +11,7 @@ interface BottomNavProps {
 }
 
 export function BottomNav({ 
-  onAddTodo, 
+  onAddList, 
   onAddDay, 
   onOpenNotebook, 
   onOpenTimer, 
@@ -23,14 +23,14 @@ export function BottomNav({
       style={{ backgroundColor: 'white', borderTop: '1px solid #e5e7eb' }}
     >
       <div className="flex justify-around items-center h-16 px-2">
-        {/* Add TODO */}
+        {/* Add LIST */}
         <button 
-          onClick={onAddTodo} 
+          onClick={onAddList} 
           className="flex flex-col items-center justify-center flex-1 py-2 text-blue-600 active:bg-gray-100 rounded transition"
-          aria-label="Add TODO"
+          aria-label="Add LIST"
         >
           <FontAwesomeIcon icon={faPlus} className="text-xl mb-1" />
-          <span className="text-xs font-medium">TODO</span>
+          <span className="text-xs font-medium">LIST</span>
         </button>
         
         {/* Add Day */}

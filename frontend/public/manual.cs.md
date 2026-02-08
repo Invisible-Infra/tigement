@@ -35,7 +35,7 @@ Tigement je optimalizovaný pro plán reálného dne. Zadáváte úkoly s délka
 
 <a id="pojmy"></a>
 ## Úvod & Pojmy
-- Tabulky: dva typy – Den (plán s datem) a TODO (backlog). Každá tabulka obsahuje úkoly.
+- Tabulky: dva typy – Den (plán s datem) a LIST (backlog). Každá tabulka obsahuje úkoly.
 - Úkoly: název, volitelný začátek/konec (u Den), délka, výběr, skupina a poznámky (notebook).
 - **End-to-End šifrování**: Veškerá data workspace jsou zašifrována na vašem zařízení před synchronizací. Pouze vy je můžete dešifrovat pomocí hesla. Dokonce ani vlastník serveru nemůže vidět vaše úkoly, poznámky nebo jakýkoliv obsah workspace.
 - Sync: prémioví uživatelé mohou synchronizovat šifrovaný workspace mezi zařízeními.
@@ -43,7 +43,7 @@ Tigement je optimalizovaný pro plán reálného dne. Zadáváte úkoly s délka
 <a id="zaciname"></a>
 ## Začínáme
 1. Zaregistrujte se a přihlaste (e-mail/heslo nebo OAuth: Google, GitHub, Apple, X, Facebook).
-2. Přidejte tabulku Den nebo TODO v pravém postranním panelu.
+2. Přidejte tabulku Den nebo LIST v pravém postranním panelu.
 3. Přidejte úkoly; u Den se časy řetězí od počátečního času tabulky.
 4. Na mobilu otevřete postranní panel tlačítkem (hamburger).
 
@@ -55,13 +55,13 @@ Tigement je optimalizovaný pro plán reálného dne. Zadáváte úkoly s délka
 - Výběr úkolů checkboxem; hromadné akce – přidat do skupiny nebo smazat.
 - Na mobilu je stránkování fixně dole s tlačítky a rozbalovacím seznamem.
 - Umístění kurzoru v názvu úkolu odpovídá přesnému kliknutí.
-- **Režimy zobrazení**: Vše v jednom (volný canvas) nebo Prostory (dny vlevo, TODO prostory vpravo). Přepínač v postranním panelu.
-- **Zoom**: Pouze desktop – 50 % až 200 %. Rozdělené zobrazení v Prostorech: tažitelný oddělovač mezi dny a TODO panely.
+- **Režimy zobrazení**: Vše v jednom (volný canvas) nebo Prostory (dny vlevo, LIST prostory vpravo). Přepínač v postranním panelu.
+- **Zoom**: Pouze desktop – 50 % až 200 %. Rozdělené zobrazení v Prostorech: tažitelný oddělovač mezi dny a LIST panely.
 
 <a id="prostory"></a>
 ## Prostory (Spaces)
-- Organizujte TODO tabulky podle projektu, kontextu nebo kategorie. Každý prostor má název, ikonu a barvu.
-- V režimu Prostory: dny jsou vlevo, TODO prostory vpravo. Přiřaďte každou TODO tabulku prostoru nebo „Všechny prostory“.
+- Organizujte LIST tabulky podle projektu, kontextu nebo kategorie. Každý prostor má název, ikonu a barvu.
+- V režimu Prostory: dny jsou vlevo, LIST prostory vpravo. Přiřaďte každou LIST tabulku prostoru nebo „Všechny prostory“.
 - Filtrujte workspace podle prostoru v režimu Vše v jednom. Pozice oddělovače (šířka levého/pravého panelu) se ukládá v nastavení.
 
 <a id="workflow"></a>
