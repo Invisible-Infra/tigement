@@ -144,6 +144,13 @@ interface TableComponentProps {
   onPushSharedChanges?: (table: Table) => void
   /** Owner's table that is shared – show Push button even without _shared */
   isSharedByOwner?: boolean
+  onPullSharedChanges?: (table: Table) => void
+  hasPullableChanges?: boolean
+  pullPreviewEnabled?: boolean
+  onPullPreviewToggle?: (enabled: boolean) => void
+  pullingTableId?: string | null
+  pushingTableId?: string | null
+  pushSuccessTableId?: string | null
 }
 
 export function TableComponent({
@@ -228,6 +235,13 @@ export function TableComponent({
   allowTableLayout = false,
   onPushSharedChanges,
   isSharedByOwner = false,
+  onPullSharedChanges,
+  hasPullableChanges = false,
+  pullPreviewEnabled = false,
+  onPullPreviewToggle,
+  pullingTableId = null,
+  pushingTableId = null,
+  pushSuccessTableId = null,
 }: TableComponentProps) {
   const canMoveTable = !readOnly || allowTableLayout
   const [spaceDropdownOpen, setSpaceDropdownOpen] = useState(false)
@@ -1091,10 +1105,37 @@ export function TableComponent({
         {onPushSharedChanges && (table._shared?.canEdit || isSharedByOwner) && (
           <button
             onClick={() => onPushSharedChanges(table)}
-            className="px-4 py-2 bg-[#4a6c7a] text-white rounded hover:bg-[#3d5d6a] transition text-sm"
+            disabled={!!pullingTableId || !!pushingTableId}
+            className={`px-4 py-2 rounded transition text-sm disabled:opacity-50 ${
+              pushSuccessTableId === table.id
+                ? 'text-white'
+                : 'bg-[#4a6c7a] text-white hover:bg-[#3d5d6a]'
+            }`}
+            style={pushSuccessTableId === table.id ? { backgroundColor: 'var(--color-success)' } : undefined}
           >
-            Push changes
+            {pushingTableId === table.id ? 'Pushing...' : pushSuccessTableId === table.id ? 'Pushed!' : 'Push changes'}
           </button>
+        )}
+        {onPullSharedChanges && hasPullableChanges && (table._shared?.canEdit || isSharedByOwner) && (
+          <div className="flex items-center gap-2">
+            {isSharedByOwner && onPullPreviewToggle && (
+              <label className="flex items-center gap-1 text-sm cursor-pointer" style={{ color: 'var(--color-text)' }}>
+                <input
+                  type="checkbox"
+                  checked={pullPreviewEnabled}
+                  onChange={(e) => onPullPreviewToggle(e.target.checked)}
+                />
+                Preview
+              </label>
+            )}
+            <button
+              onClick={() => onPullSharedChanges(table)}
+              disabled={!!pullingTableId}
+              className="px-4 py-2 bg-[#5a7c8a] text-white rounded hover:bg-[#4d6d7a] transition text-sm disabled:opacity-50"
+            >
+              {pullingTableId === table.id ? 'Pulling...' : 'Pull changes'}
+            </button>
+          </div>
         )}
         <button
           onClick={() => addTask(table.id)}

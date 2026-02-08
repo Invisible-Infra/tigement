@@ -8,6 +8,9 @@ import { unwrapDEKFromOwner, decryptTableWithDEK } from './sharingCrypto'
 
 const SHARING_PRIVATE_KEY = 'tigement_sharing_private_key'
 
+/** Set when fetchSharedTableUpdate catches; cleared on success. Used to show actionable error. */
+export const lastPullErrorRef = { current: null as Error | null }
+
 export interface SharedTableMeta {
   shareId: number
   canEdit: boolean
@@ -27,6 +30,7 @@ export async function fetchSharedTableUpdate(
   try {
     const { shares } = await api.getIncomingShares()
     const share = (shares || []).find((s: any) => s.id === shareId)
+    if (!share) return null
     if (!share?.owner_public_key || !share.encrypted_table_data) return null
     const shareVersion = share.version ?? 0
     if (shareVersion <= currentVersion) return null
@@ -37,7 +41,22 @@ export async function fetchSharedTableUpdate(
       privKey
     )
     const table = await decryptTableWithDEK(share.encrypted_table_data, dek)
+    lastPullErrorRef.current = null
     return { table: table as any, version: share.version ?? currentVersion }
+  } catch (err: any) {
+    lastPullErrorRef.current = err
+    return null
+  }
+}
+
+/** Fetches latest share data for merge (no version check). Used when fetchSharedTableUpdate returns null on 409 retry. */
+/** Quick check if share has newer version than current. */
+export async function fetchShareVersion(shareId: number): Promise<{ version: number } | null> {
+  try {
+    const { shares } = await api.getIncomingShares()
+    const share = (shares || []).find((s: any) => s.id === shareId)
+    if (!share) return null
+    return { version: share.version ?? 0 }
   } catch {
     return null
   }

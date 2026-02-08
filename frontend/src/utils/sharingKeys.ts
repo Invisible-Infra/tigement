@@ -12,7 +12,10 @@ export async function ensureSharingKeys(): Promise<{ publicKeyBase64: string; pr
   const stored = localStorage.getItem(SHARING_PRIVATE_KEY)
   if (stored) {
     const pub = localStorage.getItem(SHARING_PUBLIC_KEY)
-    if (pub) return { publicKeyBase64: pub, privateKeyBase64: stored }
+    if (pub) {
+      await api.setSharingPublicKey(pub).catch(() => {})
+      return { publicKeyBase64: pub, privateKeyBase64: stored }
+    }
   }
   const { publicKeyBase64, privateKeyBase64 } = await generateKeyPair()
   localStorage.setItem(SHARING_PRIVATE_KEY, privateKeyBase64)

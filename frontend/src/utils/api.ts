@@ -691,6 +691,24 @@ class ApiClient {
     })
   }
 
+  async getSharePushes(sharedTableId: number): Promise<{ pushes: Array<{ id: number; user_id: number; user_email: string; encrypted_table_data: string; version: number; pushed_at: string }> }> {
+    return this.request(`/shares/${sharedTableId}/pushes`, { method: 'GET' })
+  }
+
+  async resolveShareConflict(sharedTableId: number, encryptedTableData: string, version: number): Promise<{ success: boolean; version: number }> {
+    return this.request(`/shares/${sharedTableId}/resolve`, {
+      method: 'POST',
+      body: JSON.stringify({ encryptedTableData, version }),
+    })
+  }
+
+  async updateShareRecipientAlwaysAccept(sharedTableId: number, recipientId: number, alwaysAcceptFrom: boolean): Promise<{ success: boolean }> {
+    return this.request(`/shares/${sharedTableId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ recipientId, alwaysAcceptFrom }),
+    })
+  }
+
   async revokeShareRecipient(sharedTableId: number, recipientUserId: number): Promise<{ success: boolean }> {
     return this.request(`/shares/${sharedTableId}`, {
       method: 'PATCH',

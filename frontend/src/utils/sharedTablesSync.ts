@@ -83,10 +83,15 @@ export async function pushOwnerTableToShare(
 
 export async function syncSharedTablesForOwner(
   localTables: any[],
-  onTablesUpdated: (mergedTables: any[]) => void
+  onTablesUpdated: (mergedTables: any[]) => void,
+  options?: { preferOwnerLocal?: boolean }
 ): Promise<void> {
   const encKey = encryptionKeyManager.getKey()
   if (!encKey) return
+
+  // When preferOwnerLocal: we just pushed, owner's data is source of truth; merge keeps owner's tasks.
+  // When false: we pulled, recipient edits in share may be newer; merge incorporates them.
+  const preferOwner = options?.preferOwnerLocal ?? false
 
   try {
     const { shares } = await api.getOwnedShares()
@@ -105,7 +110,9 @@ export async function syncSharedTablesForOwner(
         const decryptedTable = await decryptTableWithDEK(share.encrypted_table_data, dek)
         const { _shared: _omit, ...tableData } = decryptedTable as Record<string, unknown>
         if (existing) {
-          const mergedTable = mergeShareIntoOwner(tableData, existing)
+          const mergedTable = preferOwner
+            ? mergeOwnerIntoLatest(tableData, existing)
+            : mergeShareIntoOwner(tableData, existing)
           merged = merged.map((t) =>
             t.id === sourceId ? { ...mergedTable, id: sourceId, position: existing.position, size: existing.size, spaceId: existing.spaceId } : t
           )
@@ -124,5 +131,59 @@ export async function syncSharedTablesForOwner(
     }
   } catch (err) {
     console.warn('Shared tables sync failed:', err)
+  }
+}
+
+/** Fetch owned share update (decrypted) for owner pull. Returns null if no share or decrypt fails. */
+export async function fetchOwnedShareUpdate(
+  sourceTableId: string
+): Promise<{ table: any; version: number; lastPushedByEmail?: string } | null> {
+  const encKey = encryptionKeyManager.getKey()
+  if (!encKey) return null
+  try {
+    const { shares } = await api.getOwnedShares()
+    const share = (shares || []).find((s: any) => String(s.source_table_id) === sourceTableId)
+    if (!share?.wrapped_dek_for_owner || !share.encrypted_table_data) return null
+    const dek = await unwrapDEKForOwner(share.wrapped_dek_for_owner, encKey)
+    const table = await decryptTableWithDEK(share.encrypted_table_data, dek)
+    return {
+      table: table as any,
+      version: share.version ?? 1,
+      lastPushedByEmail: share.last_pushed_by_email,
+    }
+  } catch {
+    return null
+  }
+}
+
+/** Fetch pending pushes for owner conflict resolution. Returns decrypted pushes with table data. */
+export async function fetchOwnedSharePushes(
+  sourceTableId: string
+): Promise<Array<{ userEmail: string; userId: number; table: any }> | null> {
+  const encKey = encryptionKeyManager.getKey()
+  if (!encKey) return null
+  try {
+    const { shares } = await api.getOwnedShares()
+    const share = (shares || []).find((s: any) => String(s.source_table_id) === sourceTableId)
+    if (!share?.wrapped_dek_for_owner) return null
+    const { pushes } = await api.getSharePushes(share.id)
+    if (!pushes?.length) return []
+    const dek = await unwrapDEKForOwner(share.wrapped_dek_for_owner, encKey)
+    const byUser = new Map<number, { userEmail: string; userId: number; table: any }>()
+    for (const p of pushes) {
+      try {
+        const table = await decryptTableWithDEK(p.encrypted_table_data, dek)
+        byUser.set(p.user_id, {
+          userEmail: p.user_email ?? `User ${p.user_id}`,
+          userId: p.user_id,
+          table: table as any,
+        })
+      } catch {
+        // Skip pushes we can't decrypt
+      }
+    }
+    return Array.from(byUser.values())
+  } catch {
+    return null
   }
 }

@@ -23,9 +23,12 @@ import { saveTables, loadTables, saveSettings, loadSettings, saveTaskGroups, loa
 import { normalizeDate, formatDateWithWeekday, formatDateWithSettings, isLegacyDayTitle } from '../utils/dateFormat'
 import { useAuth } from '../contexts/AuthContext'
 import { syncManager } from '../utils/syncManager'
-import { syncSharedTablesForOwner, pushOwnerTableToShare } from '../utils/sharedTablesSync'
+import { syncSharedTablesForOwner, pushOwnerTableToShare, fetchOwnedShareUpdate, fetchOwnedSharePushes } from '../utils/sharedTablesSync'
 import { pushSharedTableToShare } from '../utils/sharedTableRecipientSync'
-import { fetchSharedTableUpdate } from '../utils/sharedTableRecipientPull'
+import { fetchSharedTableUpdate, fetchShareVersion, lastPullErrorRef } from '../utils/sharedTableRecipientPull'
+import { SharePullPreviewModal, computeDiff } from './SharePullPreviewModal'
+import { SharePullConflictModal } from './SharePullConflictModal'
+import { encryptTableWithDEK, unwrapDEKForOwner } from '../utils/sharingCrypto'
 import { downloadICS } from '../utils/icsExport'
 import { useTheme } from '../contexts/ThemeContext'
 import { api } from '../utils/api'
@@ -430,8 +433,8 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
 
   useEffect(() => {
     if (!isPremium || !user) return
-    api.getOwnedShares().then(({ shares }) => {
-      setSharedTableIds(new Set((shares || []).map((s: any) => String(s.source_table_id))))
+    api.getOutgoingShares().then(({ shares }) => {
+      setSharedTableIds(new Set((shares || []).filter((s: any) => (s.recipients || []).length > 0).map((s: any) => String(s.source_table_id))))
     }).catch(() => {})
   }, [isPremium, user?.id])
 
@@ -576,6 +579,17 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
 
   const [showMenu, setShowMenu] = useState(false)
   const [expandedMenus, setExpandedMenus] = useState<Set<string>>(() => new Set(['workspace']))
+  const [pullPreviewEnabled, setPullPreviewEnabled] = useState(() => {
+    try {
+      const v = localStorage.getItem('tigement_share_pull_preview_enabled')
+      return v === 'true'
+    } catch { return true }
+  })
+  const [pullingTableId, setPullingTableId] = useState<string | null>(null)
+  const [pushingTableId, setPushingTableId] = useState<string | null>(null)
+  const [pushSuccessTableId, setPushSuccessTableId] = useState<string | null>(null)
+  const [pullPreviewModal, setPullPreviewModal] = useState<{ table: Table; remoteTable: any; lastPushedByEmail?: string } | null>(null)
+  const [pullConflictModal, setPullConflictModal] = useState<{ table: Table; pushes: Array<{ userEmail: string; userId: number; table: any }> } | null>(null)
   
   const toggleMenu = (menuId: string) => {
     setExpandedMenus(prev => {
@@ -1222,12 +1236,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
         setSyncSuccess(true)
         setLastSyncInfo(syncManager.getLastSyncInfo())
         setTimeout(() => setSyncSuccess(false), 2000)
-        if (isPremium) {
-          const currentTables = tablesRef.current?.length ? tablesRef.current : (syncManager.getLocalWorkspace()?.tables ?? loadTables())
-          syncSharedTablesForOwner(currentTables, (merged) => {
-            setTables(migrateDayTableTitles(merged, loadSettings()?.dateFormat || 'DD. MM. YYYY'))
-          })
-        }
+        // Per plan: owner/recipient get share updates only via Pull button. No auto-apply.
       }
     }
     window.addEventListener('tigement:sync-start', handleSyncStart)
@@ -1793,72 +1802,237 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
   }, [tables])
 
   const handlePushSharedChanges = async (table: Table) => {
-    if (table._shared?.canEdit) {
-      const result = await pushSharedTableToShare(table)
-      if (result.success && result.newVersion != null) {
-        lastShareUpdateReceivedAt.current[table._shared!.shareId] = Date.now()
-        setTables(prev => prev.map(t => {
-          if (t.id !== table.id || !t._shared) return t
-          const updated = { ...t, _shared: { ...t._shared, version: result.newVersion! } }
-          if (result.mergedTable) {
-            return { ...result.mergedTable, id: t.id, position: t.position, size: t.size, spaceId: t.spaceId, collapsed: t.collapsed, _shared: updated._shared }
+    setPushingTableId(table.id)
+    try {
+      if (table._shared?.canEdit) {
+        const result = await pushSharedTableToShare(table)
+        if (result.success && result.newVersion != null) {
+          lastShareUpdateReceivedAt.current[table._shared!.shareId] = Date.now()
+          setTables(prev => prev.map(t => {
+            if (t.id !== table.id || !t._shared) return t
+            const updated = { ...t, _shared: { ...t._shared, version: result.newVersion! } }
+            if (result.mergedTable) {
+              return { ...result.mergedTable, id: t.id, position: t.position, size: t.size, spaceId: t.spaceId, collapsed: t.collapsed, _shared: updated._shared }
+            }
+            return updated
+          }))
+          setPushSuccessTableId(table.id)
+          setTimeout(() => setPushSuccessTableId(null), 2000)
+        } else if (!result.success) {
+          const msg = result.reason === 'missing_keys'
+            ? 'Sharing setup required. Open Shared with me first.'
+            : result.reason === 'missing_meta'
+            ? 'Shared table data incomplete. Try re-adding from Shared with me.'
+            : result.reason === 'crypto'
+            ? 'Encryption failed. Try re-adding the table from Shared with me.'
+            : result.reason === 'forbidden'
+            ? 'Edit permission required. Check premium status.'
+            : result.reason === 'version_conflict'
+            ? 'Push failed: version conflict. Try again.'
+            : 'Push failed: network error. Try again.'
+          alert(msg)
+        }
+      } else if (sharedTableIds.has(table.id)) {
+        const ok = await pushOwnerTableToShare(table)
+        if (ok) {
+          const { shares } = await api.getOwnedShares()
+          const share = (shares || []).find((s: any) => String(s.source_table_id) === table.id)
+          if (share?.version != null) {
+            lastKnownShareVersion.current[table.id] = share.version
           }
-          return updated
-        }))
-      } else if (!result.success) {
-        const msg = result.reason === 'missing_keys'
-          ? 'Sharing setup required. Open Shared with me first.'
-          : result.reason === 'missing_meta'
-          ? 'Shared table data incomplete. Try re-adding from Shared with me.'
-          : result.reason === 'crypto'
-          ? 'Encryption failed. Try re-adding the table from Shared with me.'
-          : result.reason === 'forbidden'
-          ? 'Edit permission required. Check premium status.'
-          : result.reason === 'version_conflict'
-          ? 'Push failed: version conflict. Try again.'
-          : 'Push failed: network error. Try again.'
-        alert(msg)
+          setSyncSuccess(true)
+          setTimeout(() => setSyncSuccess(false), 2000)
+          setPushSuccessTableId(table.id)
+          setTimeout(() => setPushSuccessTableId(null), 2000)
+        } else {
+          alert('Push failed: version conflict or network error. Try again.')
+        }
       }
-    } else if (sharedTableIds.has(table.id)) {
-      const ok = await pushOwnerTableToShare(table)
-      if (!ok) alert('Push failed: version conflict or network error. Try again.')
+    } finally {
+      setPushingTableId(null)
     }
   }
 
-  // Poll share updates for recipient's shared tables
   useEffect(() => {
-    const sharedTables = tables.filter(t => t._shared)
-    if (!sharedTables.length) return
+    try {
+      localStorage.setItem('tigement_share_pull_preview_enabled', String(pullPreviewEnabled))
+    } catch {}
+  }, [pullPreviewEnabled])
 
-    const poll = async () => {
-      if (isApplyingSyncUpdate.current) return
-      for (const table of sharedTables) {
-        const meta = table._shared
-        if (!meta) continue
-        const result = await fetchSharedTableUpdate(meta.shareId, meta.version)
-        if (!result) continue
-        const editedAt = lastShareEditAt.current[meta.shareId] ?? 0
-        const receivedAt = lastShareUpdateReceivedAt.current[meta.shareId] ?? 0
-        if (editedAt > receivedAt) continue
-        lastShareUpdateReceivedAt.current[meta.shareId] = Date.now()
-        setTables(prev => prev.map(t =>
-          t.id === table.id && t._shared
-            ? { ...result.table, id: t.id, position: t.position, size: t.size, spaceId: t.spaceId, collapsed: t.collapsed, _shared: { ...t._shared, version: result.version } }
-            : t
-        ))
+  const handlePullSharedChanges = async (table: Table) => {
+    setPullingTableId(table.id)
+    try {
+      if (table._shared?.canEdit) {
+        const result = await fetchSharedTableUpdate(table._shared.shareId, table._shared.version)
+        if (!result) {
+          setHasPullableChanges((p) => { const q = { ...p }; delete q[table.id]; return q })
+          setPullingTableId(null)
+          const err = lastPullErrorRef.current
+          const isDecrypt = err && /ghash|aes\/gcm|invalid/i.test(err.message || '')
+          alert(isDecrypt ? 'Could not decrypt the shared data. The share keys may be out of sync. Ask the owner to remove you from the share and add you again.' : 'No new changes to pull, or could not fetch updates. Try again.')
+          return
+        }
+        const remoteWithVersion = { ...result.table, _version: result.version }
+        const diff = computeDiff(table, remoteWithVersion)
+        const hasTaskChanges = diff.added.length > 0 || diff.removed.length > 0 || diff.modified.length > 0
+        if (hasTaskChanges) {
+          setPullPreviewModal({
+            table,
+            remoteTable: remoteWithVersion,
+            lastPushedByEmail: undefined,
+          })
+        } else {
+          applyPullToTable(table, remoteWithVersion)
+        }
+        setHasPullableChanges((p) => { const q = { ...p }; delete q[table.id]; return q })
+      } else if (sharedTableIds.has(table.id)) {
+        const pushes = await fetchOwnedSharePushes(table.id)
+        if (pushes === null) {
+          setPullingTableId(null)
+          return
+        }
+        if (pushes.length > 1) {
+          setPullConflictModal({ table, pushes })
+        } else if (pushes.length === 1) {
+          const remote = pushes[0].table
+          const diff = computeDiff(table, remote)
+          const hasTaskChanges = diff.added.length > 0 || diff.removed.length > 0 || diff.modified.length > 0
+          let alwaysAccept = false
+          try {
+            const { shares } = await api.getOutgoingShares()
+            const share = (shares || []).find((s: any) => String(s.source_table_id) === table.id)
+            const rec = (share?.recipients || []).find((r: any) => r.userId === pushes[0].userId)
+            alwaysAccept = !!rec?.always_accept_from
+          } catch {}
+          if (pullPreviewEnabled && !alwaysAccept && hasTaskChanges) {
+            setPullPreviewModal({
+              table,
+              remoteTable: remote,
+              lastPushedByEmail: pushes[0].userEmail,
+            })
+          } else {
+            applyPullToTable(table, remote)
+            lastKnownShareVersion.current[table.id] = (await api.getOwnedShares()).shares?.find((s: any) => String(s.source_table_id) === table.id)?.version ?? 1
+          }
+        } else {
+          const data = await fetchOwnedShareUpdate(table.id)
+          if (!data) {
+            setPullingTableId(null)
+            return
+          }
+          const diff = computeDiff(table, data.table)
+          const hasTaskChanges = diff.added.length > 0 || diff.removed.length > 0 || diff.modified.length > 0
+          if (pullPreviewEnabled && hasTaskChanges) {
+            setPullPreviewModal({ table, remoteTable: data.table, lastPushedByEmail: data.lastPushedByEmail })
+          } else {
+            applyPullToTable(table, data.table)
+            lastKnownShareVersion.current[table.id] = data.version
+          }
+        }
+        setHasPullableChanges((p) => { const q = { ...p }; delete q[table.id]; return q })
       }
+    } finally {
+      setPullingTableId(null)
     }
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') poll()
+  }
+
+  const applyPullToTable = (table: Table, remoteTable: any) => {
+    setTables((prev) =>
+      prev.map((t) =>
+        t.id === table.id
+          ? { ...remoteTable, id: t.id, position: t.position, size: t.size, spaceId: t.spaceId, collapsed: t.collapsed, _shared: t._shared ? { ...t._shared, version: (remoteTable as any)._version ?? t._shared.version } : undefined }
+          : t
+      )
+    )
+    if (table._shared) {
+      lastShareUpdateReceivedAt.current[table._shared.shareId] = Date.now()
     }
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    const interval = setInterval(poll, 5000)
-    poll()
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-      clearInterval(interval)
+    setSyncSuccess(true)
+    setTimeout(() => setSyncSuccess(false), 2000)
+  }
+
+  const handlePullPreviewConfirm = async () => {
+    if (!pullPreviewModal) return
+    const { table, remoteTable } = pullPreviewModal
+    applyPullToTable(table, remoteTable)
+    const shareVersion = (await api.getOwnedShares()).shares?.find((s: any) => String(s.source_table_id) === table.id)?.version
+    if (shareVersion != null) {
+      lastKnownShareVersion.current[table.id] = shareVersion
+    } else if (!table._shared) {
+      lastKnownShareVersion.current[table.id] = (remoteTable as any)._version ?? lastKnownShareVersion.current[table.id] ?? 1
     }
-  }, [tables])
+    setHasPullableChanges((p) => { const q = { ...p }; delete q[table.id]; return q })
+    setPullPreviewModal(null)
+  }
+
+  const handlePullPreviewReject = () => {
+    setPullPreviewModal(null)
+  }
+
+  const handlePullConflictConfirm = async (mergedTable: any) => {
+    if (!pullConflictModal) return
+    const { table } = pullConflictModal
+    const encKey = (await import('../utils/encryptionKey')).encryptionKeyManager.getKey()
+    if (!encKey) return
+    const { shares } = await api.getOwnedShares()
+    const share = (shares || []).find((s: any) => String(s.source_table_id) === table.id)
+    if (!share?.wrapped_dek_for_owner) return
+    const dek = await unwrapDEKForOwner(share.wrapped_dek_for_owner, encKey)
+    const encrypted = await encryptTableWithDEK(mergedTable, dek)
+    await api.resolveShareConflict(share.id, encrypted, share.version + 1)
+    applyPullToTable(table, mergedTable)
+    lastKnownShareVersion.current[table.id] = share.version + 1
+    setHasPullableChanges((p) => { const q = { ...p }; delete q[table.id]; return q })
+    setPullConflictModal(null)
+  }
+
+  const handlePullConflictCancel = () => {
+    setPullConflictModal(null)
+  }
+
+  // Check for pullable changes (owner and recipient) - no auto-apply, Pull button only
+  const [hasPullableChanges, setHasPullableChanges] = useState<Record<string, boolean>>({})
+  const lastKnownShareVersion = useRef<Record<string, number>>({})
+
+  useEffect(() => {
+    if (!isPremium || !user) return
+    const check = async () => {
+      try {
+        const owned = await api.getOwnedShares()
+        const incoming = await api.getIncomingShares()
+        const validIncomingIds = new Set((incoming.shares || []).map((s: any) => s.id))
+        const sharedTables = tables.filter((t) => t._shared)
+        const toRemove = sharedTables.filter((t) => t._shared && !validIncomingIds.has(t._shared.shareId))
+        if (toRemove.length > 0) {
+          const removeIds = new Set(toRemove.map((t) => t.id))
+          setTables((prev) => {
+            const next = prev.filter((t) => !removeIds.has(t.id))
+            saveTables(next)
+            return next
+          })
+        }
+        const updates: Record<string, boolean> = {}
+        ;(owned.shares || []).forEach((s: any) => {
+          const tid = String(s.source_table_id)
+          const remote = s.version ?? 1
+          const last = lastKnownShareVersion.current[tid] ?? remote
+          if (remote > last) updates[tid] = true
+          lastKnownShareVersion.current[tid] = remote
+        })
+        ;(incoming.shares || []).forEach((s: any) => {
+          const tid = `shared-${s.id}`
+          const remote = s.version ?? 1
+          const tbl = tables.find((t) => t.id === tid && t._shared)
+          const local = tbl?._shared?.version ?? 0
+          if (remote > local) updates[tid] = true
+        })
+        setHasPullableChanges((prev) => (Object.keys(updates).length ? { ...prev, ...updates } : prev))
+      } catch {}
+    }
+    check()
+    const iv = setInterval(check, 30000)
+    return () => clearInterval(iv)
+  }, [isPremium, user?.id, tables])
 
   // Sync calendar to iCal feed for premium users (if enabled)
   useEffect(() => {
@@ -4610,6 +4784,13 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
                         allowTableLayout={!!table._shared}
                         onPushSharedChanges={(table._shared?.canEdit || sharedTableIds.has(table.id)) ? handlePushSharedChanges : undefined}
                         isSharedByOwner={sharedTableIds.has(table.id)}
+                        onPullSharedChanges={(table._shared?.canEdit || sharedTableIds.has(table.id)) ? handlePullSharedChanges : undefined}
+                        hasPullableChanges={!!hasPullableChanges[table.id]}
+                        pullPreviewEnabled={pullPreviewEnabled}
+                        onPullPreviewToggle={setPullPreviewEnabled}
+                        pullingTableId={pullingTableId}
+                        pushingTableId={pushingTableId}
+                        pushSuccessTableId={pushSuccessTableId}
                         deleteTable={deleteTable}
                         toggleTableCollapsed={toggleTableCollapsed}
                         toggleSelectAll={toggleSelectAll}
@@ -4744,6 +4925,13 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
                           allowTableLayout={!!table._shared}
                           onPushSharedChanges={(table._shared?.canEdit || sharedTableIds.has(table.id)) ? handlePushSharedChanges : undefined}
                           isSharedByOwner={sharedTableIds.has(table.id)}
+                          onPullSharedChanges={(table._shared?.canEdit || sharedTableIds.has(table.id)) ? handlePullSharedChanges : undefined}
+                          hasPullableChanges={!!hasPullableChanges[table.id]}
+                          pullPreviewEnabled={pullPreviewEnabled}
+                          onPullPreviewToggle={setPullPreviewEnabled}
+                          pullingTableId={pullingTableId}
+                          pushingTableId={pushingTableId}
+                          pushSuccessTableId={pushSuccessTableId}
                           deleteTable={deleteTable}
                           toggleTableCollapsed={toggleTableCollapsed}
                           toggleSelectAll={toggleSelectAll}
@@ -4874,6 +5062,13 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
                 allowTableLayout={!!table._shared}
                 onPushSharedChanges={(table._shared?.canEdit || sharedTableIds.has(table.id)) ? handlePushSharedChanges : undefined}
                 isSharedByOwner={sharedTableIds.has(table.id)}
+                onPullSharedChanges={(table._shared?.canEdit || sharedTableIds.has(table.id)) ? handlePullSharedChanges : undefined}
+                hasPullableChanges={!!hasPullableChanges[table.id]}
+                pullPreviewEnabled={pullPreviewEnabled}
+                onPullPreviewToggle={setPullPreviewEnabled}
+                pullingTableId={pullingTableId}
+                pushingTableId={pushingTableId}
+                pushSuccessTableId={pushSuccessTableId}
                 timePickerTable={timePickerTable}
                 setTimePickerTable={setTimePickerTable}
                 durationPickerTask={durationPickerTask}
@@ -5125,10 +5320,28 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
           table={shareModalTable}
           onClose={() => { setShowShareModal(false); setShareModalTable(null); }}
           onSuccess={() => {
-            api.getOwnedShares().then(({ shares }) => {
-              setSharedTableIds(new Set((shares || []).map((s: any) => String(s.source_table_id))))
+            api.getOutgoingShares().then(({ shares }) => {
+              setSharedTableIds(new Set((shares || []).filter((s: any) => (s.recipients || []).length > 0).map((s: any) => String(s.source_table_id))))
             }).catch(() => {})
           }}
+        />
+      )}
+      {pullPreviewModal && (
+        <SharePullPreviewModal
+          localTable={pullPreviewModal.table}
+          remoteTable={pullPreviewModal.remoteTable}
+          lastPushedByEmail={pullPreviewModal.lastPushedByEmail}
+          onConfirm={handlePullPreviewConfirm}
+          onReject={handlePullPreviewReject}
+          onClose={handlePullPreviewReject}
+        />
+      )}
+      {pullConflictModal && (
+        <SharePullConflictModal
+          localTable={pullConflictModal.table}
+          pushes={pullConflictModal.pushes}
+          onConfirm={handlePullConflictConfirm}
+          onCancel={handlePullConflictCancel}
         />
       )}
       {showSharedWithMeMenu && (

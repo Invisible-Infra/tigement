@@ -18,6 +18,7 @@ interface Recipient {
   userId: number
   email: string
   permission: string
+  always_accept_from?: boolean
 }
 
 interface OutgoingShare {
@@ -41,6 +42,8 @@ export function ShareTableModal({ table, onClose, onSuccess }: ShareTableModalPr
   const [loadingRecipients, setLoadingRecipients] = useState(true)
   const [updatingRecipient, setUpdatingRecipient] = useState<number | null>(null)
   const [revokingRecipient, setRevokingRecipient] = useState<number | null>(null)
+  const [deletingShare, setDeletingShare] = useState(false)
+  const [updatingAlwaysAccept, setUpdatingAlwaysAccept] = useState<number | null>(null)
 
   const loadExistingShare = async () => {
     setLoadingRecipients(true)
@@ -71,6 +74,7 @@ export function ShareTableModal({ table, onClose, onSuccess }: ShareTableModalPr
     setLoading(true)
     try {
       const { publicKeyBase64: myPub, privateKeyBase64: myPriv } = await ensureSharingKeys()
+      await api.setSharingPublicKey(myPub)
       const keyRes = await api.getPublicKeyByEmail(trimEmail)
 
       let encryptedTableData: string
@@ -155,6 +159,34 @@ export function ShareTableModal({ table, onClose, onSuccess }: ShareTableModalPr
     }
   }
 
+  const handleStopSharing = async () => {
+    if (!existingShare || !confirm('Stop sharing this table? Recipients will lose access.')) return
+    setDeletingShare(true)
+    try {
+      await api.deleteShare(existingShare.id)
+      setExistingShare(null)
+      onSuccess?.()
+      onClose()
+    } catch (err: any) {
+      setError(err?.message || 'Failed to stop sharing')
+    } finally {
+      setDeletingShare(false)
+    }
+  }
+
+  const handleAlwaysAcceptToggle = async (recipientId: number, enabled: boolean) => {
+    if (!existingShare) return
+    setUpdatingAlwaysAccept(recipientId)
+    try {
+      await api.updateShareRecipientAlwaysAccept(existingShare.id, recipientId, enabled)
+      await loadExistingShare()
+    } catch (err: any) {
+      setError(err?.message || 'Failed to update setting')
+    } finally {
+      setUpdatingAlwaysAccept(null)
+    }
+  }
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[200]" onClick={onClose}>
       <div
@@ -221,6 +253,17 @@ export function ShareTableModal({ table, onClose, onSuccess }: ShareTableModalPr
                         <option value="view">View only</option>
                         <option value="edit">Can edit</option>
                       </select>
+                      {r.permission === 'edit' && (
+                        <label className="flex items-center gap-1 text-sm cursor-pointer" title="Skip preview modal when pulling changes from this user">
+                          <input
+                            type="checkbox"
+                            checked={!!r.always_accept_from}
+                            onChange={(e) => handleAlwaysAcceptToggle(r.userId, e.target.checked)}
+                            disabled={updatingAlwaysAccept === r.userId}
+                          />
+                          <span>Always accept</span>
+                        </label>
+                      )}
                       <button
                         onClick={() => handleRevoke(r.userId)}
                         disabled={revokingRecipient === r.userId}
@@ -234,10 +277,19 @@ export function ShareTableModal({ table, onClose, onSuccess }: ShareTableModalPr
               </div>
             )}
           </div>
-          <div className="flex justify-end mt-6">
+          <div className="flex justify-between mt-6">
+            {existingShare && (
+              <button
+                onClick={handleStopSharing}
+                disabled={deletingShare}
+                className="px-4 py-2 rounded border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50"
+              >
+                {deletingShare ? 'Stopping...' : 'Stop sharing'}
+              </button>
+            )}
             <button
               onClick={onClose}
-              className="px-4 py-2 rounded border border-gray-300 hover:bg-gray-100"
+              className="px-4 py-2 rounded border border-gray-300 hover:bg-gray-100 ml-auto"
             >
               Close
             </button>
