@@ -206,10 +206,11 @@ router.patch('/:id', async (req: AuthRequest, res) => {
       const ownerCheck = await query('SELECT owner_id FROM shared_tables WHERE id = $1', [id]);
       if (ownerCheck.rows.length === 0) return res.status(404).json({ error: 'Not found' });
       if (ownerCheck.rows[0].owner_id !== req.user!.id) return res.status(403).json({ error: 'Forbidden' });
-      await query(
+      const updateResult = await query(
         'UPDATE shared_table_recipients SET always_accept_from = $1 WHERE shared_table_id = $2 AND user_id = $3',
         [alwaysAcceptFrom, id, recipientId]
       );
+      if (updateResult.rowCount === 0) return res.status(404).json({ error: 'Not found' });
       return res.json({ success: true });
     }
 
@@ -384,40 +385,77 @@ router.put('/:id', async (req: AuthRequest, res) => {
       if (!isPremium) canEdit = false;
     }
     if (!canEdit) return res.status(403).json({ error: 'No edit permission' });
-    if (version <= st.version) {
-      return res.status(409).json({ error: 'Version conflict', currentVersion: st.version });
-    }
-    await query(
-      'INSERT INTO shared_table_pushes (shared_table_id, user_id, encrypted_table_data, version) VALUES ($1, $2, $3, $4)',
-      [id, req.user!.id, encryptedTableData, version]
-    );
-    const updateFields = [
-      'encrypted_table_data = $1',
-      'version = $2',
-      'updated_at = NOW()',
-      'last_pushed_by_user_id = $3',
-    ];
-    const updateParams: any[] = [encryptedTableData, version, req.user!.id];
-    if (isOwner) {
-      updateFields.push('last_resolved_at = NOW()');
-      updateFields.push('last_resolved_by_user_id = $4');
-      updateParams.push(req.user!.id);
-      updateParams.push(id);
-      await query(
-        `UPDATE shared_tables SET ${updateFields.join(', ')} WHERE id = $5`,
-        updateParams
+
+    await withTransaction(async (client) => {
+      const lockResult = await client.query(
+        'SELECT id, owner_id, version FROM shared_tables WHERE id = $1 FOR UPDATE',
+        [id]
       );
-    } else {
-      updateParams.push(id);
-      await query(
-        `UPDATE shared_tables SET ${updateFields.join(', ')} WHERE id = $4`,
-        updateParams
+      if (lockResult.rows.length === 0) {
+        const err = new Error('Not found') as Error & { httpStatus?: number };
+        err.httpStatus = 404;
+        throw err;
+      }
+      const locked = lockResult.rows[0];
+      if (version <= locked.version) {
+        const err = new Error('Version conflict') as Error & { httpStatus?: number; currentVersion?: number };
+        err.httpStatus = 409;
+        err.currentVersion = locked.version;
+        throw err;
+      }
+      await client.query(
+        'INSERT INTO shared_table_pushes (shared_table_id, user_id, encrypted_table_data, version) VALUES ($1, $2, $3, $4)',
+        [id, req.user!.id, encryptedTableData, version]
       );
-    }
+      const updateFields = [
+        'encrypted_table_data = $1',
+        'version = $2',
+        'updated_at = NOW()',
+        'last_pushed_by_user_id = $3',
+      ];
+      const updateParams: any[] = [encryptedTableData, version, req.user!.id];
+      if (isOwner) {
+        updateFields.push('last_resolved_at = NOW()');
+        updateFields.push('last_resolved_by_user_id = $4');
+        updateParams.push(req.user!.id);
+        updateParams.push(id);
+        updateParams.push(locked.version);
+        const updateResult = await client.query(
+          `UPDATE shared_tables SET ${updateFields.join(', ')} WHERE id = $5 AND version = $6`,
+          updateParams
+        );
+        if (updateResult.rowCount === 0) {
+          const err = new Error('Version conflict') as Error & { httpStatus?: number; currentVersion?: number };
+          err.httpStatus = 409;
+          err.currentVersion = locked.version;
+          throw err;
+        }
+      } else {
+        updateParams.push(id);
+        updateParams.push(locked.version);
+        const updateResult = await client.query(
+          `UPDATE shared_tables SET ${updateFields.join(', ')} WHERE id = $4 AND version = $5`,
+          updateParams
+        );
+        if (updateResult.rowCount === 0) {
+          const err = new Error('Version conflict') as Error & { httpStatus?: number; currentVersion?: number };
+          err.httpStatus = 409;
+          err.currentVersion = locked.version;
+          throw err;
+        }
+      }
+    });
     res.json({ success: true, version });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: 'Invalid input', details: error.errors });
+    }
+    const err = error as Error & { httpStatus?: number; currentVersion?: number };
+    if (err.httpStatus === 404) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    if (err.httpStatus === 409) {
+      return res.status(409).json({ error: 'Version conflict', currentVersion: err.currentVersion });
     }
     console.error('Update share data error:', error);
     res.status(500).json({ error: 'Internal server error' });
