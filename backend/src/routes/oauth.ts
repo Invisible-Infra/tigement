@@ -260,11 +260,12 @@ router.post('/oauth/passphrase', async (req: Request, res: Response) => {
       { expiresIn: '7d' }
     );
 
-    // Store refresh token
+    // Store refresh token hash (never store plaintext)
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const tokenHash = await bcrypt.hash(refreshToken, 10);
     await query(
-      'INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)',
-      [user.id, refreshToken, expiresAt]
+      'INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)',
+      [user.id, tokenHash, expiresAt]
     );
 
     // Update last login

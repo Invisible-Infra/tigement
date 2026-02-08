@@ -14,9 +14,8 @@ router.use(authMiddleware);
 async function requirePremium(req: AuthRequest, res: any): Promise<boolean> {
   const subResult = await query(
     `SELECT s.plan, s.status, s.expires_at,
-            COALESCE(ps.premium_grace_period_days, 3) as grace_days
+            COALESCE((SELECT premium_grace_period_days FROM payment_settings WHERE id = 1 LIMIT 1), 3) as grace_days
      FROM subscriptions s
-     LEFT JOIN payment_settings ps ON 1=1
      WHERE s.user_id = $1
      ORDER BY s.started_at DESC LIMIT 1`,
     [req.user!.id]
@@ -217,17 +216,19 @@ router.patch('/:id', async (req: AuthRequest, res) => {
         const stId = recCheck.rows[0].shared_table_id;
         const ownerId = recCheck.rows[0].owner_id;
         if (ownerId !== req.user!.id) return res.status(403).json({ error: 'Forbidden' });
-        await query('DELETE FROM shared_table_recipients WHERE shared_table_id = $1 AND user_id = $2', [
+        const deleteResult = await query('DELETE FROM shared_table_recipients WHERE shared_table_id = $1 AND user_id = $2', [
           stId,
           revokeUserId,
         ]);
+        if (deleteResult.rowCount === 0) return res.status(404).json({ error: 'Not found' });
         return res.json({ success: true });
       }
       if (ownerCheck.rows[0].owner_id !== req.user!.id) return res.status(403).json({ error: 'Forbidden' });
-      await query('DELETE FROM shared_table_recipients WHERE shared_table_id = $1 AND user_id = $2', [
+      const deleteResult = await query('DELETE FROM shared_table_recipients WHERE shared_table_id = $1 AND user_id = $2', [
         id,
         revokeUserId,
       ]);
+      if (deleteResult.rowCount === 0) return res.status(404).json({ error: 'Not found' });
       return res.json({ success: true });
     }
 
@@ -334,7 +335,9 @@ router.post('/:id/resolve', async (req: AuthRequest, res) => {
       [encryptedTableData, version, req.user!.id, id, req.user!.id]
     );
     if (updateResult.rowCount === 0) {
-      return res.status(409).json({ error: 'Version conflict', currentVersion: st.version });
+      const freshResult = await query('SELECT version FROM shared_tables WHERE id = $1', [id]);
+      const currentVersion = freshResult.rows[0]?.version ?? st.version;
+      return res.status(409).json({ error: 'Version conflict', currentVersion });
     }
     res.json({ success: true, version });
   } catch (error) {

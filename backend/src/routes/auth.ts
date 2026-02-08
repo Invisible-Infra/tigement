@@ -86,11 +86,12 @@ router.post('/register', async (req, res) => {
     const accessToken = jwt.sign({ id: user.id, email: user.email }, secret, { expiresIn: '2h' });
     const refreshToken = jwt.sign({ id: user.id }, refreshSecret, { expiresIn: `${daysRegister}d` });
     
-    // Store refresh token
+    // Store refresh token hash (never store plaintext)
     const expiresAt = new Date(Date.now() + daysRegister * 24 * 60 * 60 * 1000);
+    const tokenHash = await bcrypt.hash(refreshToken, 10);
     await query(
-      'INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)',
-      [user.id, refreshToken, expiresAt]
+      'INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)',
+      [user.id, tokenHash, expiresAt]
     );
     
     res.status(201).json({
@@ -212,11 +213,12 @@ router.post('/login', async (req, res) => {
     const accessToken = jwt.sign({ id: user.id, email: user.email }, secret, { expiresIn: '2h' });
     const refreshToken = jwt.sign({ id: user.id }, refreshSecret, { expiresIn: `${daysLogin}d` });
     
-    // Store refresh token
+    // Store refresh token hash (never store plaintext)
     const expiresAt = new Date(Date.now() + daysLogin * 24 * 60 * 60 * 1000);
+    const tokenHash = await bcrypt.hash(refreshToken, 10);
     await query(
-      'INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)',
-      [user.id, refreshToken, expiresAt]
+      'INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)',
+      [user.id, tokenHash, expiresAt]
     );
     
     // Clean up expired refresh tokens for this user
@@ -293,13 +295,19 @@ router.post('/refresh', async (req, res) => {
     const refreshSecret = process.env.JWT_REFRESH_SECRET!;
     const decoded = jwt.verify(refreshToken, refreshSecret) as { id: number };
     
-    // Check if token exists in database
+    // Check if token exists in database (compare hash; never store plaintext)
     const tokenResult = await query(
-      'SELECT user_id FROM refresh_tokens WHERE token = $1 AND expires_at > NOW()',
-      [refreshToken]
+      'SELECT token_hash FROM refresh_tokens WHERE user_id = $1 AND expires_at > NOW()',
+      [decoded.id]
     );
-    
-    if (tokenResult.rows.length === 0) {
+    let tokenMatch = false;
+    for (const r of tokenResult.rows) {
+      if (await bcrypt.compare(refreshToken, r.token_hash)) {
+        tokenMatch = true;
+        break;
+      }
+    }
+    if (!tokenMatch) {
       console.error('❌ Refresh token not found in database or expired', {
         userId: decoded?.id,
         tokenLength: refreshToken?.length || 0
@@ -334,7 +342,16 @@ router.post('/logout', authMiddleware, async (req: AuthRequest, res) => {
     const { refreshToken } = req.body;
     
     if (refreshToken) {
-      await query('DELETE FROM refresh_tokens WHERE token = $1', [refreshToken]);
+      const tokenRows = await query(
+        'SELECT id, token_hash FROM refresh_tokens WHERE user_id = $1 AND expires_at > NOW()',
+        [req.user!.id]
+      );
+      for (const r of tokenRows.rows) {
+        if (await bcrypt.compare(refreshToken, r.token_hash)) {
+          await query('DELETE FROM refresh_tokens WHERE id = $1', [r.id]);
+          break;
+        }
+      }
     }
     
     // Clean up expired refresh tokens for this user
