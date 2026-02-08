@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { query } from '../db';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
+import { getJwtSecret, getJwtRefreshSecret } from '../env';
 import { sendPasswordResetEmail } from '../services/email';
 
 const router = Router();
@@ -77,8 +78,8 @@ router.post('/register', async (req, res) => {
     }
 
     // Generate tokens
-    const secret = process.env.JWT_SECRET!;
-    const refreshSecret = process.env.JWT_REFRESH_SECRET!;
+    const secret = getJwtSecret();
+    const refreshSecret = getJwtRefreshSecret();
     
     // Use user-defined session duration or default to 7 days (register)
     const daysRegister = sessionDays && sessionDays >= 1 && sessionDays <= 90 ? sessionDays : 7;
@@ -204,8 +205,8 @@ router.post('/login', async (req, res) => {
     }
     
     // Generate tokens
-    const secret = process.env.JWT_SECRET!;
-    const refreshSecret = process.env.JWT_REFRESH_SECRET!;
+    const secret = getJwtSecret();
+    const refreshSecret = getJwtRefreshSecret();
     
     // Use user-defined session duration or default to 7 days (login)
     const daysLogin = sessionDays && sessionDays >= 1 && sessionDays <= 90 ? sessionDays : 7;
@@ -292,7 +293,7 @@ router.post('/refresh', async (req, res) => {
     }
     
     // Verify refresh token
-    const refreshSecret = process.env.JWT_REFRESH_SECRET!;
+    const refreshSecret = getJwtRefreshSecret();
     const decoded = jwt.verify(refreshToken, refreshSecret) as { id: number };
     
     // Check if token exists in database (compare hash; never store plaintext)
@@ -325,7 +326,7 @@ router.post('/refresh', async (req, res) => {
     const user = userResult.rows[0];
     
     // Generate new access token
-    const secret = process.env.JWT_SECRET!;
+    const secret = getJwtSecret();
     const accessToken = jwt.sign({ id: user.id, email: user.email }, secret, { expiresIn: '2h' });
     
     console.log('✅ Token refreshed successfully', { userId: user.id, email: user.email });
@@ -437,7 +438,7 @@ router.post('/forgot-password', async (req, res) => {
       const user = userResult.rows[0];
       
       // Generate JWT token for password reset (expires in 1 hour)
-      const secret = process.env.JWT_SECRET!;
+      const secret = getJwtSecret();
       const resetToken = jwt.sign(
         { email: user.email, type: 'password-reset' },
         secret,
@@ -476,7 +477,7 @@ router.post('/reset-password', async (req, res) => {
     const { token, newPassword } = resetPasswordSchema.parse(req.body);
     
     // Verify JWT token
-    const secret = process.env.JWT_SECRET!;
+    const secret = getJwtSecret();
     let decoded: any;
     
     try {

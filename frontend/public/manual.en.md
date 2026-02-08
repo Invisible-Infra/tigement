@@ -7,17 +7,26 @@ Welcome to Tigement – a time and task management workspace. This manual walks 
 - [Introduction & Concepts](#concepts)
 - [Getting Started](#getting-started)
 - [Workspace Basics](#workspace-basics)
+- [Spaces (Tab Groups)](#spaces)
 - [Planning Workflow (Day tables)](#planning-workflow)
 - [Automatic Scheduling & Calculations](#automatic)
 - [Mobile UX](#mobile-ux)
 - [Task Groups](#task-groups)
 - [Notebooks](#notebooks)
+- [Diary](#diary)
+- [Statistics](#statistics)
 - [Export (CSV / Markdown Review)](#export)
 - [Payments & Premium](#payments)
+- [Table Sharing](#table-sharing)
+- [iCal Subscription](#ical)
+- [OAuth & Sign-In](#oauth)
 - [Forgot Password](#forgot-password)
 - [Archiving Tables](#archiving)
 - [Settings & Profile](#settings)
 - [Data Backup & Recovery](#backup-recovery)
+- [AI Assistant](#ai-assistant)
+- [API Tokens](#api-tokens)
+- [Onboarding & Tutorial](#onboarding)
 - [Shortcuts & Tips](#shortcuts)
 
 <a id="purpose"></a>
@@ -29,11 +38,11 @@ Tigement is optimized for planning a realistic day. You write tasks with duratio
 - Tables: two types – Day (dated schedule) and TODO (backlog). Each table contains tasks.
 - Tasks: have a title, optional start/finish (Day), duration, selection state, group and optional notes (notebook).
 - **End-to-End Encryption**: All workspace data is encrypted on your device before syncing. Only you can decrypt it with your password. Even the server owner cannot see your tasks, notes, or any workspace content.
-- Sync: logged-in users can cloud-sync encrypted workspaces.
+- Sync: premium users can cloud-sync encrypted workspaces across devices.
 
 <a id="getting-started"></a>
 ## Getting Started
-1. Register and log in.
+1. Register and log in (email/password or OAuth: Google, GitHub, Apple, X, Facebook).
 2. Add a Day or TODO table from the right sidebar.
 3. Add tasks; on Day tables, times auto-chain from the table start time.
 4. Use the hamburger on mobile to open the sidebar.
@@ -43,9 +52,17 @@ Tigement is optimized for planning a realistic day. You write tasks with duratio
 - Reorder tasks:
   - Desktop: drag anywhere in the row.
   - Mobile: drag using ▲/▼ icons (scroll is locked during drag).
-- Select tasks with the checkbox; use Bulk Actions to add group or delete.
+- Select tasks with the checkbox; use Bulk Actions to add group or delete. When moving a task to another tab (drag or Move menu), all selected tasks move together.
 - Pagination on mobile: fixed bar with Previous/Next and a dropdown to jump.
 - Caret placement fix: click inside task title sets cursor precisely where you click.
+- **View modes**: All-in-one (freeform canvas) or Spaces (days on left, TODO spaces on right). Switch in the sidebar.
+- **Zoom**: Desktop only – 50% to 200%. Split view in Spaces: draggable divider between days and TODO panels.
+
+<a id="spaces"></a>
+## Spaces (Tab Groups)
+- Organize TODO tables by project, context, or category. Each space has a name, icon, and color.
+- In Spaces view: days appear on the left, TODO spaces on the right. Assign each TODO table to a space or "All Spaces."
+- Filter workspace by space in All-in-one view. Split position (left/right panel width) is saved in settings.
 
 <a id="planning-workflow"></a>
 ## Planning Workflow (Day tables)
@@ -88,6 +105,19 @@ Tip: If you need a hard start for the first task, set the table start time. Ever
 - Markdown supported (headings, lists, tables, code blocks with syntax highlighting).
 - Notebooks open as draggable windows you can move around.
 
+<a id="diary"></a>
+## Diary
+- Daily journal with dated entries. Full markdown support.
+- Create entries from the Diary list; click to open. Edit/Preview toggle. Export individual entries to Markdown.
+- Draggable diary window on desktop.
+
+<a id="statistics"></a>
+## Statistics
+- Overview: total tables, tasks (active/archived), duration, archived tables.
+- Task groups: count, tasks by group, duration by group.
+- Storage: browser (localStorage) and server (premium).
+- Export Filtered Data: filter by task group and date range (all, last 7/30 days, this month, custom).
+
 <a id="export"></a>
 ## Export
 - CSV Export/Import in sidebar.
@@ -95,9 +125,29 @@ Tip: If you need a hard start for the first task, set the table start time. Ever
 
 <a id="payments"></a>
 ## Payments & Premium
-- BTCPay checkout with coupons.
+- BTCPay checkout with coupons. Multiple payment methods: BTCPay, Stripe, PayPal (if enabled).
+- Referral coupons: premium users earn coupons when purchasing; share or use for free premium time.
 - Webhooks handle activation; idempotent processing avoids duplicates.
 - Keep BTCPay behind Cloudflare allow rules when needed.
+
+<a id="table-sharing"></a>
+## Table Sharing (Premium)
+- E2EE share tables by email. Recipients get View or Edit permission.
+- Share button in table header. Recipients see "Shared with me" in sidebar.
+- View-only: open table, no editing. Edit: live-edit in SharedTableEditorModal or add to workspace and push changes.
+- Pull changes: owner and recipient can pull updates. Conflict resolution when multiple recipients edit.
+
+<a id="ical"></a>
+## iCal Subscription (Premium)
+- Live calendar feed URL for Google Calendar, Apple Calendar, Outlook.
+- Profile → Apps & calendar → enable iCal subscription, copy URL.
+- Privacy: data stored unencrypted on server for the feed. Opt-in only.
+
+<a id="oauth"></a>
+## OAuth & Sign-In
+- Sign in with Google, GitHub, Apple, X, or Facebook (if enabled by your instance).
+- OAuth users: set encryption passphrase on first login. Remember it – it unlocks your data.
+- "Trust device 30 days" skips 2FA for that session.
 
 <a id="forgot-password"></a>
 ## Forgot Password
@@ -118,7 +168,6 @@ Tip: If you need a hard start for the first task, set the table start time. Ever
   - If you forget your password, your encrypted data cannot be recovered (make sure to use a password manager)
   - You can set a custom encryption key in Advanced settings for additional security
 - Settings keeps workspace preferences (theme, time/date format, timers, pickers).
-- **Themes**: Choose from Light (Modern), Classic (Retro), Dark, Terminal (Hacker), or ZX Spectrum (authentic Sinclair ZX Spectrum 8-bit aesthetic with bright cyan and black).
 - **Duration Presets**: Configure quick-select buttons in the duration picker. Enter comma-separated minutes (e.g., "15, 30, 60, 120"). Clicking a preset applies the duration immediately without needing to press "Done".
 
 <a id="backup-recovery"></a>
@@ -151,9 +200,32 @@ If your encryption key doesn't match the server data (e.g., after changing your 
 - Regularly download backups to have a local copy of your data
 - If you reset your password, immediately set your custom encryption key again (if you were using one)
 
+<a id="ai-assistant"></a>
+## AI Assistant
+- Bring Your Own AI (BYOA): connect OpenAI, Anthropic, or custom (Ollama, LM Studio). Your API keys, your privacy.
+- Profile → AI Assistant: configure provider, API key, model, mode (Preview/Automatic).
+- Workspace menu → AI Assistant: type requests (e.g. "Move Monday tasks to Tuesday"). Preview mode: review changes before applying. Undo window: revert AI actions within configurable time.
+- AI History: view past AI actions and undo recent changes.
+
+<a id="api-tokens"></a>
+## API Tokens
+- Profile → Developer & advanced → API Tokens. Generate tokens for CLI and integrations.
+- Scopes: workspace:read, workspace:write. Optional: enable decryption for CLI.
+- Token format: `tig.PREFIX.TEK`. Save immediately – tokens cannot be retrieved again.
+
+<a id="onboarding"></a>
+## Onboarding & Tutorial
+- First-run welcome modal and interactive tutorial. Shown automatically on first load (unless disabled).
+- Help → Tutorial / Onboarding to re-open. Tutorial runs in sandbox – no user data modified.
+- Steps: day start time, task names, durations, reordering, moving tasks between tables.
+- Help → Reset onboarding / Enable onboarding again to reset flags.
+
 <a id="shortcuts"></a>
 ## Shortcuts & Tips
 - Undo / Redo available in the sidebar.
 - Time picker toggles between inline editing and picker.
 - Use Select All checkbox in the header row to select/deselect all tasks.
+
+---
+This manual is versioned with the repository. For the latest online version, open “User Manual” in the app sidebar.
 

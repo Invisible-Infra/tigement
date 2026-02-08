@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import { query } from '../db';
+import { getJwtSecret } from '../env';
 
 export interface AuthRequest extends Request {
   user?: {
@@ -130,7 +131,7 @@ export const authMiddleware = async (req: AuthRequest, res: Response, next: Next
     }
     
     // Otherwise, treat as JWT
-    const secret = process.env.JWT_SECRET!;
+    const secret = getJwtSecret();
     const decoded = jwt.verify(token, secret) as { id: number; email: string };
     req.user = decoded;
     req.authType = 'jwt';
@@ -158,7 +159,7 @@ export const optionalAuthMiddleware = async (req: AuthRequest, res: Response, ne
         }
       } else {
         // JWT token
-        const secret = process.env.JWT_SECRET!;
+        const secret = getJwtSecret();
         const decoded = jwt.verify(token, secret) as { id: number; email: string };
         req.user = decoded;
         req.authType = 'jwt';

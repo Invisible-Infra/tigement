@@ -7,17 +7,26 @@ Vítejte v Tigementu – pracovním prostoru pro plánování času a úkolů. T
 - [Úvod & Pojmy](#pojmy)
 - [Začínáme](#zaciname)
 - [Práce ve Workspace](#workspace)
+- [Prostory (Spaces)](#prostory)
 - [Plánovací workflow (Den)](#workflow)
 - [Automatické plánování & výpočty](#automat)
 - [Mobilní UX](#mobilni-ux)
 - [Skupiny úkolů](#skupiny)
 - [Poznámkové bloky (Notebooks)](#notebooky)
+- [Deník](#denik)
+- [Statistiky](#statistiky)
 - [Export (CSV / Markdown Review)](#export)
 - [Platby & Premium](#platby)
+- [Sdílení tabulek](#sdileni)
+- [iCal odběr](#ical)
+- [OAuth & přihlášení](#oauth)
 - [Zapomenuté heslo](#zapomenute-heslo)
 - [Archivace tabulek](#archivace)
 - [Nastavení & Profil](#nastaveni)
 - [Zálohování & Obnova dat](#zaloha)
+- [AI asistent](#ai-asistent)
+- [API tokeny](#api-tokeny)
+- [Úvodní průvodce & Tutoriál](#uvodni-pruvodce)
 - [Zkratky & Tipy](#zkratky)
 
 <a id="ucel"></a>
@@ -29,11 +38,11 @@ Tigement je optimalizovaný pro plán reálného dne. Zadáváte úkoly s délka
 - Tabulky: dva typy – Den (plán s datem) a TODO (backlog). Každá tabulka obsahuje úkoly.
 - Úkoly: název, volitelný začátek/konec (u Den), délka, výběr, skupina a poznámky (notebook).
 - **End-to-End šifrování**: Veškerá data workspace jsou zašifrována na vašem zařízení před synchronizací. Pouze vy je můžete dešifrovat pomocí hesla. Dokonce ani vlastník serveru nemůže vidět vaše úkoly, poznámky nebo jakýkoliv obsah workspace.
-- Sync: přihlášení uživatelé mohou synchronizovat šifrovaný workspace.
+- Sync: prémioví uživatelé mohou synchronizovat šifrovaný workspace mezi zařízeními.
 
 <a id="zaciname"></a>
 ## Začínáme
-1. Zaregistrujte se a přihlaste.
+1. Zaregistrujte se a přihlaste (e-mail/heslo nebo OAuth: Google, GitHub, Apple, X, Facebook).
 2. Přidejte tabulku Den nebo TODO v pravém postranním panelu.
 3. Přidejte úkoly; u Den se časy řetězí od počátečního času tabulky.
 4. Na mobilu otevřete postranní panel tlačítkem (hamburger).
@@ -46,6 +55,14 @@ Tigement je optimalizovaný pro plán reálného dne. Zadáváte úkoly s délka
 - Výběr úkolů checkboxem; hromadné akce – přidat do skupiny nebo smazat.
 - Na mobilu je stránkování fixně dole s tlačítky a rozbalovacím seznamem.
 - Umístění kurzoru v názvu úkolu odpovídá přesnému kliknutí.
+- **Režimy zobrazení**: Vše v jednom (volný canvas) nebo Prostory (dny vlevo, TODO prostory vpravo). Přepínač v postranním panelu.
+- **Zoom**: Pouze desktop – 50 % až 200 %. Rozdělené zobrazení v Prostorech: tažitelný oddělovač mezi dny a TODO panely.
+
+<a id="prostory"></a>
+## Prostory (Spaces)
+- Organizujte TODO tabulky podle projektu, kontextu nebo kategorie. Každý prostor má název, ikonu a barvu.
+- V režimu Prostory: dny jsou vlevo, TODO prostory vpravo. Přiřaďte každou TODO tabulku prostoru nebo „Všechny prostory“.
+- Filtrujte workspace podle prostoru v režimu Vše v jednom. Pozice oddělovače (šířka levého/pravého panelu) se ukládá v nastavení.
 
 <a id="workflow"></a>
 ## Plánovací workflow (Den)
@@ -88,6 +105,19 @@ Tip: Potřebujete pevný začátek? Nastavte čas začátku tabulky; ostatní se
 - Podpora Markdownu (nadpisy, seznamy, tabulky, kód se zvýrazněním).
 - Notebooky jsou pohyblivá okna, která lze přemísťovat.
 
+<a id="denik"></a>
+## Deník
+- Denní deník s datovanými záznamy. Plná podpora Markdownu.
+- Vytvářejte záznamy ze seznamu Deník; kliknutím otevřete. Režim úprav/náhled. Export jednotlivých záznamů do Markdownu.
+- Tažitelné okno deníku na desktopu.
+
+<a id="statistiky"></a>
+## Statistiky
+- Přehled: celkem tabulky, úkoly (aktivní/archivované), délka, archivované tabulky.
+- Skupiny úkolů: počet, úkoly podle skupiny, délka podle skupiny.
+- Úložiště: prohlížeč (localStorage) a server (prémiové).
+- Export filtrovaných dat: filtr podle skupiny úkolů a rozsahu dat (vše, posledních 7/30 dní, tento měsíc, vlastní).
+
 <a id="export"></a>
 ## Export
 - CSV Export/Import v postranním panelu.
@@ -95,9 +125,29 @@ Tip: Potřebujete pevný začátek? Nastavte čas začátku tabulky; ostatní se
 
 <a id="platby"></a>
 ## Platby & Premium
-- BTCPay pokladna s kupóny.
+- BTCPay pokladna s kupóny. Více platebních metod: BTCPay, Stripe, PayPal (pokud povoleno).
+- Referenční kupóny: prémioví uživatelé získávají kupóny při nákupu; sdílejte nebo použijte pro bezplatný prémiový čas.
 - Aktivace předplatného přes webhooky; idempotentní zpracování.
 - Při použití Cloudflare nastavte odpovídající povolovací pravidla.
+
+<a id="sdileni"></a>
+## Sdílení tabulek (Premium)
+- E2EE sdílení tabulek e-mailem. Příjemci dostanou oprávnění Prohlížet nebo Upravovat.
+- Tlačítko Sdílet v hlavičce tabulky. Příjemci vidí „Sdíleno se mnou“ v postranním panelu.
+- Pouze prohlížení: otevřít tabulku, bez úprav. Úpravy: živá editace v SharedTableEditorModal nebo přidat do workspace a odeslat změny.
+- Stáhnout změny: majitel i příjemce mohou stáhnout aktualizace. Řešení konfliktů při editaci více příjemci.
+
+<a id="ical"></a>
+## iCal odběr (Premium)
+- URL živého kalendářového kanálu pro Google Calendar, Apple Calendar, Outlook.
+- Profil → Aplikace & kalendář → povolit iCal odběr, zkopírovat URL.
+- Soukromí: data se ukládají na serveru nešifrovaná kvůli kanálu. Pouze po volbě.
+
+<a id="oauth"></a>
+## OAuth & přihlášení
+- Přihlášení přes Google, GitHub, Apple, X nebo Facebook (pokud povoleno vaší instancí).
+- Uživatelé OAuth: nastavte šifrovací heslo při prvním přihlášení. Zapamatujte si ho – odemyká vaše data.
+- „Důvěřovat zařízení 30 dní“ přeskočí 2FA pro tuto relaci.
 
 <a id="zapomenute-heslo"></a>
 ## Zapomenuté heslo
@@ -118,7 +168,6 @@ Tip: Potřebujete pevný začátek? Nastavte čas začátku tabulky; ostatní se
   - Pokud zapomenete heslo, vaše zašifrovaná data nelze obnovit (používejte správce hesel)
   - V pokročilých nastaveních můžete nastavit vlastní šifrovací klíč pro dodatečnou bezpečnost
 - Nastavení obsahuje preference workspace (téma, formáty času/data, časovače, volba timepickerů).
-- **Témata**: Vyberte si z Light (Moderní), Classic (Retro), Dark (Tmavý), Terminal (Hacker) nebo ZX Spectrum (autentická 8-bitová estetika Sinclair ZX Spectrum s jasně azurovou a černou).
 - **Předvolby délky**: Nastavte rychlé tlačítka ve výběru délky. Zadejte minuty oddělené čárkou (např. "15, 30, 60, 120"). Kliknutí na předvolbu nastaví délku okamžitě bez nutnosti stisknout "Hotovo".
 
 <a id="zaloha"></a>
@@ -151,9 +200,32 @@ Pokud váš šifrovací klíč neodpovídá datům na serveru (např. po změně
 - Pravidelně stahujte zálohy, abyste měli lokální kopii svých dat
 - Pokud resetujete heslo, okamžitě znovu nastavte svůj vlastní šifrovací klíč (pokud jste ho používali)
 
+<a id="ai-asistent"></a>
+## AI asistent
+- Přineste si vlastní AI (BYOA): připojte OpenAI, Anthropic nebo vlastní (Ollama, LM Studio). Vaše API klíče, vaše soukromí.
+- Profil → AI asistent: nastavení poskytovatele, API klíče, modelu, režimu (Náhled/Automatický).
+- Menu Workspace → AI asistent: zadejte požadavky (např. „Přesuň pondělní úkoly na úterý“). Režim náhledu: prohlédněte změny před použitím. Časové okno pro vrácení: revertujte AI akce v konfigurovatelném čase.
+- Historie AI: zobrazení minulých AI akcí a vrácení nedávných změn.
+
+<a id="api-tokeny"></a>
+## API tokeny
+- Profil → Vývojář & pokročilé → API tokeny. Generujte tokeny pro CLI a integrace.
+- Rozsahy: workspace:read, workspace:write. Volitelně: povolit dešifrování pro CLI.
+- Formát tokenu: `tig.PREFIX.TEK`. Uložte ihned – tokeny nelze znovu načíst.
+
+<a id="uvodni-pruvodce"></a>
+## Úvodní průvodce & Tutoriál
+- Uvítací modál a interaktivní tutoriál při prvním spuštění. Zobrazí se automaticky (pokud není zakázáno).
+- Nápověda → Tutoriál / Úvodní průvodce pro znovuotevření. Tutoriál běží v sandboxu – nemění uživatelská data.
+- Kroky: čas začátku dne, názvy úkolů, délky, řazení, přesouvání úkolů mezi tabulkami.
+- Nápověda → Resetovat úvodní průvodce / Znovu povolit úvodní průvodce pro reset příznaků.
+
 <a id="zkratky"></a>
 ## Zkratky & Tipy
 - Undo / Redo v postranním panelu.
 - Přepínání mezi přímou editací času a volbou přes timepicker.
 - Hromadné zatržení: „Select All“ checkbox v hlavičce.
+
+---
+Tento manuál je verzovaný v repozitáři. Nejnovější online verzi otevřete přes „User Manual“ v menu aplikace.
 

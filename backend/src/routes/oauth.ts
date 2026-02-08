@@ -9,6 +9,7 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import { z } from 'zod';
 import pool, { query } from '../db';
+import { getJwtSecret, getJwtRefreshSecret } from '../env';
 
 const router = Router();
 
@@ -51,7 +52,7 @@ router.get('/oauth/providers', (req: Request, res: Response) => {
   const providers = {
     github: !!(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET),
     google: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
-    apple: !!(process.env.APPLE_CLIENT_ID && process.env.APPLE_TEAM_ID && process.env.APPLE_KEY_ID),
+    apple: !!(process.env.APPLE_CLIENT_ID && process.env.APPLE_TEAM_ID && process.env.APPLE_KEY_ID && process.env.APPLE_PRIVATE_KEY_PATH),
     twitter: !!(process.env.TWITTER_CONSUMER_KEY && process.env.TWITTER_CONSUMER_SECRET),
     facebook: !!(process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET)
   };
@@ -132,7 +133,7 @@ router.get('/oauth/:provider/callback', (req: Request, res: Response, next) => {
       console.log(`OAuth callback successful for user ${user.id}, has passphrase: ${hasPassphrase}`);
 
       // Generate temporary OAuth token (short-lived for passphrase setup)
-      const secret = process.env.JWT_SECRET!;
+      const secret = getJwtSecret();
       const oauthToken = jwt.sign(
         { 
           id: user.id, 
@@ -171,8 +172,8 @@ router.post('/oauth/passphrase', async (req: Request, res: Response) => {
   try {
     const { oauthToken, passphrase, isNew } = passphraseSchema.parse(req.body);
 
-    const secret = process.env.JWT_SECRET!;
-    const refreshSecret = process.env.JWT_REFRESH_SECRET!;
+    const secret = getJwtSecret();
+    const refreshSecret = getJwtRefreshSecret();
 
     // Verify OAuth token
     let decoded: any;
@@ -308,7 +309,7 @@ router.post('/oauth/reset-passphrase', async (req: Request, res: Response) => {
   try {
     const { oauthToken } = resetPassphraseSchema.parse(req.body);
 
-    const secret = process.env.JWT_SECRET!;
+    const secret = getJwtSecret();
 
     // Verify OAuth token
     let decoded: any;

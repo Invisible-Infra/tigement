@@ -80,22 +80,18 @@ router.post('/', async (req: AuthRequest, res) => {
       );
       const stId = (upsertResult.rows[0] as { id: number }).id;
 
-      const duplicateRecipient = await client.query(
-        'SELECT id FROM shared_table_recipients WHERE shared_table_id = $1 AND user_id = $2',
-        [stId, recipientId]
-      );
-      if (duplicateRecipient.rows.length > 0) {
-        await client.query(
-          'UPDATE shared_table_recipients SET encrypted_dek = $1, permission = $2 WHERE shared_table_id = $3 AND user_id = $4',
-          [encryptedDek, permission, stId, recipientId]
-        );
-        return { success: true, sharedTableId: stId, added: false };
-      }
-      await client.query(
-        'INSERT INTO shared_table_recipients (shared_table_id, user_id, encrypted_dek, permission) VALUES ($1, $2, $3, $4)',
+      const upsertRecipientResult = await client.query(
+        `INSERT INTO shared_table_recipients (shared_table_id, user_id, encrypted_dek, permission)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (shared_table_id, user_id) DO UPDATE SET
+           encrypted_dek = EXCLUDED.encrypted_dek,
+           permission = EXCLUDED.permission
+         RETURNING id, created_at`,
         [stId, recipientId, encryptedDek, permission]
       );
-      return { success: true, sharedTableId: stId, added: true };
+      const recRow = upsertRecipientResult.rows[0] as { id: number; created_at: Date };
+      const added = recRow.created_at && (Date.now() - new Date(recRow.created_at).getTime() < 2000);
+      return { success: true, sharedTableId: stId, added: !!added };
     });
 
     res.json(result);
@@ -236,15 +232,12 @@ router.patch('/:id', async (req: AuthRequest, res) => {
       const ownerCheck = await query('SELECT owner_id FROM shared_tables WHERE id = $1', [id]);
       if (ownerCheck.rows.length === 0) return res.status(404).json({ error: 'Not found' });
       if (ownerCheck.rows[0].owner_id !== req.user!.id) return res.status(403).json({ error: 'Forbidden' });
-      const recId = req.query.recipientId as string;
-      if (!recId) return res.status(400).json({ error: 'recipientId required for permission update' });
-      if (!/^\d+$/.test(recId)) {
-        return res.status(400).json({ error: 'recipientId must be a numeric id' });
+      if (recipientId === undefined) {
+        return res.status(400).json({ error: 'recipientId in body required for permission update' });
       }
-      const recIdNum = parseInt(recId, 10);
       const updateResult = await query(
         'UPDATE shared_table_recipients SET permission = $1 WHERE shared_table_id = $2 AND user_id = $3',
-        [permission, id, recIdNum]
+        [permission, id, recipientId]
       );
       if (updateResult.rowCount === 0) return res.status(404).json({ error: 'Not found' });
       return res.json({ success: true });
@@ -396,6 +389,43 @@ router.put('/:id', async (req: AuthRequest, res) => {
         throw err;
       }
       const locked = lockResult.rows[0];
+      const lockedOwnerId = locked.owner_id;
+      const isOwnerLocked = lockedOwnerId === req.user!.id;
+      let canEditLocked = isOwnerLocked;
+      if (!isOwnerLocked) {
+        const recCheck = await client.query(
+          'SELECT permission FROM shared_table_recipients WHERE shared_table_id = $1 AND user_id = $2',
+          [id, req.user!.id]
+        );
+        const isRecipientEdit = recCheck.rows.length > 0 && recCheck.rows[0].permission === 'edit';
+        if (isRecipientEdit) {
+          const premCheck = await client.query(
+            `SELECT s.plan, s.status, s.expires_at,
+                    COALESCE((SELECT premium_grace_period_days FROM payment_settings WHERE id = 1 LIMIT 1), 3) as grace_days
+             FROM subscriptions s
+             WHERE s.user_id = $1
+             ORDER BY s.started_at DESC LIMIT 1`,
+            [req.user!.id]
+          );
+          let hasPremium = false;
+          if (premCheck.rows.length > 0 && premCheck.rows[0].plan === 'premium') {
+            const sub = premCheck.rows[0];
+            if (sub.status === 'active') {
+              hasPremium = true;
+            } else if ((sub.status === 'expired' || sub.status === 'cancelled') && sub.expires_at && sub.grace_days) {
+              const graceEnd = new Date(sub.expires_at);
+              graceEnd.setDate(graceEnd.getDate() + Number(sub.grace_days));
+              hasPremium = new Date() <= graceEnd;
+            }
+          }
+          canEditLocked = hasPremium;
+        }
+      }
+      if (!canEditLocked) {
+        const err = new Error('Forbidden') as Error & { httpStatus?: number };
+        err.httpStatus = 403;
+        throw err;
+      }
       if (version <= locked.version) {
         const err = new Error('Version conflict') as Error & { httpStatus?: number; currentVersion?: number };
         err.httpStatus = 409;
@@ -413,7 +443,7 @@ router.put('/:id', async (req: AuthRequest, res) => {
         'last_pushed_by_user_id = $3',
       ];
       const updateParams: any[] = [encryptedTableData, version, req.user!.id];
-      if (isOwner) {
+      if (isOwnerLocked) {
         updateFields.push('last_resolved_at = NOW()');
         updateFields.push('last_resolved_by_user_id = $4');
         updateParams.push(req.user!.id);
@@ -452,6 +482,9 @@ router.put('/:id', async (req: AuthRequest, res) => {
     const err = error as Error & { httpStatus?: number; currentVersion?: number };
     if (err.httpStatus === 404) {
       return res.status(404).json({ error: 'Not found' });
+    }
+    if (err.httpStatus === 403) {
+      return res.status(403).json({ error: 'No edit permission' });
     }
     if (err.httpStatus === 409) {
       return res.status(409).json({ error: 'Version conflict', currentVersion: err.currentVersion });

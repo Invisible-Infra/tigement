@@ -29,22 +29,17 @@ import docsRoutes from './routes/docs';
 import { runMigrations } from './db/migrate';
 import { initPaymentSettings } from './db/initPaymentSettings';
 import { configureOAuth } from './services/oauth';
+import { getJwtSecret, getJwtRefreshSecret } from './env';
 
 dotenv.config();
 
-function validateJwtSecrets(): void {
-  const jwtSecret = process.env.JWT_SECRET;
-  const refreshSecret = process.env.JWT_REFRESH_SECRET;
-  if (!jwtSecret || !jwtSecret.trim()) {
-    console.error('FATAL: JWT_SECRET is required and must be non-empty. Set it in .env or environment.');
-    process.exit(1);
-  }
-  if (!refreshSecret || !refreshSecret.trim()) {
-    console.error('FATAL: JWT_REFRESH_SECRET is required and must be non-empty. Set it in .env or environment.');
-    process.exit(1);
-  }
+try {
+  getJwtSecret();
+  getJwtRefreshSecret();
+} catch (e) {
+  console.error('FATAL:', (e as Error).message);
+  process.exit(1);
 }
-validateJwtSecrets();
 
 const app = express();
 const PORT = process.env.PORT || 3000;

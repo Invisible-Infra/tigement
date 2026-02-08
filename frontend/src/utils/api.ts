@@ -721,9 +721,9 @@ class ApiClient {
     recipientId: number,
     permission: 'view' | 'edit'
   ): Promise<{ success: boolean }> {
-    return this.request(`/shares/${sharedTableId}?recipientId=${recipientId}`, {
+    return this.request(`/shares/${sharedTableId}`, {
       method: 'PATCH',
-      body: JSON.stringify({ permission }),
+      body: JSON.stringify({ permission, recipientId }),
     })
   }
 
