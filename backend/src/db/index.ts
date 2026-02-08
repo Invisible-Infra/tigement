@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { Pool } from 'pg';
 
 const pool = new Pool({
@@ -14,7 +15,10 @@ export const query = async (text: string, params?: any[]) => {
   const start = Date.now();
   const res = await pool.query(text, params);
   const duration = Date.now() - start;
-  console.log('Executed query', { text, duration, rows: res.rowCount });
+  const safeIdentifier = process.env.NODE_ENV === 'production'
+    ? crypto.createHash('sha256').update(text).digest('hex').slice(0, 16)
+    : text;
+  console.log('Executed query', { text: safeIdentifier, duration, rows: res.rowCount });
   return res;
 };
 
