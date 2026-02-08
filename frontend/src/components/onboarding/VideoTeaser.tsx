@@ -5,6 +5,12 @@ interface VideoTeaserProps {
   label: string
 }
 
+/** Get YouTube thumbnail URL (hqdefault 360p) from various URL formats */
+function getYouTubeThumbnailUrl(url: string): string | null {
+  const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/)
+  return match ? `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg` : null
+}
+
 /** Extract YouTube video ID from various URL formats */
 function getYouTubeEmbedUrl(url: string): string | null {
   try {
@@ -32,6 +38,7 @@ export function VideoTeaser({ videoUrl, label }: VideoTeaserProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
 
   const youtubeEmbedUrl = getYouTubeEmbedUrl(videoUrl)
+  const youtubeThumbnailUrl = getYouTubeThumbnailUrl(videoUrl)
   const isYouTube = !!youtubeEmbedUrl
 
   const handleClick = () => {
@@ -59,12 +66,31 @@ export function VideoTeaser({ videoUrl, label }: VideoTeaserProps) {
       <button
         type="button"
         onClick={handleClick}
-        className="flex items-center gap-3 p-4 rounded-lg border-2 border-gray-200 hover:border-[#4fc3f7] hover:bg-gray-50 transition text-left w-full"
+        className="flex flex-col p-4 rounded-lg border-2 border-gray-200 hover:border-[#4fc3f7] hover:bg-gray-50 transition text-left w-full"
       >
-        <div className="w-12 h-12 rounded-lg bg-gray-200 flex items-center justify-center flex-shrink-0">
-          <span className="text-2xl text-gray-600">▶</span>
+        <div className="relative w-full aspect-video min-h-[120px] rounded-lg overflow-hidden bg-gray-200">
+          {isYouTube && youtubeThumbnailUrl ? (
+            <img
+              src={youtubeThumbnailUrl}
+              alt=""
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <video
+              preload="metadata"
+              muted
+              playsInline
+              src={videoUrl}
+              className="w-full h-full object-cover"
+            />
+          )}
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="w-14 h-14 rounded-full bg-black bg-opacity-50 flex items-center justify-center">
+              <span className="text-2xl text-white ml-1">▶</span>
+            </div>
+          </div>
         </div>
-        <span className="font-medium text-gray-800">{label}</span>
+        <span className="font-medium text-gray-800 mt-2">{label}</span>
       </button>
 
       {showPlayer && (

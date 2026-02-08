@@ -833,11 +833,11 @@ class ApiClient {
     })
   }
 
-  async getOnboardingSettings(): Promise<{ onboarding_video_url: string }> {
+  async getOnboardingSettings(): Promise<{ onboarding_video_url: string; trial_premium_days: number }> {
     return this.request('/admin/onboarding-settings')
   }
 
-  async updateOnboardingSettings(data: { onboarding_video_url: string }): Promise<any> {
+  async updateOnboardingSettings(data: { onboarding_video_url: string; trial_premium_days?: number }): Promise<any> {
     return this.request('/admin/onboarding-settings', {
       method: 'PUT',
       body: JSON.stringify(data)

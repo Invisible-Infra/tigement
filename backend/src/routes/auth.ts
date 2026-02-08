@@ -53,19 +53,29 @@ router.post('/register', async (req, res) => {
     );
 
     const user = result.rows[0];
-    
-    // Create premium subscription with 10-day trial
-    const trialExpiresAt = new Date();
-    trialExpiresAt.setDate(trialExpiresAt.getDate() + 10); // 10-day trial
-    
-    await query(
-      `INSERT INTO subscriptions (user_id, plan, status, expires_at) 
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (user_id) DO UPDATE 
-       SET plan = $2, status = $3, expires_at = $4, updated_at = NOW()`,
-      [user.id, 'premium', 'active', trialExpiresAt]
-    );
-    
+
+    // Create premium subscription with configurable trial (or skip if trial is 0)
+    const trialResult = await query('SELECT trial_premium_days FROM payment_settings WHERE id = 1');
+    const trialDays = trialResult.rows[0]?.trial_premium_days ?? 10;
+    let plan = 'free';
+    let subscriptionStatus = 'inactive';
+    let subscriptionExpires: string | null = null;
+
+    if (trialDays > 0) {
+      const trialExpiresAt = new Date();
+      trialExpiresAt.setDate(trialExpiresAt.getDate() + trialDays);
+      await query(
+        `INSERT INTO subscriptions (user_id, plan, status, expires_at) 
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (user_id) DO UPDATE 
+         SET plan = $2, status = $3, expires_at = $4, updated_at = NOW()`,
+        [user.id, 'premium', 'active', trialExpiresAt]
+      );
+      plan = 'premium';
+      subscriptionStatus = 'active';
+      subscriptionExpires = trialExpiresAt.toISOString();
+    }
+
     // Generate tokens
     const secret = process.env.JWT_SECRET!;
     const refreshSecret = process.env.JWT_REFRESH_SECRET!;
@@ -88,9 +98,9 @@ router.post('/register', async (req, res) => {
         id: user.id,
         email: user.email,
         is_admin: user.is_admin,
-        plan: 'premium',
-        subscription_status: 'active',
-        subscription_expires: trialExpiresAt.toISOString()
+        plan,
+        subscription_status: subscriptionStatus,
+        subscription_expires: subscriptionExpires
       },
       accessToken,
       refreshToken,

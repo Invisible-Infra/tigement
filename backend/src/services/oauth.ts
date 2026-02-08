@@ -204,17 +204,21 @@ function handleOAuthCallback(provider: string) {
             insertedAvatar: avatar
           });
 
-          // Create 10-day trial subscription
-          const trialExpiresAt = new Date();
-          trialExpiresAt.setDate(trialExpiresAt.getDate() + 10);
-          await query(
-            `INSERT INTO subscriptions (user_id, plan, status, expires_at) 
-             VALUES ($1, 'premium', 'active', $2)
-             ON CONFLICT (user_id) DO UPDATE 
-             SET plan = 'premium', status = 'active', expires_at = $2`,
-            [user.id, trialExpiresAt]
-          );
-          console.log(`Created trial subscription for user ${user.id}`);
+          // Create trial subscription (configurable via admin onboarding settings)
+          const trialResult = await query('SELECT trial_premium_days FROM payment_settings WHERE id = 1');
+          const trialDays = trialResult.rows[0]?.trial_premium_days ?? 10;
+          if (trialDays > 0) {
+            const trialExpiresAt = new Date();
+            trialExpiresAt.setDate(trialExpiresAt.getDate() + trialDays);
+            await query(
+              `INSERT INTO subscriptions (user_id, plan, status, expires_at) 
+               VALUES ($1, 'premium', 'active', $2)
+               ON CONFLICT (user_id) DO UPDATE 
+               SET plan = 'premium', status = 'active', expires_at = $2`,
+              [user.id, trialExpiresAt]
+            );
+            console.log(`Created trial subscription for user ${user.id} (${trialDays} days)`);
+          }
         }
       } else {
         user = userResult.rows[0];

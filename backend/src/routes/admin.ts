@@ -1031,9 +1031,11 @@ router.put('/announcement', async (req: AuthRequest, res) => {
  */
 router.get('/onboarding-settings', async (req: AuthRequest, res) => {
   try {
-    const result = await query('SELECT onboarding_video_url FROM payment_settings WHERE id = 1')
+    const result = await query('SELECT onboarding_video_url, trial_premium_days FROM payment_settings WHERE id = 1')
+    const row = result.rows[0]
     res.json({
-      onboarding_video_url: result.rows[0]?.onboarding_video_url || ''
+      onboarding_video_url: row?.onboarding_video_url || '',
+      trial_premium_days: row?.trial_premium_days ?? 10
     })
   } catch (error: any) {
     console.error('Error fetching onboarding settings:', error)
@@ -1047,19 +1049,32 @@ router.get('/onboarding-settings', async (req: AuthRequest, res) => {
  */
 router.put('/onboarding-settings', async (req: AuthRequest, res) => {
   try {
-    const { onboarding_video_url } = req.body
+    const { onboarding_video_url, trial_premium_days } = req.body
     const url = typeof onboarding_video_url === 'string' ? onboarding_video_url.trim() : ''
-    
+    const days = trial_premium_days !== undefined
+      ? Math.max(0, Math.min(365, parseInt(String(trial_premium_days), 10) || 10))
+      : undefined
+
+    const updates: string[] = ['onboarding_video_url = $1']
+    const values: any[] = [url || null]
+    let paramIndex = 2
+    if (days !== undefined) {
+      updates.push(`trial_premium_days = $${paramIndex++}`)
+      values.push(days)
+    }
+
     const result = await query(
-      'UPDATE payment_settings SET onboarding_video_url = $1 WHERE id = 1',
-      [url || null]
+      `UPDATE payment_settings SET ${updates.join(', ')} WHERE id = 1`,
+      values
     )
-    
+
     if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Payment settings not found' })
     }
-    
-    res.json({ success: true, onboarding_video_url: url })
+
+    const getResult = await query('SELECT trial_premium_days FROM payment_settings WHERE id = 1')
+    const finalDays = getResult.rows[0]?.trial_premium_days ?? 10
+    res.json({ success: true, onboarding_video_url: url, trial_premium_days: finalDays })
   } catch (error: any) {
     console.error('Error updating onboarding settings:', error)
     res.status(500).json({ error: 'Failed to update onboarding settings' })
