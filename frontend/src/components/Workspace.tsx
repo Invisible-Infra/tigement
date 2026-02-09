@@ -4027,7 +4027,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
                 onClick={() => { addTable('list'); isMobile && setShowMenu(false); }}
                 className="w-full px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition text-sm text-left"
               >
-                Add LIST
+                Add Task List
               </button>
               <button
                 onClick={() => { setShowTimer(prev => !prev); isMobile && setShowMenu(false); }}

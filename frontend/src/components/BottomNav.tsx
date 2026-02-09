@@ -23,14 +23,14 @@ export function BottomNav({
       style={{ backgroundColor: 'white', borderTop: '1px solid #e5e7eb' }}
     >
       <div className="flex justify-around items-center h-16 px-2">
-        {/* Add LIST */}
+        {/* Add Task List */}
         <button 
           onClick={onAddList} 
           className="flex flex-col items-center justify-center flex-1 py-2 text-blue-600 active:bg-gray-100 rounded transition"
-          aria-label="Add LIST"
+          aria-label="Add Task List"
         >
           <FontAwesomeIcon icon={faPlus} className="text-xl mb-1" />
-          <span className="text-xs font-medium">LIST</span>
+          <span className="text-xs font-medium">Task List</span>
         </button>
         
         {/* Add Day */}
