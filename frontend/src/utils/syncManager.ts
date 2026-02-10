@@ -418,6 +418,23 @@ class SyncManager {
    */
   markLocalModified() {
     this.localModified = true
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/fdbce8fb-5071-4074-a0c2-c4b8ed341a8b', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        location: 'syncManager.ts:419',
+        message: 'markLocalModified called',
+        runId: 'pre-fix',
+        hypothesisId: 'H4',
+        data: {
+          hasSyncInterval: !!this.syncInterval,
+          debounceActive: !!this.debounceTimer
+        },
+        timestamp: Date.now()
+      })
+    }).catch(() => {})
+    // #endregion agent log
     
     // Don't schedule sync if not authenticated or auto-sync is not running
     if (!this.syncInterval) {

@@ -154,11 +154,16 @@ Tip: If you need a hard start for the first task, set the table start time. Ever
 ## Forgot Password
 - Use “Forgot password?” on login, receive email, open the link to reset.
 
+// ... Previous content remains unchanged
+
 <a id="archiving"></a>
 ## Archiving Tables
 - Use the table actions menu (⋮) → Archive.
+- You can also click the Delete (×) control in the table header and choose **Archive table** in the modal instead of deleting permanently.
 - Archived tables disappear from workspace but are stored and listed in Archived Tables (sidebar).
 - Restore from the Archived Tables menu (shows date/name and task count).
+
+// ... Following content remains unchanged
 
 <a id="settings"></a>
 ## Settings & Profile
@@ -170,6 +175,10 @@ Tip: If you need a hard start for the first task, set the table start time. Ever
   - You can set a custom encryption key in Advanced settings for additional security
 - Settings keeps workspace preferences (theme, time/date format, timers, pickers).
 - **Duration Presets**: Configure quick-select buttons in the duration picker. Enter comma-separated minutes (e.g., "15, 30, 60, 120"). Clicking a preset applies the duration immediately without needing to press "Done".
+- **Session & browser data behavior**:
+  - **Anonymous (no account)** – Data created in this browser stays locally until you clear it (no login session, no automatic wipe).
+  - **Logged-in (free / non‑premium)** – When your session expires or you log out, Tigement clears login tokens and encryption keys and stops sync, but keeps your encrypted/local data (tables, notebooks, diary, archives, AI history/config) in the browser for offline use. The workspace will look empty/locked until you log in again on that device.
+  - **Logged-in (premium)** – When your session expires or you log out, Tigement clears login tokens, encryption/sharing keys **and** browser-stored workspace data (tables, notebooks, diary, archives, pinned items, AI history/config, etc.) from that device. Your data remains safely stored on the server and is re-synced after you log in again. If you stay offline long enough for the session to expire, unsynced local work on that device may be lost when you reconnect unless you download a JSON backup beforehand (Profile → Data Backup → Download Backup).
 
 <a id="backup-recovery"></a>
 ## Data Backup & Recovery

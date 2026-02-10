@@ -430,6 +430,8 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
   const [hasLoadedUser, setHasLoadedUser] = useState(false)
   const [lastSyncInfo, setLastSyncInfo] = useState<{ time: Date | null; direction: 'uploaded' | 'downloaded' | null }>({ time: null, direction: null })
   const [sharedTableIds, setSharedTableIds] = useState<Set<string>>(new Set())
+  const [isOffline, setIsOffline] = useState<boolean>(typeof navigator !== 'undefined' ? !navigator.onLine : false)
+  const [offlineWarningMinutesLeft, setOfflineWarningMinutesLeft] = useState<number | null>(null)
 
   useEffect(() => {
     if (!isPremium || !user) return
@@ -478,6 +480,86 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
     if (!loaded || loaded.length === 0) return []
     return migrateDayTableTitles(loaded, loadSettings()?.dateFormat || 'DD. MM. YYYY')
   })
+
+  // Reset workspace state when auth cleanup happens (logout/session expiry)
+  useEffect(() => {
+    const handleAuthCleanup = () => {
+      setTables([])
+    }
+
+    window.addEventListener('tigement:auth-cleanup', handleAuthCleanup)
+    return () => {
+      window.removeEventListener('tigement:auth-cleanup', handleAuthCleanup)
+    }
+  }, [])
+
+  // Track online/offline state
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false)
+    const handleOffline = () => setIsOffline(true)
+
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
+
+  // Premium offline session-expiry warning
+  useEffect(() => {
+    if (!isPremium || !user) {
+      setOfflineWarningMinutesLeft(null)
+      return
+    }
+
+    if (!isOffline) {
+      setOfflineWarningMinutesLeft(null)
+      return
+    }
+
+    if (!user.expires_at) {
+      setOfflineWarningMinutesLeft(null)
+      return
+    }
+
+    const compute = () => {
+      const expiresAt = new Date(user.expires_at!)
+      const gracePeriodDays = 3
+      const gracePeriodEnd = new Date(expiresAt)
+      gracePeriodEnd.setDate(gracePeriodEnd.getDate() + gracePeriodDays)
+
+      const now = new Date()
+      const diffMs = gracePeriodEnd.getTime() - now.getTime()
+      const minutes = Math.floor(diffMs / 60000)
+      const thresholdMinutes = 30
+
+      if (minutes <= thresholdMinutes) {
+        setOfflineWarningMinutesLeft(Math.max(minutes, 0))
+      } else {
+        setOfflineWarningMinutesLeft(null)
+      }
+    }
+
+    compute()
+    const intervalId = window.setInterval(compute, 60_000)
+    return () => {
+      window.clearInterval(intervalId)
+    }
+  }, [isPremium, isOffline, user?.expires_at])
+
+  // Reset workspace state when auth cleanup happens (logout/session expiry)
+  useEffect(() => {
+    const handleAuthCleanup = () => {
+      setTables([])
+    }
+
+    window.addEventListener('tigement:auth-cleanup', handleAuthCleanup)
+    return () => {
+      window.removeEventListener('tigement:auth-cleanup', handleAuthCleanup)
+    }
+  }, [])
 
   const [draggedTask, setDraggedTask] = useState<{ tableId: string; taskId: string; index: number } | null>(null)
   const [dropTarget, setDropTarget] = useState<{ tableId: string; index: number } | null>(null)
@@ -551,6 +633,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
   const [conflictResolver, setConflictResolver] = useState<any>(null)
   const [showEmptyDataConfirm, setShowEmptyDataConfirm] = useState(false)
   const [emptyDataResolver, setEmptyDataResolver] = useState<any>(null)
+  const [deleteTableModal, setDeleteTableModal] = useState<{ tableId: string } | null>(null)
   const [currentTableIndex, setCurrentTableIndex] = useState(() => {
     // Load saved page index from localStorage (mobile pagination)
     try {
@@ -803,6 +886,23 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
     
     // Find all day tables and check for tasks ending now
     const dayTables = tables.filter(t => t.type === 'day')
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/fdbce8fb-5071-4074-a0c2-c4b8ed341a8b', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        location: 'Workspace.tsx:883',
+        message: 'Global sound effect tick',
+        runId: 'pre-fix',
+        hypothesisId: 'H3',
+        data: {
+          dayTablesCount: dayTables.length,
+          tablesCount: tables.length
+        },
+        timestamp: Date.now()
+      })
+    }).catch(() => {})
+    // #endregion agent log
     const now = currentTime
     
     for (const table of dayTables) {
@@ -909,7 +1009,24 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
   useEffect(() => {
     if (hasLoadedUser && !user && !loading && wasAuthenticatedRef.current) {
       console.log('🔄 User logged out, clearing UI (localStorage preserved)')
-      setTables(getDefaultTables())
+      const defaults = getDefaultTables()
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/fdbce8fb-5071-4074-a0c2-c4b8ed341a8b', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          location: 'Workspace.tsx:1040',
+          message: 'setTables from logout defaults',
+          runId: 'pre-fix',
+          hypothesisId: 'H7',
+          data: {
+            defaultsCount: defaults.length
+          },
+          timestamp: Date.now()
+        })
+      }).catch(() => {})
+      // #endregion agent log
+      setTables(defaults)
       setSettings({
         defaultDuration: 30,
         defaultStartTime: '08:00',
@@ -936,7 +1053,25 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
     const savedTables = loadTables()
     if (savedTables && savedTables.length > 0) {
       console.log(`📦 Optimistic load: ${savedTables.length} tables from localStorage (auth still loading)`)
-      setTables(migrateDayTableTitles(savedTables, loadSettings()?.dateFormat || 'DD. MM. YYYY'))
+      const migrated = migrateDayTableTitles(savedTables, loadSettings()?.dateFormat || 'DD. MM. YYYY')
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/fdbce8fb-5071-4074-a0c2-c4b8ed341a8b', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          location: 'Workspace.tsx:1084',
+          message: 'setTables from optimistic savedTables',
+          runId: 'pre-fix',
+          hypothesisId: 'H8',
+          data: {
+            savedCount: savedTables.length,
+            migratedCount: migrated.length
+          },
+          timestamp: Date.now()
+        })
+      }).catch(() => {})
+      // #endregion agent log
+      setTables(migrated)
       hasLoadedTables.current = true
       restoreCurrentTableIndex(savedTables.length)
       const savedNotebooks = loadNotebooks()
@@ -958,12 +1093,30 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
   // If there is existing anonymous data in localStorage, load it (including diary/notebook for offline).
   // Otherwise, create the default day + LIST tables.
   useEffect(() => {
-    if (!hasLoadedUser || loading || user || wasAuthenticatedRef.current) return
+    if (!hasLoadedUser || loading || user || wasAuthenticatedRef.current || hasLoadedTables.current) return
 
     const savedTables = loadTables()
     if (savedTables && savedTables.length > 0) {
       console.log(`📦 Loading anonymous tables from localStorage: ${savedTables.length} tables`)
-      setTables(migrateDayTableTitles(savedTables, loadSettings()?.dateFormat || 'DD. MM. YYYY'))
+      const migrated = migrateDayTableTitles(savedTables, loadSettings()?.dateFormat || 'DD. MM. YYYY')
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/fdbce8fb-5071-4074-a0c2-c4b8ed341a8b', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          location: 'Workspace.tsx:1111',
+          message: 'setTables from anonymous savedTables',
+          runId: 'pre-fix',
+          hypothesisId: 'H8',
+          data: {
+            savedCount: savedTables.length,
+            migratedCount: migrated.length
+          },
+          timestamp: Date.now()
+        })
+      }).catch(() => {})
+      // #endregion agent log
+      setTables(migrated)
       hasLoadedTables.current = true
       restoreCurrentTableIndex(savedTables.length)
       console.log(`✅ Loaded ${savedTables.length} anonymous tables into React state`)
@@ -985,6 +1138,22 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
     if (!hasLoadedTables.current && tables.length === 0) {
       console.log('🆕 No existing tables for anonymous user, creating default day + LIST tables')
       const defaults = getDefaultTables()
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/fdbce8fb-5071-4074-a0c2-c4b8ed341a8b', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          location: 'Workspace.tsx:1115',
+          message: 'setTables from anon defaults',
+          runId: 'pre-fix',
+          hypothesisId: 'H7',
+          data: {
+            defaultsCount: defaults.length
+          },
+          timestamp: Date.now()
+        })
+      }).catch(() => {})
+      // #endregion agent log
       setTables(defaults)
       hasLoadedTables.current = true
       restoreCurrentTableIndex(defaults.length)
@@ -1001,7 +1170,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
         })))
       }
     }
-  }, [hasLoadedUser, loading, user, tables.length, restoreCurrentTableIndex])
+  }, [hasLoadedUser, loading, user, restoreCurrentTableIndex])
 
   // Reload data from localStorage when user logs in
   useEffect(() => {
@@ -1021,13 +1190,47 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
         const savedTables = loadTables()
         console.log(`📦 Loading tables from localStorage: ${savedTables?.length || 0} tables`)
         if (savedTables && savedTables.length > 0) {
-          setTables(migrateDayTableTitles(savedTables, loadSettings()?.dateFormat || 'DD. MM. YYYY'))
+          const migrated = migrateDayTableTitles(savedTables, loadSettings()?.dateFormat || 'DD. MM. YYYY')
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/fdbce8fb-5071-4074-a0c2-c4b8ed341a8b', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              location: 'Workspace.tsx:1152',
+              message: 'setTables from login savedTables',
+              runId: 'pre-fix',
+              hypothesisId: 'H7',
+              data: {
+                savedCount: savedTables.length,
+                migratedCount: migrated.length
+              },
+              timestamp: Date.now()
+            })
+          }).catch(() => {})
+          // #endregion agent log
+          setTables(migrated)
           hasLoadedTables.current = true
           restoreCurrentTableIndex(savedTables.length)
           console.log(`✅ Loaded ${savedTables.length} tables into React state`)
         } else {
           console.warn('⚠️ No tables found in localStorage after login, creating default day + LIST tables')
           const defaults = getDefaultTables()
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/fdbce8fb-5071-4074-a0c2-c4b8ed341a8b', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              location: 'Workspace.tsx:1159',
+              message: 'setTables from login defaults',
+              runId: 'pre-fix',
+              hypothesisId: 'H7',
+              data: {
+                defaultsCount: defaults.length
+              },
+              timestamp: Date.now()
+            })
+          }).catch(() => {})
+          // #endregion agent log
           setTables(defaults)
           hasLoadedTables.current = true
           restoreCurrentTableIndex(defaults.length)
@@ -1069,7 +1272,25 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
       const savedTables = loadTables()
       console.log(`📦 Reloading: ${savedTables?.length || 0} tables found`)
       if (savedTables && savedTables.length > 0) {
-        setTables(migrateDayTableTitles(savedTables, loadSettings()?.dateFormat || 'DD. MM. YYYY'))
+        const migrated = migrateDayTableTitles(savedTables, loadSettings()?.dateFormat || 'DD. MM. YYYY')
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/fdbce8fb-5071-4074-a0c2-c4b8ed341a8b', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            location: 'Workspace.tsx:1242',
+            message: 'setTables from restore flag savedTables',
+            runId: 'pre-fix',
+            hypothesisId: 'H7',
+            data: {
+              savedCount: savedTables.length,
+              migratedCount: migrated.length
+            },
+            timestamp: Date.now()
+          })
+        }).catch(() => {})
+        // #endregion agent log
+        setTables(migrated)
         hasLoadedTables.current = true
         restoreCurrentTableIndex(savedTables.length)
         console.log(`✅ Reloaded ${savedTables.length} tables after restore`)
@@ -1200,7 +1421,25 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
       console.log('🔄 Updating workspace state from sync...')
       // Update tables
       if (data.tables) {
-        setTables(migrateDayTableTitles(data.tables, data.settings?.dateFormat || loadSettings()?.dateFormat || 'DD. MM. YYYY'))
+        const migrated = migrateDayTableTitles(data.tables, data.settings?.dateFormat || loadSettings()?.dateFormat || 'DD. MM. YYYY')
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/fdbce8fb-5071-4074-a0c2-c4b8ed341a8b', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            location: 'Workspace.tsx:1285',
+            message: 'setTables from sync onStateUpdate',
+            runId: 'pre-fix',
+            hypothesisId: 'H7',
+            data: {
+              incomingCount: data.tables.length,
+              migratedCount: migrated.length
+            },
+            timestamp: Date.now()
+          })
+        }).catch(() => {})
+        // #endregion agent log
+        setTables(migrated)
         restoreCurrentTableIndex(data.tables.length)
       }
       // Update settings (visibleSpaceIds is client-only: prefer local over remote)
@@ -1360,6 +1599,23 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
   useEffect(() => {
     if (isUndoRedoing) return
     
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/fdbce8fb-5071-4074-a0c2-c4b8ed341a8b', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        location: 'Workspace.tsx:1443',
+        message: 'History effect snapshot',
+        runId: 'pre-fix',
+        hypothesisId: 'H2',
+        data: {
+          tablesCount: tables.length
+        },
+        timestamp: Date.now()
+      })
+    }).catch(() => {})
+    // #endregion agent log
+
     // Deep clone to avoid reference issues
     const snapshot = JSON.parse(JSON.stringify(tables))
     
@@ -2391,7 +2647,27 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
           startTime: settings.defaultStartTime 
         }
       : baseTable as Table
-    
+
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/fdbce8fb-5071-4074-a0c2-c4b8ed341a8b', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        location: 'Workspace.tsx:2425',
+        message: 'addTable invoked',
+        runId: 'pre-fix',
+        hypothesisId: 'H1',
+        data: {
+          type,
+          existingTablesCount: tables.length,
+          newTableId: newTable.id,
+          newTableType: newTable.type
+        },
+        timestamp: Date.now()
+      })
+    }).catch(() => {})
+    // #endregion agent log
+
     setTables([...tables, newTable])
     focusTable(newTable.id) // Focus newly created table
     
@@ -2486,6 +2762,25 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
         y: source.position.y + 30
       }
     }
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/fdbce8fb-5071-4074-a0c2-c4b8ed341a8b', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        location: 'Workspace.tsx:2757',
+        message: 'duplicateTable adding table',
+        runId: 'pre-fix',
+        hypothesisId: 'H9',
+        data: {
+          sourceId: source.id,
+          newTableId: newTable.id,
+          beforeCount: tables.length,
+          afterCount: tables.length + 1
+        },
+        timestamp: Date.now()
+      })
+    }).catch(() => {})
+    // #endregion agent log
     setTables([...tables, newTable])
     focusTable(newTable.id)
     if (isMobile) {
@@ -2493,14 +2788,35 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
     }
   }
 
+  const performDeleteTable = (tableId: string) => {
+    const remaining = tables.filter(t => t.id !== tableId)
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/fdbce8fb-5071-4074-a0c2-c4b8ed341a8b', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        location: 'Workspace.tsx:2764',
+        message: 'performDeleteTable removing table',
+        runId: 'pre-fix',
+        hypothesisId: 'H9',
+        data: {
+          removedTableId: tableId,
+          beforeCount: tables.length,
+          afterCount: remaining.length
+        },
+        timestamp: Date.now()
+      })
+    }).catch(() => {})
+    // #endregion agent log
+    setTables(remaining)
+  }
+
   const deleteTable = (tableId: string) => {
     if (tables.length === 1) {
       alert('Cannot delete the last table!')
       return
     }
-    if (confirm('Are you sure you want to delete this table and all its tasks?')) {
-      setTables(tables.filter(t => t.id !== tableId))
-    }
+    setDeleteTableModal({ tableId })
   }
 
   const toggleTableCollapsed = (tableId: string) => {
@@ -3040,7 +3356,26 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
     if (!table) return
     
     // Remove from workspace
-    setTables(tables.filter(t => t.id !== tableId))
+    const remaining = tables.filter(t => t.id !== tableId)
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/fdbce8fb-5071-4074-a0c2-c4b8ed341a8b', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        location: 'Workspace.tsx:3181',
+        message: 'archiveTable removing table',
+        runId: 'pre-fix',
+        hypothesisId: 'H5',
+        data: {
+          removedTableId: tableId,
+          beforeCount: tables.length,
+          afterCount: remaining.length
+        },
+        timestamp: Date.now()
+      })
+    }).catch(() => {})
+    // #endregion agent log
+    setTables(remaining)
     
     // Add to archived list
     const archivedTable: ArchivedTable = {
@@ -3086,7 +3421,26 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
     setArchivedTables(archives)
     
     // Add to workspace
-    setTables([...tables, tableData])
+    const newTables = [...tables, tableData]
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/fdbce8fb-5071-4074-a0c2-c4b8ed341a8b', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        location: 'Workspace.tsx:3246',
+        message: 'restoreTable adding table',
+        runId: 'pre-fix',
+        hypothesisId: 'H5',
+        data: {
+          restoredTableId: tableData.id,
+          beforeCount: tables.length,
+          afterCount: newTables.length
+        },
+        timestamp: Date.now()
+      })
+    }).catch(() => {})
+    // #endregion agent log
+    setTables(newTables)
     focusTable(tableData.id) // Focus restored table
     
     // Note: Sync is automatically triggered by setTables() above via useEffect monitoring
@@ -3963,6 +4317,26 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
   return (
     <>
     <div className="workspace h-full overflow-hidden bg-gray-100 flex">
+      {/* Premium offline session expiry warning */}
+      {isPremium && offlineWarningMinutesLeft !== null && (
+        <div className="fixed top-0 left-0 right-0 z-[9998] bg-amber-500 text-white p-3 shadow-lg">
+          <div className="container mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-sm">
+            <div>
+              <div className="font-semibold">
+                Premium session may expire while offline
+              </div>
+              <div>
+                {offlineWarningMinutesLeft > 0
+                  ? `You are offline and your Premium session may expire in about ${offlineWarningMinutesLeft} minute${offlineWarningMinutesLeft === 1 ? '' : 's'}.`
+                  : 'You are offline and your Premium session may already be expired.'}{' '}
+                If you stay offline beyond this, unsynced changes on this device might be wiped for privacy when you reconnect.
+                Consider downloading a JSON backup now (Profile → Data Backup → Download Backup).
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Auth Error Warning Banner */}
       {authError && (
         <div className="fixed top-0 left-0 right-0 z-[9999] bg-red-600 text-white p-4 shadow-lg">
@@ -5293,6 +5667,61 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
                   className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
                 >
                   Yes, Delete Server Data
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Table Dialog */}
+      {deleteTableModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+            <div className="p-6">
+              <div className="flex items-center mb-4">
+                <div className="text-4xl mr-4">🗑️</div>
+                <h3 className="text-xl font-bold text-gray-800">Delete table</h3>
+              </div>
+
+              <div className="mb-6 text-gray-700">
+                <p className="mb-3">
+                  You can archive this table to keep its data for later, or permanently delete it.
+                </p>
+                <p className="text-sm text-gray-600">
+                  <strong className="text-red-600">Delete Permanently</strong> will remove this table and all its tasks.
+                  This action cannot be undone.
+                </p>
+              </div>
+
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setDeleteTableModal(null)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    if (deleteTableModal) {
+                      await archiveTable(deleteTableModal.tableId)
+                    }
+                    setDeleteTableModal(null)
+                  }}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                >
+                  Archive table
+                </button>
+                <button
+                  onClick={() => {
+                    if (deleteTableModal) {
+                      performDeleteTable(deleteTableModal.tableId)
+                    }
+                    setDeleteTableModal(null)
+                  }}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+                >
+                  Delete Permanently
                 </button>
               </div>
             </div>

@@ -4,6 +4,8 @@ import { syncManager, DecryptionFailureError } from '../utils/syncManager'
 import { clearAllData } from '../utils/storage'
 import { encryptionKeyManager } from '../utils/encryptionKey'
 
+type SecurityTier = 'unauthenticated' | 'non_premium' | 'premium'
+
 interface AuthContextType {
   user: User | null
   loading: boolean
@@ -23,6 +25,132 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 const CACHED_USER_KEY = 'tigement_cached_user'
 
+function hasActivePremium(user: User | null): boolean {
+  if (!user || user.plan !== 'premium' || user.subscription_status !== 'active') {
+    return false
+  }
+
+  if (user.in_grace_period) {
+    return true
+  }
+
+  if (user.expires_at) {
+    const expiresAt = new Date(user.expires_at)
+    const now = new Date()
+
+    const gracePeriodDays = 3
+    const gracePeriodEnd = new Date(expiresAt)
+    gracePeriodEnd.setDate(gracePeriodEnd.getDate() + gracePeriodDays)
+
+    if (now > gracePeriodEnd) {
+      return false
+    }
+  }
+
+  return true
+}
+
+function getSecurityTier(user: User | null): SecurityTier {
+  if (!user) return 'unauthenticated'
+  return hasActivePremium(user) ? 'premium' : 'non_premium'
+}
+
+function applyUnauthenticatedCleanup() {
+  try {
+    api.clearTokensOnClient()
+  } catch {
+    // ignore
+  }
+
+  try {
+    localStorage.removeItem(CACHED_USER_KEY)
+    localStorage.removeItem('tigement_device_token')
+  } catch {
+    // ignore
+  }
+
+  try {
+    localStorage.removeItem('tigement_sharing_private_key')
+    localStorage.removeItem('tigement_sharing_public_key')
+  } catch {
+    // ignore
+  }
+
+  try {
+    syncManager.clearEncryptionKey()
+  } catch {
+    // ignore
+  }
+}
+
+function applyNonPremiumCleanup() {
+  applyUnauthenticatedCleanup()
+  // Keep workspace blobs for offline / quick re-sync.
+}
+
+function applyPremiumCleanup() {
+  applyUnauthenticatedCleanup()
+
+  const PREMIUM_DATA_KEYS = [
+    // Core workspace data
+    'tigement_tables',
+    'tigement_settings',
+    'tigement_task_groups',
+    'tigement_notebooks',
+    'tigement_archived_tables',
+    'tigement_diary_entries',
+    // AI config/history
+    'tigement_ai_config',
+    'tigement_ai_history',
+    // Sharing keys (also cleared in applyUnauthenticatedCleanup, kept for completeness)
+    'tigement_sharing_private_key',
+    'tigement_sharing_public_key',
+    // UI/layout state
+    'tigement_pinned_items',
+    'tigement_sound_notifications_enabled',
+    'tigement_timer_position',
+    'tigement_ai_chat_position',
+    'tigement_current_page_index',
+    'tigement_archived_sort_order',
+    'tigement_diary_sort_order',
+    // Sync/debug/onboarding/ical helpers
+    'tigement_sync_client_id',
+    'tigement_debug_logs',
+    'tigement_onboarding_seen_v1',
+    'tigement_onboarding_neverShow',
+    'tigement_ical_just_enabled',
+    'tigement_last_ical_sync',
+  ]
+
+  try {
+    PREMIUM_DATA_KEYS.forEach((key) => {
+      localStorage.removeItem(key)
+    })
+  } catch {
+    // ignore
+  }
+}
+
+function applySecurityTierCleanup(tier: SecurityTier) {
+  if (tier === 'premium') {
+    applyPremiumCleanup()
+  } else if (tier === 'non_premium') {
+    applyNonPremiumCleanup()
+  } else {
+    applyUnauthenticatedCleanup()
+  }
+
+  try {
+    window.dispatchEvent(
+      new CustomEvent('tigement:auth-cleanup', {
+        detail: { tier },
+      })
+    )
+  } catch {
+    // ignore
+  }
+}
+
 function isNetworkError(err: unknown): boolean {
   if (!err || typeof err !== 'object') return false
   if (err instanceof NetworkError) return true
@@ -36,15 +164,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [decryptionFailure, setDecryptionFailure] = useState<{ hasFailure: boolean; reason: string | null }>({ hasFailure: false, reason: null })
   const [authError, setAuthError] = useState<string | null>(null)
 
-  // Set up auth failure handler on mount
+  // Set up auth failure handler based on current user tier
   useEffect(() => {
     api.setAuthFailureHandler(() => {
-      console.error('🚨 Authentication failure detected!')
-      setAuthError('Your session has expired. Please log in again to continue syncing.')
+      const tier = getSecurityTier(user)
+      console.error('🚨 Authentication failure detected!', { tier })
+
+      applySecurityTierCleanup(tier)
+
+      setAuthError('Your session has expired. Please log in again to continue.')
       setUser(null)
       syncManager.stopAutoSync()
     })
-  }, [])
+  }, [user])
 
   // Proactive token refresh - refresh every 90 minutes (before 2h expiry)
   useEffect(() => {
@@ -125,18 +257,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.log('✅ Encryption key found in session - sync ready')
             
             // For premium users, do an initial pull to load server data
-            const hasActivePremium = currentUser.plan === 'premium' && 
-                                     (currentUser.subscription_status === 'active' || currentUser.in_grace_period) &&
-                                     (!currentUser.expires_at || (() => {
-                                       const expiresAt = new Date(currentUser.expires_at)
-                                       const now = new Date()
-                                       const gracePeriodDays = 3
-                                       const gracePeriodEnd = new Date(expiresAt)
-                                       gracePeriodEnd.setDate(gracePeriodEnd.getDate() + gracePeriodDays)
-                                       return now <= gracePeriodEnd
-                                     })())
+            const activePremium = hasActivePremium(currentUser)
             
-            if (hasActivePremium) {
+            if (activePremium) {
               // Check if we should skip initial sync (e.g., after backup restore)
               const skipInitialSync = sessionStorage.getItem('tigement_skip_initial_sync')
               const backupRestored = sessionStorage.getItem('tigement_backup_restored')
@@ -258,18 +381,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Start/stop sync when user auth changes
   useEffect(() => {
     // Check if user has active premium (with grace period)
-    const hasActivePremium = user?.plan === 'premium' && 
-                             (user?.subscription_status === 'active' || user?.in_grace_period) &&
-                             (!user?.expires_at || (() => {
-                               const expiresAt = new Date(user.expires_at)
-                               const now = new Date()
-                               const gracePeriodDays = 3
-                               const gracePeriodEnd = new Date(expiresAt)
-                               gracePeriodEnd.setDate(gracePeriodEnd.getDate() + gracePeriodDays)
-                               return now <= gracePeriodEnd
-                             })())
+    const activePremium = hasActivePremium(user)
     
-    if (hasActivePremium) {
+    if (activePremium) {
       // For premium users, start auto-sync with state update callback
       syncManager.startAutoSync({
         onStateUpdate: (data) => {
@@ -322,19 +436,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     
     // Initial sync after login for premium users (only if actually active)
-    // Check if user has active premium (with grace period consideration)
-    const hasActivePremium = response.user.plan === 'premium' && 
-                             (response.user.subscription_status === 'active' || response.user.in_grace_period) &&
-                             (!response.user.expires_at || (() => {
-                               const expiresAt = new Date(response.user.expires_at)
-                               const now = new Date()
-                               const gracePeriodDays = 3
-                               const gracePeriodEnd = new Date(expiresAt)
-                               gracePeriodEnd.setDate(gracePeriodEnd.getDate() + gracePeriodDays)
-                               return now <= gracePeriodEnd
-                             })())
+    const activePremium = hasActivePremium(response.user)
     
-    if (hasActivePremium) {
+    if (activePremium) {
       const backupRestored = sessionStorage.getItem('tigement_backup_restored')
       
       if (backupRestored) {
@@ -419,21 +523,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    const tier = getSecurityTier(user)
+
     // Logout from server
     await api.logout()
     
-    // IMPORTANT: Do NOT clear local data - user should keep their data even after logout
-    // Only clear sync-related data and stop auto-sync
-    syncManager.stopAutoSync()
-    syncManager.clearEncryptionKey()
-    
+    // Apply tier-based cleanup
+    applySecurityTierCleanup(tier)
+
     // Clear user state and cached user
     setUser(null)
     try {
       localStorage.removeItem(CACHED_USER_KEY)
     } catch (_) { /* ignore */ }
 
-    console.log('✅ Logged out (local data preserved)')
+    syncManager.stopAutoSync()
+
+    console.log('✅ Logged out with tier-based cleanup', { tier })
   }
 
   const syncNow = async () => {
@@ -473,34 +579,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [decryptionFailure.hasFailure])
 
   // Check if user has active premium (with grace period consideration)
-  const isPremium = (): boolean => {
-    if (!user || user.plan !== 'premium' || user.subscription_status !== 'active') {
-      return false
-    }
-    
-    // If user is in grace period, still allow premium
-    if (user.in_grace_period) {
-      return true
-    }
-    
-    // Check expiration date (backend should handle this, but double-check on frontend)
-    if (user.expires_at) {
-      const expiresAt = new Date(user.expires_at)
-      const now = new Date()
-      
-      // Default grace period is 3 days (should match backend)
-      const gracePeriodDays = 3
-      const gracePeriodEnd = new Date(expiresAt)
-      gracePeriodEnd.setDate(gracePeriodEnd.getDate() + gracePeriodDays)
-      
-      // If past grace period, not premium
-      if (now > gracePeriodEnd) {
-        return false
-      }
-    }
-    
-    return true
-  }
+  const isPremium = (): boolean => hasActivePremium(user)
 
   const clearAuthError = () => setAuthError(null)
 

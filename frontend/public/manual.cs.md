@@ -154,11 +154,16 @@ Tip: Potřebujete pevný začátek? Nastavte čas začátku tabulky; ostatní se
 ## Zapomenuté heslo
 - V přihlašovacím okně klikněte na „Zapomenuté heslo?“, v e-mailu otevřete odkaz a nastavte nové heslo.
 
+// ... Previous content remains unchanged
+
 <a id="archivace"></a>
 ## Archivace tabulek
 - V menu tabulky (⋮) zvolte Archivovat.
+- Tabulku můžete také archivovat kliknutím na ovládací prvek Smazat (×) v hlavičce tabulky a v zobrazeném modálu zvolit **Archivovat tabulku** místo trvalého smazání.
 - Archivované tabulky zmizí z workspace, ale zůstanou uložené v nabídce Archiv (postranní panel).
 - Obnovení z nabídky Archiv (zobrazuje datum/název a počet úkolů).
+
+// ... Following content remains unchanged
 
 <a id="nastaveni"></a>
 ## Nastavení & Profil
@@ -170,6 +175,10 @@ Tip: Potřebujete pevný začátek? Nastavte čas začátku tabulky; ostatní se
   - V pokročilých nastaveních můžete nastavit vlastní šifrovací klíč pro dodatečnou bezpečnost
 - Nastavení obsahuje preference workspace (téma, formáty času/data, časovače, volba timepickerů).
 - **Předvolby délky**: Nastavte rychlé tlačítka ve výběru délky. Zadejte minuty oddělené čárkou (např. "15, 30, 60, 120"). Kliknutí na předvolbu nastaví délku okamžitě bez nutnosti stisknout "Hotovo".
+- **Chování relace a dat v prohlížeči**:
+  - **Anonymní (bez účtu)** – Data vytvořená v tomto prohlížeči zůstávají lokálně, dokud je sami nesmažete (žádná přihlašovací relace, žádné automatické mazání).
+  - **Přihlášený (free / ne‑premium)** – Když vyprší relace nebo se odhlásíte, Tigement vymaže přihlašovací tokeny a šifrovací/sdílecí klíče a zastaví synchronizaci, ale ponechá vaše zašifrovaná/lokální data (tabulky, notebooky, deník, archivy, historie/nastavení AI) v prohlížeči pro offline použití. Workspace bude na tomto zařízení vypadat prázdný/uzamčený, dokud se znovu nepřihlásíte.
+  - **Přihlášený (premium)** – Když vyprší relace nebo se odhlásíte, Tigement vymaže přihlašovací tokeny, šifrovací/sdílecí klíče **a** data workspace uložená v prohlížeči (tabulky, notebooky, deník, archivy, připnuté položky, historie/nastavení AI atd.) z daného zařízení. Data zůstávají bezpečně uložena na serveru a znovu se stáhnou po dalším přihlášení. Pokud zůstanete offline tak dlouho, že relace vyprší, mohou se neuložené lokální změny na tomto zařízení po opětovném připojení ztratit, pokud si předem nestáhnete JSON zálohu (Profil → Zálohování dat → Stáhnout zálohu).
 
 <a id="zaloha"></a>
 ## Zálohování & Obnova dat

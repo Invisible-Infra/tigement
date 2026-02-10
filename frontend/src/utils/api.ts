@@ -64,6 +64,11 @@ class ApiClient {
     this.onAuthFailureCallback = callback
   }
 
+  /** Clear auth tokens on client (no network). */
+  clearTokensOnClient() {
+    this.clearTokens()
+  }
+
   setTokens(accessToken: string, refreshToken: string) {
     this.accessToken = accessToken
     this.refreshToken = refreshToken
