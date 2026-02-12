@@ -893,23 +893,6 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
     
     // Find all day tables and check for tasks ending now
     const dayTables = tables.filter(t => t.type === 'day')
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/fdbce8fb-5071-4074-a0c2-c4b8ed341a8b', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        location: 'Workspace.tsx:883',
-        message: 'Global sound effect tick',
-        runId: 'pre-fix',
-        hypothesisId: 'H3',
-        data: {
-          dayTablesCount: dayTables.length,
-          tablesCount: tables.length
-        },
-        timestamp: Date.now()
-      })
-    }).catch(() => {})
-    // #endregion agent log
     const now = currentTime
     
     for (const table of dayTables) {
@@ -1017,22 +1000,6 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
     if (hasLoadedUser && !user && !loading && wasAuthenticatedRef.current) {
       console.log('🔄 User logged out, clearing UI (localStorage preserved)')
       const defaults = getDefaultTables()
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/fdbce8fb-5071-4074-a0c2-c4b8ed341a8b', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          location: 'Workspace.tsx:1040',
-          message: 'setTables from logout defaults',
-          runId: 'pre-fix',
-          hypothesisId: 'H7',
-          data: {
-            defaultsCount: defaults.length
-          },
-          timestamp: Date.now()
-        })
-      }).catch(() => {})
-      // #endregion agent log
       setTables(defaults)
       setSettings({
         defaultDuration: 30,
@@ -1061,23 +1028,6 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
     if (savedTables && savedTables.length > 0) {
       console.log(`📦 Optimistic load: ${savedTables.length} tables from localStorage (auth still loading)`)
       const migrated = migrateDayTableTitles(savedTables, loadSettings()?.dateFormat || 'DD. MM. YYYY')
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/fdbce8fb-5071-4074-a0c2-c4b8ed341a8b', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          location: 'Workspace.tsx:1084',
-          message: 'setTables from optimistic savedTables',
-          runId: 'pre-fix',
-          hypothesisId: 'H8',
-          data: {
-            savedCount: savedTables.length,
-            migratedCount: migrated.length
-          },
-          timestamp: Date.now()
-        })
-      }).catch(() => {})
-      // #endregion agent log
       setTables(migrated)
       hasLoadedTables.current = true
       restoreCurrentTableIndex(savedTables.length)
@@ -1106,23 +1056,6 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
     if (savedTables && savedTables.length > 0) {
       console.log(`📦 Loading anonymous tables from localStorage: ${savedTables.length} tables`)
       const migrated = migrateDayTableTitles(savedTables, loadSettings()?.dateFormat || 'DD. MM. YYYY')
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/fdbce8fb-5071-4074-a0c2-c4b8ed341a8b', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          location: 'Workspace.tsx:1111',
-          message: 'setTables from anonymous savedTables',
-          runId: 'pre-fix',
-          hypothesisId: 'H8',
-          data: {
-            savedCount: savedTables.length,
-            migratedCount: migrated.length
-          },
-          timestamp: Date.now()
-        })
-      }).catch(() => {})
-      // #endregion agent log
       setTables(migrated)
       hasLoadedTables.current = true
       restoreCurrentTableIndex(savedTables.length)
@@ -1145,22 +1078,6 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
     if (!hasLoadedTables.current && tables.length === 0) {
       console.log('🆕 No existing tables for anonymous user, creating default day + LIST tables')
       const defaults = getDefaultTables()
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/fdbce8fb-5071-4074-a0c2-c4b8ed341a8b', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          location: 'Workspace.tsx:1115',
-          message: 'setTables from anon defaults',
-          runId: 'pre-fix',
-          hypothesisId: 'H7',
-          data: {
-            defaultsCount: defaults.length
-          },
-          timestamp: Date.now()
-        })
-      }).catch(() => {})
-      // #endregion agent log
       setTables(defaults)
       hasLoadedTables.current = true
       restoreCurrentTableIndex(defaults.length)
@@ -1198,23 +1115,6 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
         console.log(`📦 Loading tables from localStorage: ${savedTables?.length || 0} tables`)
         if (savedTables && savedTables.length > 0) {
           const migrated = migrateDayTableTitles(savedTables, loadSettings()?.dateFormat || 'DD. MM. YYYY')
-          // #region agent log
-          fetch('http://127.0.0.1:7243/ingest/fdbce8fb-5071-4074-a0c2-c4b8ed341a8b', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              location: 'Workspace.tsx:1152',
-              message: 'setTables from login savedTables',
-              runId: 'pre-fix',
-              hypothesisId: 'H7',
-              data: {
-                savedCount: savedTables.length,
-                migratedCount: migrated.length
-              },
-              timestamp: Date.now()
-            })
-          }).catch(() => {})
-          // #endregion agent log
           setTables(migrated)
           hasLoadedTables.current = true
           restoreCurrentTableIndex(savedTables.length)
@@ -1222,22 +1122,6 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
         } else {
           console.warn('⚠️ No tables found in localStorage after login, creating default day + LIST tables')
           const defaults = getDefaultTables()
-          // #region agent log
-          fetch('http://127.0.0.1:7243/ingest/fdbce8fb-5071-4074-a0c2-c4b8ed341a8b', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              location: 'Workspace.tsx:1159',
-              message: 'setTables from login defaults',
-              runId: 'pre-fix',
-              hypothesisId: 'H7',
-              data: {
-                defaultsCount: defaults.length
-              },
-              timestamp: Date.now()
-            })
-          }).catch(() => {})
-          // #endregion agent log
           setTables(defaults)
           hasLoadedTables.current = true
           restoreCurrentTableIndex(defaults.length)
@@ -1280,23 +1164,6 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
       console.log(`📦 Reloading: ${savedTables?.length || 0} tables found`)
       if (savedTables && savedTables.length > 0) {
         const migrated = migrateDayTableTitles(savedTables, loadSettings()?.dateFormat || 'DD. MM. YYYY')
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/fdbce8fb-5071-4074-a0c2-c4b8ed341a8b', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            location: 'Workspace.tsx:1242',
-            message: 'setTables from restore flag savedTables',
-            runId: 'pre-fix',
-            hypothesisId: 'H7',
-            data: {
-              savedCount: savedTables.length,
-              migratedCount: migrated.length
-            },
-            timestamp: Date.now()
-          })
-        }).catch(() => {})
-        // #endregion agent log
         setTables(migrated)
         hasLoadedTables.current = true
         restoreCurrentTableIndex(savedTables.length)
@@ -1429,23 +1296,6 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
       // Update tables
       if (data.tables) {
         const migrated = migrateDayTableTitles(data.tables, data.settings?.dateFormat || loadSettings()?.dateFormat || 'DD. MM. YYYY')
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/fdbce8fb-5071-4074-a0c2-c4b8ed341a8b', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            location: 'Workspace.tsx:1285',
-            message: 'setTables from sync onStateUpdate',
-            runId: 'pre-fix',
-            hypothesisId: 'H7',
-            data: {
-              incomingCount: data.tables.length,
-              migratedCount: migrated.length
-            },
-            timestamp: Date.now()
-          })
-        }).catch(() => {})
-        // #endregion agent log
         setTables(migrated)
         restoreCurrentTableIndex(data.tables.length)
       }
@@ -1606,23 +1456,6 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
   useEffect(() => {
     if (isUndoRedoing) return
     
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/fdbce8fb-5071-4074-a0c2-c4b8ed341a8b', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        location: 'Workspace.tsx:1443',
-        message: 'History effect snapshot',
-        runId: 'pre-fix',
-        hypothesisId: 'H2',
-        data: {
-          tablesCount: tables.length
-        },
-        timestamp: Date.now()
-      })
-    }).catch(() => {})
-    // #endregion agent log
-
     // Deep clone to avoid reference issues
     const snapshot = JSON.parse(JSON.stringify(tables))
     
@@ -2666,26 +2499,6 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
         }
       : baseTable as Table
 
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/fdbce8fb-5071-4074-a0c2-c4b8ed341a8b', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        location: 'Workspace.tsx:2425',
-        message: 'addTable invoked',
-        runId: 'pre-fix',
-        hypothesisId: 'H1',
-        data: {
-          type,
-          existingTablesCount: tables.length,
-          newTableId: newTable.id,
-          newTableType: newTable.type
-        },
-        timestamp: Date.now()
-      })
-    }).catch(() => {})
-    // #endregion agent log
-
     setTables([...tables, newTable])
     focusTable(newTable.id) // Focus newly created table
     
@@ -2780,25 +2593,6 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
         y: source.position.y + 30
       }
     }
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/fdbce8fb-5071-4074-a0c2-c4b8ed341a8b', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        location: 'Workspace.tsx:2757',
-        message: 'duplicateTable adding table',
-        runId: 'pre-fix',
-        hypothesisId: 'H9',
-        data: {
-          sourceId: source.id,
-          newTableId: newTable.id,
-          beforeCount: tables.length,
-          afterCount: tables.length + 1
-        },
-        timestamp: Date.now()
-      })
-    }).catch(() => {})
-    // #endregion agent log
     setTables([...tables, newTable])
     focusTable(newTable.id)
     if (isMobile) {
@@ -2808,24 +2602,6 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
 
   const performDeleteTable = (tableId: string) => {
     const remaining = tables.filter(t => t.id !== tableId)
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/fdbce8fb-5071-4074-a0c2-c4b8ed341a8b', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        location: 'Workspace.tsx:2764',
-        message: 'performDeleteTable removing table',
-        runId: 'pre-fix',
-        hypothesisId: 'H9',
-        data: {
-          removedTableId: tableId,
-          beforeCount: tables.length,
-          afterCount: remaining.length
-        },
-        timestamp: Date.now()
-      })
-    }).catch(() => {})
-    // #endregion agent log
     setTables(remaining)
   }
 
@@ -3375,24 +3151,6 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
     
     // Remove from workspace
     const remaining = tables.filter(t => t.id !== tableId)
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/fdbce8fb-5071-4074-a0c2-c4b8ed341a8b', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        location: 'Workspace.tsx:3181',
-        message: 'archiveTable removing table',
-        runId: 'pre-fix',
-        hypothesisId: 'H5',
-        data: {
-          removedTableId: tableId,
-          beforeCount: tables.length,
-          afterCount: remaining.length
-        },
-        timestamp: Date.now()
-      })
-    }).catch(() => {})
-    // #endregion agent log
     setTables(remaining)
     
     // Add to archived list
@@ -3440,24 +3198,6 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
     
     // Add to workspace
     const newTables = [...tables, tableData]
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/fdbce8fb-5071-4074-a0c2-c4b8ed341a8b', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        location: 'Workspace.tsx:3246',
-        message: 'restoreTable adding table',
-        runId: 'pre-fix',
-        hypothesisId: 'H5',
-        data: {
-          restoredTableId: tableData.id,
-          beforeCount: tables.length,
-          afterCount: newTables.length
-        },
-        timestamp: Date.now()
-      })
-    }).catch(() => {})
-    // #endregion agent log
     setTables(newTables)
     focusTable(tableData.id) // Focus restored table
     
