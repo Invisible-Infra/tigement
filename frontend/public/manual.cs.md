@@ -174,6 +174,7 @@ Tip: Potřebujete pevný začátek? Nastavte čas začátku tabulky; ostatní se
   - Pokud zapomenete heslo, vaše zašifrovaná data nelze obnovit (používejte správce hesel)
   - V pokročilých nastaveních můžete nastavit vlastní šifrovací klíč pro dodatečnou bezpečnost
 - Nastavení obsahuje preference workspace (téma, formáty času/data, časovače, volba timepickerů).
+- **Časovač**: Odpočet pro aktuální úkol. Vaše volba zobrazit nebo skrýt časovač se pamatuje po obnovení stránky. Na mobilu tlačítko Časovač na spodní liště přepíná panel časovače zapnutý/vypnutý.
 - **Předvolby délky**: Nastavte rychlé tlačítka ve výběru délky. Zadejte minuty oddělené čárkou (např. "15, 30, 60, 120"). Kliknutí na předvolbu nastaví délku okamžitě bez nutnosti stisknout "Hotovo".
 - **Chování relace a dat v prohlížeči**:
   - **Anonymní (bez účtu)** – Data vytvořená v tomto prohlížeči zůstávají lokálně, dokud je sami nesmažete (žádná přihlašovací relace, žádné automatické mazání).

@@ -1046,9 +1046,13 @@ export function TableComponent({
       </div>
       )}
       {(table.collapsed ?? false) && !isMobile && (
-        <div className="px-4 py-2 text-sm text-gray-500 border-b border-gray-200">
+        <button
+          type="button"
+          onClick={() => toggleTableCollapsed(table.id)}
+          className="w-full px-4 py-2 text-sm text-gray-500 border-b border-gray-200 text-left cursor-pointer hover:underline hover:bg-gray-50 transition"
+        >
           {table.tasks.length} task{table.tasks.length !== 1 ? 's' : ''}
-        </div>
+        </button>
       )}
 
       {/* Table Footer Controls */}

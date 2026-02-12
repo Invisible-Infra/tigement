@@ -593,7 +593,14 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
   const lastIcalSyncTime = useRef<number>(0) // Timestamp of last sync to prevent concurrent syncs
   const icalSyncInFlight = useRef<boolean>(false) // Prevents overlapping sync requests
   const [showSettings, setShowSettings] = useState(false)
-  const [showTimer, setShowTimer] = useState(true)
+  const [showTimer, setShowTimer] = useState(() => {
+    try {
+      const v = localStorage.getItem('tigement_show_timer')
+      if (v !== null) return v === 'true'
+      const s = loadSettings()
+      return s?.showTimerOnStartup ?? true
+    } catch { return true }
+  })
   const [timerPosition, setTimerPosition] = useState(() => {
     try {
       const saved = localStorage.getItem('tigement_timer_position')
@@ -1749,16 +1756,27 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
     return () => window.removeEventListener('tigement:sync-will-start', handleSyncWillStart)
   }, [tables, settings, taskGroups, workspaceNotebook, diaryEntries, archivedTables])
   
-  // Auto-show timer on startup if enabled in settings (but not on mobile)
-  // MUST be after settings state declaration to avoid "before initialization" error
+  // Persist timer visibility when it changes
   useEffect(() => {
+    try {
+      localStorage.setItem('tigement_show_timer', String(showTimer))
+    } catch (_) {}
+  }, [showTimer])
+
+  // Apply showTimerOnStartup when user changes the setting (skip first run to avoid overwriting persisted value)
+  const isFirstTimerSettingEffect = useRef(true)
+  useEffect(() => {
+    if (isFirstTimerSettingEffect.current) {
+      isFirstTimerSettingEffect.current = false
+      return
+    }
     const checkMobileForTimer = () => window.innerWidth < 768
     if (settings.showTimerOnStartup && !checkMobileForTimer()) {
       setShowTimer(true)
     } else if (!settings.showTimerOnStartup) {
       setShowTimer(false)
     }
-  }, [settings.showTimerOnStartup]) // Re-run when setting changes
+  }, [settings.showTimerOnStartup])
   
   const fileInputRef = useRef<HTMLInputElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -5177,8 +5195,8 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
                         left: `${table.position.x}px`,
                         top: `${table.position.y}px`,
                         width: `${table.size?.width ?? 680}px`,
-                        minHeight: table.size?.height ? table.size.height : 400,
-                        height: table.size?.height ? table.size.height : 'auto',
+                        minHeight: (table.collapsed ?? false) ? 0 : (table.size?.height ? table.size.height : 400),
+                        height: (table.collapsed ?? false) ? 'auto' : (table.size?.height ? table.size.height : 'auto'),
                       }}
                     >
                       <TableComponent
@@ -5316,8 +5334,8 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
                           left: `${table.position.x}px`,
                           top: `${table.position.y}px`,
                           width: `${table.size?.width ?? 680}px`,
-                          minHeight: table.size?.height ? table.size.height : 400,
-                          height: table.size?.height ? table.size.height : 'auto',
+                          minHeight: (table.collapsed ?? false) ? 0 : (table.size?.height ? table.size.height : 400),
+                          height: (table.collapsed ?? false) ? 'auto' : (table.size?.height ? table.size.height : 'auto'),
                         }}
                       >
                         <TableComponent
@@ -5471,8 +5489,8 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
                 left: `${table.position.x}px`,
                 top: `${table.position.y}px`,
                 width: `${table.size?.width ?? 600}px`,
-                minHeight: table.size?.height ? table.size.height : 400,
-                height: table.size?.height ? table.size.height : 'auto',
+                minHeight: (table.collapsed ?? false) ? 0 : (table.size?.height ? table.size.height : 400),
+                height: (table.collapsed ?? false) ? 'auto' : (table.size?.height ? table.size.height : 'auto'),
                 transform: `scale(${zoom})`,
                 transformOrigin: 'top left',
                 zIndex: isDraggingTable ? 1000 : tableZIndex,
@@ -6404,7 +6422,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
         onAddList={() => addTable('list')}
         onAddDay={() => addTable('day')}
         onOpenNotebook={openWorkspaceNotebook}
-        onOpenTimer={() => setShowTimer(true)}
+        onOpenTimer={() => setShowTimer(prev => !prev)}
         onOpenMenu={() => setShowMenu(true)}
         showEmoji={showEmoji}
       />

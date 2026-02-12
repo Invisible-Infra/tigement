@@ -174,6 +174,7 @@ Tip: If you need a hard start for the first task, set the table start time. Ever
   - If you forget your password, your encrypted data cannot be recovered (make sure to use a password manager)
   - You can set a custom encryption key in Advanced settings for additional security
 - Settings keeps workspace preferences (theme, time/date format, timers, pickers).
+- **Timer**: Countdown for the current task. Your choice to show or hide the Timer is remembered across page reloads. On mobile, the Timer button in the bottom bar toggles the Timer panel on or off.
 - **Duration Presets**: Configure quick-select buttons in the duration picker. Enter comma-separated minutes (e.g., "15, 30, 60, 120"). Clicking a preset applies the duration immediately without needing to press "Done".
 - **Session & browser data behavior**:
   - **Anonymous (no account)** – Data created in this browser stays locally until you clear it (no login session, no automatic wipe).

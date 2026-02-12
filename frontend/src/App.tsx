@@ -32,7 +32,7 @@ function App() {
 }
 
 function AppContent() {
-  const { isAuthenticated, user, logout, decryptionFailure, onDecryptionFailureHandled, isPremium, syncNow } = useAuth()
+  const { isAuthenticated, user, logout, decryptionFailure, onDecryptionFailureHandled, isPremium, syncNow, loading } = useAuth()
   const [showLogin, setShowLogin] = useState(false)
   const [showRegister, setShowRegister] = useState(false)
   const [showForgotPassword, setShowForgotPassword] = useState(false)
@@ -54,6 +54,18 @@ function AppContent() {
   const [showTutorial, setShowTutorial] = useState(false)
   const [tutorialStep, setTutorialStep] = useState(0)
   const [isOnline, setIsOnline] = useState(() => typeof navigator !== 'undefined' ? navigator.onLine : true)
+
+  // Remove loading splash when app is ready
+  useEffect(() => {
+    if (!loading && typeof document !== 'undefined') {
+      const el = document.getElementById('tigement-loading')
+      if (el) {
+        el.style.opacity = '0'
+        el.style.pointerEvents = 'none'
+        setTimeout(() => el.remove(), 200)
+      }
+    }
+  }, [loading])
 
   // Clear resume-recovery flag when app has successfully rendered (allows future blank recoveries)
   useEffect(() => {
