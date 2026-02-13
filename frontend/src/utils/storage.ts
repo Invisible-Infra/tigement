@@ -9,6 +9,8 @@ const STORAGE_KEYS = {
   STASH_PREFIX: 'tigement_stash_' // used to stash anon data after merge
 }
 
+import type { ConditionalDefaultRule } from './conditionalDefaultTasks'
+
 export interface StorageSettings {
   defaultDuration: number
   defaultStartTime: string
@@ -20,6 +22,7 @@ export interface StorageSettings {
   useTimePickers?: boolean
   durationPresets?: number[]
   visibleSpaceIds?: string[]
+  conditionalDefaultRules?: ConditionalDefaultRule[]
 }
 
 /** Normalize table type for backward compatibility: 'todo' → 'list' */

@@ -20,6 +20,7 @@ import { BottomNav } from './BottomNav'
 import { AIPanel } from './AIPanel'
 import { exportToCSV, downloadCSV, importFromCSV } from '../utils/csvUtils'
 import { saveTables, loadTables, saveSettings, loadSettings, saveTaskGroups, loadTaskGroups, saveNotebooks, loadNotebooks, saveArchivedTables, loadArchivedTables, saveDiaryEntries, loadDiaryEntries } from '../utils/storage'
+import { evaluateRules } from '../utils/conditionalDefaultTasks'
 import { normalizeDate, formatDateWithWeekday, formatDateWithSettings, isLegacyDayTitle } from '../utils/dateFormat'
 import { useAuth } from '../contexts/AuthContext'
 import { syncManager } from '../utils/syncManager'
@@ -1543,7 +1544,8 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
         activeSpaceId: saved.activeSpaceId ?? defaultSpaces[0].id,
         visibleSpaceIds: saved.visibleSpaceIds,
         snapToGrid: saved.snapToGrid,
-        gridSize: saved.gridSize
+        gridSize: saved.gridSize,
+        conditionalDefaultRules: saved.conditionalDefaultRules
       }
     }
     
@@ -1563,7 +1565,8 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
       spaces: defaultSpaces,
       spacesSplitPosition: 40,
       activeSpaceId: defaultSpaces[0].id,
-      visibleSpaceIds: undefined
+      visibleSpaceIds: undefined,
+      conditionalDefaultRules: undefined
     }
   })
   
@@ -2478,24 +2481,39 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
     
     const dateStr = type === 'day' ? newDate!.toISOString().split('T')[0] : undefined
     
+    const defaultTasks = Array(settings.defaultTasksCount).fill(null).map((_, i) => ({
+      id: `task-${Date.now()}-${i}`,
+      title: '',
+      duration: settings.defaultDuration,
+      selected: false
+    }))
+
+    const tableForEval = type === 'day'
+      ? { type, date: dateStr, spaceId: null as string | null }
+      : { type, date: undefined, spaceId: null as string | null }
+
+    const conditionalTasks = isPremium && settings.conditionalDefaultRules?.length
+      ? evaluateRules(type, tableForEval, settings.conditionalDefaultRules, {
+          defaultDuration: settings.defaultDuration,
+          defaultStartTime: settings.defaultStartTime
+        })
+      : []
+
+    const allTasks = [...conditionalTasks, ...defaultTasks]
+
     const baseTable = {
       id: `${type}-${Date.now()}`,
       type,
       title: type === 'day' ? formatDate(dateStr!) : 'LIST',
-      tasks: Array(settings.defaultTasksCount).fill(null).map((_, i) => ({
-        id: `task-${Date.now()}-${i}`,
-        title: '',
-        duration: settings.defaultDuration,
-        selected: false
-      })),
+      tasks: allTasks,
       position: { x: 20 + tables.length * 100, y: 20 + tables.length * 50 }
     }
-    
-    const newTable: Table = type === 'day' 
-      ? { 
-          ...baseTable, 
+
+    const newTable: Table = type === 'day'
+      ? {
+          ...baseTable,
           date: dateStr!,
-          startTime: settings.defaultStartTime 
+          startTime: conditionalTasks[0]?.startTime ?? settings.defaultStartTime
         }
       : baseTable as Table
 
@@ -5371,6 +5389,8 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
           onClose={() => setShowSettings(false)}
           settings={settings}
           onSettingsChange={setSettings}
+          isPremium={!!isPremium}
+          taskGroups={taskGroups}
         />
       )}
 

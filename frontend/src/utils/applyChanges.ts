@@ -5,6 +5,7 @@
 
 import { AIChange } from './aiAssistant';
 import { formatDateWithWeekday } from './dateFormat';
+import { evaluateRules } from './conditionalDefaultTasks';
 
 export interface ApplyResult {
   success: boolean;
@@ -128,20 +129,41 @@ function findOrCreateTableByDate(workspace: any, date: string): any {
   const settings = workspace.settings || {};
   const formattedTitle = formatDateWithWeekday(date, settings.dateFormat);
 
+  const defaultTasksCount = settings.defaultTasksCount ?? 4;
+  const defaultDuration = settings.defaultDuration ?? 30;
+  const defaultStartTime = settings.defaultStartTime || '08:00';
+
+  const conditionalTasks = settings.conditionalDefaultRules?.length
+    ? evaluateRules('day', { type: 'day', date, spaceId: null }, settings.conditionalDefaultRules, {
+        defaultDuration,
+        defaultStartTime
+      })
+    : [];
+
+  const defaultTasks = Array(defaultTasksCount).fill(null).map((_: unknown, i: number) => ({
+    id: `task-${Date.now()}-${i}`,
+    title: '',
+    duration: defaultDuration,
+    selected: false
+  }));
+
+  const allTasks = [...conditionalTasks, ...defaultTasks];
+  const tableStartTime = conditionalTasks[0]?.startTime ?? defaultStartTime;
+
   const newTable = {
     id: `day-${Date.now()}`,
     type: 'day' as const,
     title: formattedTitle,
     date: date,
-    startTime: settings.defaultStartTime || '08:00',
-    tasks: [],
+    startTime: tableStartTime,
+    tasks: allTasks,
     position: {
       x: 20 + tablesCount * 100,
       y: 20 + tablesCount * 50
     },
     spaceId: null
   };
-  
+
   workspace.tables.push(newTable);
   
   console.log('✅ Move: Created new table', {
@@ -374,19 +396,36 @@ function applyCreateTable(workspace: any, change: AIChange) {
     };
   }
   
+  const settings = workspace.settings || {};
+  const defaultDuration = settings.defaultDuration ?? 30;
+  const defaultStartTime = settings.defaultStartTime || '08:00';
+
+  const conditionalTasks = settings.conditionalDefaultRules?.length
+    ? evaluateRules(
+        change.table.type,
+        { type: change.table.type, date: change.table.date, spaceId: change.table.spaceId ?? null },
+        settings.conditionalDefaultRules,
+        { defaultDuration, defaultStartTime }
+      )
+    : [];
+
+  const existingTasks = change.table.tasks || [];
+  const allTasks = [...conditionalTasks, ...existingTasks];
+  const tableStartTime = conditionalTasks[0]?.startTime ?? change.table.startTime ?? defaultStartTime;
+
   // Validate final table structure before pushing
   const finalTable = {
     id: change.table.id,
     type: change.table.type,
     title: change.table.title,
     date: change.table.date,
-    startTime: change.table.startTime,
+    startTime: tableStartTime,
     spaceId: change.table.spaceId,
-    tasks: change.table.tasks,
+    tasks: allTasks,
     position: change.table.position,
     size: change.table.size
   };
-  
+
   console.log('🎯 Table: Final table structure before push', {
     table: JSON.stringify(finalTable, null, 2),
     hasPosition: !!finalTable.position,
