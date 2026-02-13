@@ -21,6 +21,7 @@ import { ProfileMenu } from './components/ProfileMenu'
 import { AdminAnnouncement } from './components/AdminAnnouncement'
 import { OfflineBanner } from './components/OfflineBanner'
 import { WelcomeModal, TutorialWorkspace } from './components/onboarding'
+import { PublicLanding } from './components/PublicLanding'
 import { getOnboardingSeen, getOnboardingNeverShow, clearOnboardingSeen, clearOnboardingNeverShow } from './utils/onboardingStorage'
 
 function App() {
@@ -116,12 +117,12 @@ function AppContent() {
     setAvatarLoadFailed(false)
   }, [user?.profile_picture_url])
 
-  // First-run onboarding: show welcome modal if not seen and not disabled
+  // First-run onboarding: show welcome modal only for authenticated users (guests see PublicLanding)
   useEffect(() => {
-    if (!getOnboardingSeen() && !getOnboardingNeverShow()) {
+    if (isAuthenticated && !getOnboardingSeen() && !getOnboardingNeverShow()) {
       setShowWelcomeModal(true)
     }
-  }, [])
+  }, [isAuthenticated])
 
   // Check for reset token in URL on mount
   useEffect(() => {
@@ -597,25 +598,36 @@ function AppContent() {
       <OfflineBanner isPremium={isPremium} onSync={syncNow} />
 
       <div className="flex-1 overflow-hidden">
-        <Workspace
-          onShowPremium={() => setShowPremium(true)}
-          onShowProfile={() => setShowProfile(true)}
-          onShowOnboarding={() => setShowWelcomeModal(true)}
-          onStartTutorial={() => {
-            setShowWelcomeModal(false)
-            setShowTutorial(true)
-            setTutorialStep(0)
-          }}
-          onResetOnboarding={() => {
-            clearOnboardingSeen()
-            setShowWelcomeModal(true)
-          }}
-          onEnableOnboardingAgain={() => {
-            clearOnboardingNeverShow()
-            clearOnboardingSeen()
-            setShowWelcomeModal(true)
-          }}
-        />
+        {isAuthenticated ? (
+          <Workspace
+            onShowPremium={() => setShowPremium(true)}
+            onShowProfile={() => setShowProfile(true)}
+            onShowOnboarding={() => setShowWelcomeModal(true)}
+            onStartTutorial={() => {
+              setShowWelcomeModal(false)
+              setShowTutorial(true)
+              setTutorialStep(0)
+            }}
+            onResetOnboarding={() => {
+              clearOnboardingSeen()
+              setShowWelcomeModal(true)
+            }}
+            onEnableOnboardingAgain={() => {
+              clearOnboardingNeverShow()
+              clearOnboardingSeen()
+              setShowWelcomeModal(true)
+            }}
+          />
+        ) : (
+          <PublicLanding
+            onStartTutorial={() => {
+              setShowTutorial(true)
+              setTutorialStep(0)
+            }}
+            onRegister={() => setShowRegister(true)}
+            onLogin={() => setShowLogin(true)}
+          />
+        )}
       </div>
 
       {showLogin && (
@@ -703,7 +715,10 @@ function AppContent() {
         <TutorialWorkspace
           step={tutorialStep}
           onStepChange={setTutorialStep}
-          onFinish={() => setShowTutorial(false)}
+          onFinish={() => {
+            setShowTutorial(false)
+            if (!isAuthenticated) setShowRegister(true)
+          }}
           isMobile={isMobile}
         />
       )}

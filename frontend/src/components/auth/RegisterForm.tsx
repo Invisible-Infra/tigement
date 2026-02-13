@@ -45,9 +45,13 @@ export function RegisterForm({ onClose, onSwitchToLogin }: RegisterFormProps) {
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-xl w-[400px] max-h-[80vh] overflow-y-auto">
         <div className="bg-[#4a6c7a] text-white px-6 py-4 rounded-t-lg flex justify-between items-center">
-          <h2 className="text-xl font-bold">Register</h2>
+          <h2 className="text-xl font-bold">Register for free</h2>
           <button onClick={onClose} className="text-2xl hover:text-gray-300">&times;</button>
         </div>
+
+        <p className="px-6 pt-3 text-sm text-gray-600">
+          Registration is free. Premium is optional.
+        </p>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {error && (

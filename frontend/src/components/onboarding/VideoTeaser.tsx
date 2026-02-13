@@ -95,7 +95,7 @@ export function VideoTeaser({ videoUrl, label }: VideoTeaserProps) {
 
       {showPlayer && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[300] p-4"
+          className="fixed inset-0 bg-black bg-opacity-75 flex flex-col items-center justify-center z-[300] p-4"
           onClick={(e) => {
             // Click outside does NOT close per spec
             e.stopPropagation()
@@ -106,26 +106,28 @@ export function VideoTeaser({ videoUrl, label }: VideoTeaserProps) {
               width: `${sizePercent}vw`,
               maxWidth: '100vw',
             }}
-            className="relative bg-black rounded-lg overflow-hidden max-h-[90vh] aspect-video"
+            className="relative bg-black rounded-lg overflow-hidden flex-shrink-0"
             onClick={(e) => e.stopPropagation()}
           >
-            {isYouTube ? (
-              <iframe
-                src={youtubeEmbedUrl!}
-                title="Onboarding video"
-                className="absolute inset-0 w-full h-full"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-              />
-            ) : (
-              <video
-                ref={videoRef}
-                controls
-                playsInline
-                className="w-full"
-                onEnded={() => {}}
-              />
-            )}
+            <div className="relative aspect-video max-h-[70vh] w-full">
+              {isYouTube ? (
+                <iframe
+                  src={youtubeEmbedUrl!}
+                  title="Onboarding video"
+                  className="absolute inset-0 w-full h-full"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              ) : (
+                <video
+                  ref={videoRef}
+                  controls
+                  playsInline
+                  className="w-full h-full"
+                  onEnded={() => {}}
+                />
+              )}
+            </div>
             <button
               type="button"
               onClick={handleClose}
@@ -134,34 +136,34 @@ export function VideoTeaser({ videoUrl, label }: VideoTeaserProps) {
             >
               ×
             </button>
-            <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-70 px-4 py-2 flex items-center justify-center gap-4 z-10">
-              <button
-                type="button"
-                onClick={() =>
-                  setSizePercent((prev) => {
-                    const next = prev - 10
-                    return next < 60 ? 60 : next
-                  })
-                }
-                className="px-4 py-2 bg-white text-black rounded-md font-semibold shadow-md hover:bg-gray-100 transition"
-                aria-label="Decrease video size"
-              >
-                Zoom −
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  setSizePercent((prev) => {
-                    const next = prev + 10
-                    return next > 100 ? 100 : next
-                  })
-                }
-                className="px-4 py-2 bg-white text-black rounded-md font-semibold shadow-md hover:bg-gray-100 transition"
-                aria-label="Increase video size"
-              >
-                Zoom +
-              </button>
-            </div>
+          </div>
+          <div className="mt-2 flex items-center justify-center gap-4 w-full max-w-full" style={{ width: `${sizePercent}vw`, maxWidth: '100vw' }}>
+            <button
+              type="button"
+              onClick={() =>
+                setSizePercent((prev) => {
+                  const next = prev - 10
+                  return next < 60 ? 60 : next
+                })
+              }
+              className="px-4 py-2 bg-white text-black rounded-md font-semibold shadow-md hover:bg-gray-100 transition"
+              aria-label="Decrease video size"
+            >
+              Zoom −
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setSizePercent((prev) => {
+                  const next = prev + 10
+                  return next > 100 ? 100 : next
+                })
+              }
+              className="px-4 py-2 bg-white text-black rounded-md font-semibold shadow-md hover:bg-gray-100 transition"
+              aria-label="Increase video size"
+            >
+              Zoom +
+            </button>
           </div>
         </div>
       )}

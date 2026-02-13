@@ -42,6 +42,7 @@ Tigement is optimized for planning a realistic day. You write tasks with duratio
 
 <a id="getting-started"></a>
 ## Getting Started
+The planner workspace requires registration. You can try the onboarding video and interactive tutorial without an account; register or log in at the end to use the app.
 1. Register and log in (email/password or OAuth: Google, GitHub, Apple, X, Facebook).
 2. Add a Day or LIST table from the right sidebar.
 3. Add tasks; on Day tables, times auto-chain from the table start time.

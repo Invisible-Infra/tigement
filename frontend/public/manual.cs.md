@@ -42,6 +42,7 @@ Tigement je optimalizovaný pro plán reálného dne. Zadáváte úkoly s délka
 
 <a id="zaciname"></a>
 ## Začínáme
+Plánovací workspace vyžaduje registraci. Úvodní video a interaktivní tutoriál můžete vyzkoušet bez účtu; na konci se zaregistrujte nebo přihlaste.
 1. Zaregistrujte se a přihlaste (e-mail/heslo nebo OAuth: Google, GitHub, Apple, X, Facebook).
 2. Přidejte tabulku Den nebo LIST v pravém postranním panelu.
 3. Přidejte úkoly; u Den se časy řetězí od počátečního času tabulky.

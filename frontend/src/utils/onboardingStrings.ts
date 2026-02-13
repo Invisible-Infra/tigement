@@ -33,6 +33,13 @@ export const welcomeModal = {
   checkbox: "Don't show this again",
 }
 
+/** Copy for public (unauthenticated) landing: Register/Login CTAs */
+export const publicLanding = {
+  register: 'Register',
+  login: 'Login',
+  getStarted: 'Get started',
+}
+
 export const tutorialSteps: TutorialStep[] = [
   {
     title: 'A day plan that adapts',
