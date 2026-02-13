@@ -84,6 +84,7 @@ Tip: Potřebujete pevný začátek? Nastavte čas začátku tabulky; ostatní se
   - Začíná-li název úkolu časem (např. „09:30 Stand‑up“), aplikace ukáže shodu/neshodu s vypočteným začátkem.
   - Neshody zvýrazní, abyste snadno sladili očekávání s plánem.
 - Mobilní bezpečnost: přesun jen přes ▲/▼, během přesunu je scroll zablokován.
+- Automatické dokončování názvu úkolu: při psaní názvu prohlížeč nabízí existující názvy úkolů z vašeho workspace.
 
 <a id="mobilni-ux"></a>
 ## Mobilní UX

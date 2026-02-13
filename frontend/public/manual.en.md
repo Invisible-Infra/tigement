@@ -84,6 +84,7 @@ Tip: If you need a hard start for the first task, set the table start time. Ever
   - If a task name starts with a time (e.g., “09:30 Stand‑up”), the app indicates whether it matches the computed start.
   - Mismatch is highlighted so you can reconcile expectations vs reality.
 - Mobile safety: drag is restricted to ▲/▼ icons; scrolling is locked while dragging to avoid accidental moves.
+- Task name autocomplete: when typing a task name, the browser suggests existing task titles from your workspace.
 
 <a id="mobile-ux"></a>
 ## Mobile UX

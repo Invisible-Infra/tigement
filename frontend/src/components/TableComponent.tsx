@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faBookOpen, faMinus, faXmark } from '@fortawesome/free-solid-svg-icons'
 import { isLegacyDayTitle, formatDateWithSettings } from '../utils/dateFormat'
+import { getUniqueTaskTitles } from '../utils/taskSuggestions'
 
 interface Task {
   id: string
@@ -522,6 +523,13 @@ export function TableComponent({
         onDragLeave={!readOnly ? handleDragLeave : undefined}
         onDrop={!readOnly ? (e) => handleDrop(e, table.id, table.tasks.length) : undefined}
       >
+        {!readOnly && (
+          <datalist id={`task-suggestions-${table.id}`}>
+            {getUniqueTaskTitles(tables).map((t) => (
+              <option key={t} value={t} />
+            ))}
+          </datalist>
+        )}
         {table.tasks.map((task, index) => {
           const taskTimes = times[index]
           const isDragging = draggedTask?.taskId === task.id
@@ -829,6 +837,7 @@ export function TableComponent({
                 ) : (
                 <input
                   type="text"
+                  list={`task-suggestions-${table.id}`}
                   data-tutorial-target={tutorialTargets?.taskTargets?.[task.id]?.name}
                   value={task.title}
                   onChange={(e) => updateTask(table.id, task.id, 'title', e.target.value)}
