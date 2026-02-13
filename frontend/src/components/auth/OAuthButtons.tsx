@@ -5,6 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { api } from '../../utils/api';
+import { isEmbeddedWebView, getEmbeddedAppName } from '../../utils/browserUtils';
 
 interface OAuthButtonsProps {
   onLoading?: (loading: boolean) => void;
@@ -80,7 +81,20 @@ export function OAuthButtons({ onLoading, onError }: OAuthButtonsProps) {
         </button>
       )}
 
-      {/* Google */}
+      {/* Google - show embedded browser warning when applicable */}
+      {providers.google && isEmbeddedWebView() && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded text-sm">
+          {getEmbeddedAppName() ? (
+            <>
+              You opened this page from <strong>{getEmbeddedAppName()}&apos;s</strong> in-app browser. Google blocks its own sign-in in such browsers because they can intercept communication—this is Google&apos;s policy, not Tigement. Use the menu (⋮) and choose &quot;Open in Safari&quot; or &quot;Open in Chrome&quot; to sign in.
+            </>
+          ) : (
+            <>
+              You opened this page from an in-app browser (e.g. LinkedIn, Facebook, X). Google blocks its own sign-in in such browsers because they can intercept communication—this is Google&apos;s policy, not Tigement. Use the menu (⋮) and choose &quot;Open in Safari&quot; or &quot;Open in Chrome&quot; to sign in.
+            </>
+          )}
+        </div>
+      )}
       {providers.google && (
         <button
           type="button"
