@@ -175,7 +175,7 @@ Tip: If you need a hard start for the first task, set the table start time. Ever
   - If you forget your password, your encrypted data cannot be recovered (make sure to use a password manager)
   - You can set a custom encryption key in Advanced settings for additional security
 - Settings keeps workspace preferences (theme, time/date format, timers, pickers).
-- **Conditional default tasks** (Premium): Add rules in Settings to automatically create tasks when you add new tables. For example, "When creating a new Day table, if the day is Monday, add task '8:00 Review' with duration 30 minutes." You can also set task group, note, and pre-select tasks. Rules can use day of week, day of month, month, or custom expressions. Configure in Settings → Conditional Default Tasks.
+- **Conditional default tasks** (Premium): Add rules in Settings to automatically create tasks when you add new tables. For example, "When creating a new Day table, if the day is Monday, add task '8:00 Review' with duration 30 minutes." You can also set task group, note, and pre-select tasks. Rules can use day of week, day of month, month, or custom expressions. When adding an expression condition, expand "Expression reference" for variables, operators, and clickable examples. Configure in Settings → Conditional Default Tasks.
 - **Timer**: Countdown for the current task. Your choice to show or hide the Timer is remembered across page reloads. On mobile, the Timer button in the bottom bar toggles the Timer panel on or off.
 - **Duration Presets**: Configure quick-select buttons in the duration picker. Enter comma-separated minutes (e.g., "15, 30, 60, 120"). Clicking a preset applies the duration immediately without needing to press "Done".
 - **Session & browser data behavior**:

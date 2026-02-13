@@ -129,11 +129,17 @@ function RuleForm({
     })
   }
 
+  const insertExpressionExample = (example: string) => {
+    const idx = conditions.findIndex(c => c.kind === 'expression')
+    if (idx >= 0) updateCondition(idx, { expression: example })
+  }
+
   const renderValueInput = (c: ConditionFormItem, i: number) => {
     if (c.kind === 'expression') {
       return (
         <input
           type="text"
+          list="expr-suggestions"
           value={c.expression}
           onChange={(e) => updateCondition(i, { expression: e.target.value })}
           placeholder="dayweek === 'Monday' && month <= 3"
@@ -324,6 +330,31 @@ function RuleForm({
         ))}
         <button type="button" onClick={() => addCondition('preset')} className="text-sm text-[#4fc3f7] hover:underline mr-2">+ Preset</button>
         <button type="button" onClick={() => addCondition('expression')} className="text-sm text-[#4fc3f7] hover:underline">+ Expression</button>
+        <datalist id="expr-suggestions">
+          {['date', 'dayweek', 'dayOfMonth', 'weekOfMonth', 'month', 'year', 'weekOfYear', 'isWeekend', 'tableType', 'spaceId'].map(v => (
+            <option key={v} value={v} />
+          ))}
+          <option value="dayweek === 'Monday'" />
+          <option value="month <= 3 && !isWeekend" />
+          <option value="dayOfMonth % 7 === 0" />
+        </datalist>
+        {conditions.some(c => c.kind === 'expression') && (
+          <details className="mt-2">
+            <summary className="text-xs text-gray-600 cursor-pointer hover:text-gray-800">Expression reference</summary>
+            <div className="mt-1 p-2 bg-gray-100 rounded text-xs font-mono space-y-1">
+              <div><span className="text-gray-600">Variables:</span> date, dayweek, dayOfMonth, weekOfMonth, month, year, weekOfYear, isWeekend, tableType, spaceId</div>
+              <div><span className="text-gray-600">Operators:</span> ===, !==, &lt;=, &gt;=, &lt;, &gt;, &amp;&amp;, ||, !, %</div>
+              <div className="pt-1">
+                <span className="text-gray-600">Examples:</span>
+                {['dayweek === \'Monday\'', 'month <= 3 && !isWeekend', 'dayOfMonth % 7 === 0'].map(ex => (
+                  <button key={ex} type="button" onClick={() => insertExpressionExample(ex)} className="block mt-0.5 text-[#4fc3f7] hover:underline text-left">
+                    {ex}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </details>
+        )}
       </div>
 
       <div>

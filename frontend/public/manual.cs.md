@@ -175,7 +175,7 @@ Tip: Potřebujete pevný začátek? Nastavte čas začátku tabulky; ostatní se
   - Pokud zapomenete heslo, vaše zašifrovaná data nelze obnovit (používejte správce hesel)
   - V pokročilých nastaveních můžete nastavit vlastní šifrovací klíč pro dodatečnou bezpečnost
 - Nastavení obsahuje preference workspace (téma, formáty času/data, časovače, volba timepickerů).
-- **Podmíněné výchozí úkoly** (Premium): Přidejte pravidla v Nastavení pro automatické vytváření úkolů při přidávání nových tabulek. Např. „Při vytvoření nové denní tabulky v pondělí přidej úkol ‚8:00 Review‘ s délkou 30 minut.“ U každého úkolu můžete nastavit skupinu, poznámku a předvybrání. Pravidla mohou používat den v týdnu, den v měsíci, měsíc nebo vlastní výrazy. Nastavení v Nastavení → Podmíněné výchozí úkoly.
+- **Podmíněné výchozí úkoly** (Premium): Přidejte pravidla v Nastavení pro automatické vytváření úkolů při přidávání nových tabulek. Např. „Při vytvoření nové denní tabulky v pondělí přidej úkol ‚8:00 Review‘ s délkou 30 minut.“ U každého úkolu můžete nastavit skupinu, poznámku a předvybrání. Pravidla mohou používat den v týdnu, den v měsíci, měsíc nebo vlastní výrazy. Při přidání podmínky typu výraz rozbalte „Reference výrazů“ pro proměnné, operátory a klikatelné příklady. Nastavení v Nastavení → Podmíněné výchozí úkoly.
 - **Časovač**: Odpočet pro aktuální úkol. Vaše volba zobrazit nebo skrýt časovač se pamatuje po obnovení stránky. Na mobilu tlačítko Časovač na spodní liště přepíná panel časovače zapnutý/vypnutý.
 - **Předvolby délky**: Nastavte rychlé tlačítka ve výběru délky. Zadejte minuty oddělené čárkou (např. "15, 30, 60, 120"). Kliknutí na předvolbu nastaví délku okamžitě bez nutnosti stisknout "Hotovo".
 - **Chování relace a dat v prohlížeči**:
