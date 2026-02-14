@@ -38,7 +38,20 @@ async function readGoogleDriveAppData(accessToken: string): Promise<string> {
   const listRes = await fetch('https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name%3D%27' + encodeURIComponent(KEY_FILENAME) + '%27', {
     headers: { Authorization: `Bearer ${accessToken}` }
   })
-  if (!listRes.ok) throw new Error('Failed to list Drive app data')
+  if (!listRes.ok) {
+    const errBody = await listRes.text()
+    let detail = errBody
+    try {
+      const j = JSON.parse(errBody)
+      detail = j?.error?.message || j?.error?.errors?.[0]?.message || errBody
+    } catch {
+      // use raw errBody
+    }
+    if (listRes.status === 403 && /has not been used|not been enabled|Access Not Configured/i.test(detail)) {
+      throw new Error('Google Drive API is not enabled for this app. Enable "Google Drive API" in Google Cloud Console (APIs & Services) for the project used by Sign in with Google.')
+    }
+    throw new Error(`Failed to access Google Drive app data: ${detail}`)
+  }
   const list = await listRes.json()
   const fileId = list.files?.[0]?.id
   if (!fileId) throw new Error('Sync key not found in Google Drive')
@@ -53,7 +66,20 @@ async function writeGoogleDriveAppData(accessToken: string, key: string): Promis
   const listRes = await fetch('https://www.googleapis.com/drive/v3/files?spaces=appDataFolder', {
     headers: { Authorization: `Bearer ${accessToken}` }
   })
-  if (!listRes.ok) throw new Error('Failed to access Google Drive app data')
+  if (!listRes.ok) {
+    const errBody = await listRes.text()
+    let detail = errBody
+    try {
+      const j = JSON.parse(errBody)
+      detail = j?.error?.message || j?.error?.errors?.[0]?.message || errBody
+    } catch {
+      // use raw errBody
+    }
+    if (listRes.status === 403 && /has not been used|not been enabled|Access Not Configured/i.test(detail)) {
+      throw new Error('Google Drive API is not enabled for this app. Enable "Google Drive API" in Google Cloud Console (APIs & Services) for the project used by Sign in with Google.')
+    }
+    throw new Error(`Failed to access Google Drive app data: ${detail}`)
+  }
   const list = await listRes.json()
   const existing = list.files?.find((f: { name: string }) => f.name === KEY_FILENAME)
   if (existing) {
