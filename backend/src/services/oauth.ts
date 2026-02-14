@@ -9,28 +9,37 @@ import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { Strategy as AppleStrategy } from 'passport-apple';
 import { Strategy as TwitterStrategy } from 'passport-twitter';
 import { Strategy as FacebookStrategy } from 'passport-facebook';
+import { Strategy as MicrosoftStrategy } from 'passport-microsoft';
 import { query } from '../db';
+import { setProviderToken } from '../oauthProviderTokenCache';
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3001';
 
+/** Extra OAuth scopes for provider-stored sync key (Drive app data, gist, OneDrive app folder) */
+const PROVIDER_KEY_SCOPES: Record<string, string[]> = {
+  google: ['profile', 'email', 'https://www.googleapis.com/auth/drive.appdata'],
+  github: ['user:email', 'gist'],
+  microsoft: ['user.read', 'Files.ReadWrite.AppFolder']
+};
+
 export function configureOAuth() {
-  // GitHub OAuth
+  // GitHub OAuth (include gist scope for provider-stored sync key)
   if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
     passport.use(new GitHubStrategy({
       clientID: process.env.GITHUB_CLIENT_ID,
       clientSecret: process.env.GITHUB_CLIENT_SECRET,
       callbackURL: `${BACKEND_URL}/api/auth/oauth/github/callback`,
-      scope: ['user:email']
+      scope: PROVIDER_KEY_SCOPES.github
     }, handleOAuthCallback('github')));
   }
 
-  // Google OAuth
+  // Google OAuth (include drive.appdata for provider-stored sync key)
   if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
     passport.use(new GoogleStrategy({
       clientID: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
       callbackURL: `${BACKEND_URL}/api/auth/oauth/google/callback`,
-      scope: ['profile', 'email']
+      scope: PROVIDER_KEY_SCOPES.google
     }, handleOAuthCallback('google')));
   }
 
@@ -66,12 +75,24 @@ export function configureOAuth() {
     }, handleOAuthCallback('facebook')));
   }
 
+  // Microsoft OAuth (include Files.ReadWrite.AppFolder for provider-stored sync key)
+  if (process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET) {
+    passport.use(new MicrosoftStrategy({
+      clientID: process.env.MICROSOFT_CLIENT_ID,
+      clientSecret: process.env.MICROSOFT_CLIENT_SECRET,
+      callbackURL: `${BACKEND_URL}/api/auth/oauth/microsoft/callback`,
+      scope: PROVIDER_KEY_SCOPES.microsoft,
+      tenant: 'common'
+    }, handleOAuthCallback('microsoft')));
+  }
+
   console.log('OAuth providers configured:', {
     github: !!process.env.GITHUB_CLIENT_ID,
     google: !!process.env.GOOGLE_CLIENT_ID,
     apple: !!process.env.APPLE_CLIENT_ID,
     twitter: !!process.env.TWITTER_CONSUMER_KEY,
-    facebook: !!process.env.FACEBOOK_APP_ID
+    facebook: !!process.env.FACEBOOK_APP_ID,
+    microsoft: !!process.env.MICROSOFT_CLIENT_ID
   });
 }
 
@@ -143,6 +164,15 @@ function handleOAuthCallback(provider: string) {
       // For Twitter, email might not be available
       if (!email && provider === 'twitter') {
         email = `${profile.username}@twitter.oauth`;
+      }
+      // Microsoft Graph exposes email as _json.mail
+      if (!email && provider === 'microsoft' && profile._json?.mail) {
+        email = profile._json.mail;
+      }
+      // Microsoft Graph profile photo (if strategy provides it)
+      if (!avatar && provider === 'microsoft' && profile._json) {
+        const photo = profile._json as { photo?: string };
+        if (photo.photo) avatar = photo.photo;
       }
 
       console.log(`Extracted OAuth data for ${provider}:`, { 
@@ -239,6 +269,11 @@ function handleOAuthCallback(provider: string) {
           finalUsername: updateResult.rows[0]?.username,
           finalProfilePicture: updateResult.rows[0]?.profile_picture_url
         });
+      }
+
+      // Cache provider access token for frontend to read/write sync key (Google/GitHub/Microsoft only)
+      if (['google', 'github', 'microsoft'].includes(provider)) {
+        setProviderToken(user.id, provider, accessToken);
       }
 
       return done(null, user);

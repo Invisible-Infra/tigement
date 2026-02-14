@@ -35,6 +35,7 @@ export interface User {
   started_at?: string
   created_at?: string
   in_grace_period?: boolean
+  oauth_provider?: string
 }
 
 export interface AuthResponse {
@@ -648,8 +649,32 @@ class ApiClient {
     })
   }
 
+  // Verify OAuth passphrase only (for migration to provider-stored key)
+  async verifyOAuthPassphrase(oauthToken: string, passphrase: string): Promise<{ ok: boolean }> {
+    return this.request('/auth/oauth/verify-passphrase', {
+      method: 'POST',
+      body: JSON.stringify({ oauthToken, passphrase }),
+    })
+  }
+
+  // Exchange oauth_token for provider access token (one-time) to read/write sync key
+  async getOAuthProviderToken(oauthToken: string): Promise<{ provider: string; accessToken: string }> {
+    return this.request('/auth/oauth/provider-token', {
+      method: 'POST',
+      body: JSON.stringify({ oauthToken }),
+    })
+  }
+
+  // Complete OAuth login with provider-stored key (no passphrase)
+  async completeOAuthWithProviderKey(oauthToken: string): Promise<{ user: User; accessToken: string; refreshToken: string }> {
+    return this.request('/auth/oauth/complete-with-provider-key', {
+      method: 'POST',
+      body: JSON.stringify({ oauthToken }),
+    })
+  }
+
   // Get available OAuth providers
-  async getOAuthProviders(): Promise<{ providers: { github: boolean; google: boolean; apple: boolean; twitter: boolean; facebook: boolean } }> {
+  async getOAuthProviders(): Promise<{ providers: { github: boolean; google: boolean; apple: boolean; twitter: boolean; facebook: boolean; microsoft: boolean } }> {
     return this.request('/auth/oauth/providers', {
       method: 'GET',
     })

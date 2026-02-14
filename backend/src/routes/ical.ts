@@ -240,7 +240,7 @@ router.get('/status', authMiddleware, async (req: AuthRequest, res: Response) =>
     const token = tokenResult.rows[0].token
     return res.json({ 
       enabled: true, 
-      url: `${baseUrl}/api/ical/${token}` 
+      url: `${baseUrl}/api/ical/${token}.ics` 
     })
   } catch (error) {
     console.error('iCal status check error:', error)
@@ -293,7 +293,7 @@ router.post('/generate-token', authMiddleware, async (req: AuthRequest, res: Res
       console.log(`Found existing token for user ${userId}`)
       return res.json({ 
         token,
-        url: `${baseUrl}/api/ical/${token}`
+        url: `${baseUrl}/api/ical/${token}.ics`
       })
     }
 
@@ -309,7 +309,7 @@ router.post('/generate-token', authMiddleware, async (req: AuthRequest, res: Res
     console.log(`Successfully created iCal token for user ${userId}`)
     res.json({ 
       token,
-      url: `${baseUrl}/api/ical/${token}`
+      url: `${baseUrl}/api/ical/${token}.ics`
     })
   } catch (error: any) {
     // Handle race: another request created the token (e.g. double-click)
@@ -327,7 +327,7 @@ router.post('/generate-token', authMiddleware, async (req: AuthRequest, res: Res
           base = `${protocol}://${host}`
         }
         const token = existing.rows[0].token
-        return res.json({ token, url: `${base}/api/ical/${token}` })
+        return res.json({ token, url: `${base}/api/ical/${token}.ics` })
       }
     }
     console.error('Generate token error:', error)
@@ -350,8 +350,10 @@ router.post('/generate-token', authMiddleware, async (req: AuthRequest, res: Res
  */
 router.get('/:token', async (req: Request, res: Response) => {
   try {
-    const { token } = req.params
-
+    let { token } = req.params
+    if (token.endsWith('.ics')) {
+      token = token.slice(0, -4)
+    }
     // Find user by iCal token
     const tokenResult = await query(
       'SELECT user_id FROM ical_tokens WHERE token = $1',
@@ -475,12 +477,9 @@ router.get('/:token', async (req: Request, res: Response) => {
 
     const contentHash = crypto.createHash('sha256').update(ical).digest('hex')
     const etag = `"${contentHash}"`
-    if (req.headers['if-none-match'] === etag) {
-      res.status(304).end()
-      return
-    }
+    // Always return 200 with body so Google Calendar "Add by URL" succeeds (it often fails on 304)
     res.set('ETag', etag)
-    res.set('Content-Type', 'text/calendar; charset=utf-8; name="Tigement.ics"')
+    res.set('Content-Type', 'text/calendar; charset=utf-8')
     res.set('Content-Disposition', 'inline; filename="Tigement.ics"')
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
     res.set('Pragma', 'no-cache')

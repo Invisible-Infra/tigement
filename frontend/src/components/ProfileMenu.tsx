@@ -70,16 +70,13 @@ export function ProfileMenu({ onClose, showDecryptionWarning }: ProfileMenuProps
     }
   }, [user])
 
-  // Check if iCal is already enabled on mount
+  // Check if iCal is already enabled on mount (and when user changes, e.g. after restart)
   useEffect(() => {
     const checkIcalStatus = async () => {
-      // Only check for premium users
-      if (!user || user.plan !== 'premium' || user.subscription_status !== 'active') {
+      if (!user || user.plan !== 'premium') {
         return
       }
-
       try {
-        // Check status without creating a token
         const response = await api.getIcalStatus()
         setIcalEnabled(response.enabled)
         setIcalUrl(response.url)
@@ -87,7 +84,6 @@ export function ProfileMenu({ onClose, showDecryptionWarning }: ProfileMenuProps
           console.log('✅ iCal export is already enabled')
         }
       } catch (error: any) {
-        // If error, assume not enabled
         setIcalEnabled(false)
         setIcalUrl(null)
       }
@@ -567,6 +563,22 @@ export function ProfileMenu({ onClose, showDecryptionWarning }: ProfileMenuProps
     }
   }
 
+  const webcalUrl = icalUrl ? icalUrl.replace(/^https:\/\//, 'webcal://') : null
+
+  const handleAddToGoogleCalendar = () => {
+    if (icalUrl) {
+      // Google Calendar cid parameter often fails with HTTPS; use http so Google follows redirect to https
+      const feedUrlForGoogle = icalUrl.replace(/^https:\/\//, 'http://')
+      window.open('https://calendar.google.com/calendar/render?cid=' + encodeURIComponent(feedUrlForGoogle), '_blank')
+    }
+  }
+
+  const handleAddToOutlookWeb = () => {
+    if (icalUrl) {
+      window.open('https://outlook.office.com/calendar/0/addfromweb?url=' + encodeURIComponent(icalUrl), '_blank')
+    }
+  }
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
@@ -992,9 +1004,37 @@ export function ProfileMenu({ onClose, showDecryptionWarning }: ProfileMenuProps
                     </button>
                   </div>
 
-                  {/* Subscription URL */}
+                  {/* One-click Subscribe */}
                   {icalEnabled && icalUrl && (
                     <div className="mt-4 p-3 bg-white rounded border border-yellow-300">
+                      <p className="text-xs font-semibold text-yellow-900 mb-2">Subscribe in one click:</p>
+                      {user?.oauth_provider === 'google' && (
+                        <p className="text-xs text-yellow-800 mb-2">You&apos;re signed in with Google — add to your calendar in one click.</p>
+                      )}
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        <button
+                          type="button"
+                          onClick={handleAddToGoogleCalendar}
+                          className="px-3 py-2 bg-white border border-gray-300 text-gray-800 text-xs rounded hover:bg-gray-50 transition whitespace-nowrap"
+                        >
+                          Add to Google Calendar
+                        </button>
+                        {webcalUrl && (
+                          <a
+                            href={webcalUrl}
+                            className="px-3 py-2 bg-white border border-gray-300 text-gray-800 text-xs rounded hover:bg-gray-50 transition whitespace-nowrap inline-block"
+                          >
+                            Subscribe (Apple / Outlook desktop)
+                          </a>
+                        )}
+                        <button
+                          type="button"
+                          onClick={handleAddToOutlookWeb}
+                          className="px-3 py-2 bg-white border border-gray-300 text-gray-800 text-xs rounded hover:bg-gray-50 transition whitespace-nowrap"
+                        >
+                          Add to Outlook (web)
+                        </button>
+                      </div>
                       <p className="text-xs font-semibold text-yellow-900 mb-2">📋 Subscription URL:</p>
                       <div className="flex gap-2">
                         <input
@@ -1012,6 +1052,9 @@ export function ProfileMenu({ onClose, showDecryptionWarning }: ProfileMenuProps
                       </div>
                       <p className="text-xs text-yellow-700 mt-2">
                         ℹ️ Add this URL to your calendar app as a "subscription" or "webcal" feed. It will update automatically.
+                      </p>
+                      <p className="text-xs text-yellow-600 mt-1">
+                        If &quot;Add to Google Calendar&quot; fails, copy the URL above and in Google Calendar go to Add calendar → From URL, then paste.
                       </p>
                     </div>
                   )}

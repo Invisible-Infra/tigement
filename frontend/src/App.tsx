@@ -15,6 +15,8 @@ import { RegisterForm } from './components/auth/RegisterForm'
 import { ForgotPasswordForm } from './components/auth/ForgotPasswordForm'
 import { ResetPasswordForm } from './components/auth/ResetPasswordForm'
 import { EncryptionPassphraseDialog } from './components/auth/EncryptionPassphraseDialog'
+import { OAuthKeyChoiceDialog } from './components/auth/OAuthKeyChoiceDialog'
+import { readKeyFromProvider } from './utils/providerKeyStorage'
 import { AdminPanel } from './components/admin/AdminPanel'
 import { PremiumPage } from './components/premium/PremiumPage'
 import { ProfileMenu } from './components/ProfileMenu'
@@ -47,6 +49,8 @@ function AppContent() {
   const mergeDialogShownRef = useRef(false)
   const [version, setVersion] = useState<string>('alpha')
   const [oauthPassphraseDialog, setOauthPassphraseDialog] = useState<{ token: string; isNew: boolean } | null>(null)
+  const [oauthKeyChoice, setOauthKeyChoice] = useState<{ token: string; provider: string; hasPassphrase: boolean } | null>(null)
+  const [oauthProviderKeyLoading, setOauthProviderKeyLoading] = useState(false)
   const [showMigrationDialog, setShowMigrationDialog] = useState(false)
   const [migrationStatus, setMigrationStatus] = useState<any>(null)
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768)
@@ -196,18 +200,49 @@ function AppContent() {
     }
 
     if (oauthToken) {
-      // Decode JWT token to check if passphrase is needed
       try {
         const payload = JSON.parse(atob(oauthToken.split('.')[1]))
+        const provider = payload.provider
+        const hasPassphrase = !!payload.has_passphrase
+        const hasProviderKey = !!payload.has_provider_key
+        const providerSupportsKey = provider && ['google', 'github', 'microsoft'].includes(provider)
+
+        window.history.replaceState({}, '', '/')
+
+        if (hasProviderKey && providerSupportsKey) {
+          setOauthProviderKeyLoading(true)
+          ;(async () => {
+            try {
+              const { provider: p, accessToken } = await api.getOAuthProviderToken(oauthToken)
+              const key = await readKeyFromProvider(p, accessToken)
+              const response = await api.completeOAuthWithProviderKey(oauthToken)
+              api.setTokens(response.accessToken, response.refreshToken)
+              encryptionKeyManager.setKey(key)
+              window.location.reload()
+            } catch (err) {
+              console.error('Provider key login failed:', err)
+              alert('Could not load your key from ' + (payload.provider === 'google' ? 'Google' : payload.provider === 'github' ? 'GitHub' : payload.provider === 'microsoft' ? 'Microsoft' : payload.provider) + '. Try using your passphrase instead.')
+              setOauthProviderKeyLoading(false)
+              setOauthPassphraseDialog({ token: oauthToken, isNew: false })
+            }
+          })()
+          return
+        }
+
+        if (providerSupportsKey) {
+          setOauthKeyChoice({ token: oauthToken, provider, hasPassphrase })
+          return
+        }
+
         setOauthPassphraseDialog({
           token: oauthToken,
-          isNew: !payload.has_passphrase
+          isNew: !hasPassphrase
         })
       } catch (error) {
         console.error('Failed to decode OAuth token:', error)
         alert('Invalid OAuth token')
+        window.history.replaceState({}, '', '/')
       }
-      window.history.replaceState({}, '', '/')
     }
   }, [])
 
@@ -720,6 +755,34 @@ function AppContent() {
             if (!isAuthenticated) setShowRegister(true)
           }}
           isMobile={isMobile}
+        />
+      )}
+
+      {/* OAuth: loading key from provider (returning user with provider-stored key) */}
+      {oauthProviderKeyLoading && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl px-8 py-6">
+            <p className="text-gray-700">Loading your key...</p>
+          </div>
+        </div>
+      )}
+
+      {/* OAuth: choice between provider-stored key and passphrase (Google/GitHub/Microsoft) */}
+      {oauthKeyChoice && (
+        <OAuthKeyChoiceDialog
+          oauthToken={oauthKeyChoice.token}
+          provider={oauthKeyChoice.provider}
+          hasPassphrase={oauthKeyChoice.hasPassphrase}
+          onChoosePassphrase={() => {
+            setOauthPassphraseDialog({
+              token: oauthKeyChoice.token,
+              isNew: !oauthKeyChoice.hasPassphrase
+            })
+            setOauthKeyChoice(null)
+          }}
+          onComplete={() => window.location.reload()}
+          onError={(err) => console.error('OAuth key choice error:', err)}
+          onClose={() => setOauthKeyChoice(null)}
         />
       )}
 

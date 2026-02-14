@@ -43,7 +43,7 @@ Tigement is optimized for planning a realistic day. You write tasks with duratio
 <a id="getting-started"></a>
 ## Getting Started
 The planner workspace requires registration. You can try the onboarding video and interactive tutorial without an account; register or log in at the end to use the app.
-1. Register and log in (email/password or OAuth: Google, GitHub, Apple, X, Facebook).
+1. Register and log in (email/password or OAuth: Google, GitHub, Apple, Microsoft, X, Facebook).
 2. Add a Day or LIST table from the right sidebar.
 3. Add tasks; on Day tables, times auto-chain from the table start time.
 4. Use the hamburger on mobile to open the sidebar.
@@ -143,13 +143,14 @@ Tip: If you need a hard start for the first task, set the table start time. Ever
 <a id="ical"></a>
 ## iCal Subscription (Premium)
 - Live calendar feed URL for Google Calendar, Apple Calendar, Outlook.
-- Profile → Apps & calendar → enable iCal subscription, copy URL.
+- Profile → Apps & calendar → enable iCal subscription. Use **Subscribe in one click**: Add to Google Calendar, Subscribe (Apple / Outlook desktop), or Add to Outlook (web). You can also copy the subscription URL to paste into any calendar app.
 - Privacy: data stored unencrypted on server for the feed. Opt-in only.
 
 <a id="oauth"></a>
 ## OAuth & Sign-In
-- Sign in with Google, GitHub, Apple, X, or Facebook (if enabled by your instance).
-- OAuth users: set encryption passphrase on first login. Remember it – it unlocks your data.
+- Sign in with Google, GitHub, Apple, Microsoft, X, or Facebook (if enabled by your instance).
+- OAuth users (Google, GitHub, Microsoft): you can either **use a secure key stored in your provider account** (no passphrase to remember; the provider could read the key; Tigement data stays private) or **use your own passphrase**. Apple and others use passphrase only.
+- OAuth users who choose a passphrase: set it on first login and remember it – it unlocks your data.
 - "Trust device 30 days" skips 2FA for that session.
 
 <a id="forgot-password"></a>

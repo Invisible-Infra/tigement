@@ -401,7 +401,7 @@ router.post('/logout', authMiddleware, async (req: AuthRequest, res) => {
 router.get('/me', authMiddleware, async (req: AuthRequest, res) => {
   try {
     const result = await query(
-      `SELECT u.id, u.email, u.created_at, u.is_admin, u.username, u.profile_picture_url,
+      `SELECT u.id, u.email, u.created_at, u.is_admin, u.username, u.profile_picture_url, u.oauth_provider,
               s.plan, s.status as subscription_status, s.started_at, s.expires_at
        FROM users u
        LEFT JOIN subscriptions s ON u.id = s.user_id

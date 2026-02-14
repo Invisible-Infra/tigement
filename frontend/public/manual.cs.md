@@ -43,7 +43,7 @@ Tigement je optimalizovaný pro plán reálného dne. Zadáváte úkoly s délka
 <a id="zaciname"></a>
 ## Začínáme
 Plánovací workspace vyžaduje registraci. Úvodní video a interaktivní tutoriál můžete vyzkoušet bez účtu; na konci se zaregistrujte nebo přihlaste.
-1. Zaregistrujte se a přihlaste (e-mail/heslo nebo OAuth: Google, GitHub, Apple, X, Facebook).
+1. Zaregistrujte se a přihlaste (e-mail/heslo nebo OAuth: Google, GitHub, Apple, Microsoft, X, Facebook).
 2. Přidejte tabulku Den nebo LIST v pravém postranním panelu.
 3. Přidejte úkoly; u Den se časy řetězí od počátečního času tabulky.
 4. Na mobilu otevřete postranní panel tlačítkem (hamburger).
@@ -143,13 +143,14 @@ Tip: Potřebujete pevný začátek? Nastavte čas začátku tabulky; ostatní se
 <a id="ical"></a>
 ## iCal odběr (Premium)
 - URL živého kalendářového kanálu pro Google Calendar, Apple Calendar, Outlook.
-- Profil → Aplikace & kalendář → povolit iCal odběr, zkopírovat URL.
+- Profil → Aplikace & kalendář → povolit iCal odběr. Použijte **Odběr na jedno kliknutí**: Přidat do Google Calendar, Odběr (Apple / Outlook desktop) nebo Přidat do Outlook (web). URL lze také zkopírovat a vložit do libovolné kalendářové aplikace.
 - Soukromí: data se ukládají na serveru nešifrovaná kvůli kanálu. Pouze po volbě.
 
 <a id="oauth"></a>
 ## OAuth & přihlášení
-- Přihlášení přes Google, GitHub, Apple, X nebo Facebook (pokud povoleno vaší instancí).
-- Uživatelé OAuth: nastavte šifrovací heslo při prvním přihlášení. Zapamatujte si ho – odemyká vaše data.
+- Přihlášení přes Google, GitHub, Apple, Microsoft, X nebo Facebook (pokud povoleno vaší instancí).
+- Uživatelé OAuth (Google, GitHub, Microsoft): můžete **použít bezpečný klíč uložený u poskytovatele** (nemusíte si pamatovat heslo; poskytovatel by mohl klíč přečíst; data v Tigement zůstávají soukromá) nebo **použít vlastní heslo**. U Apple a dalších platí pouze heslo.
+- Uživatelé OAuth, kteří zvolí vlastní heslo: nastavte ho při prvním přihlášení a zapamatujte si ho – odemyká vaše data.
 - „Důvěřovat zařízení 30 dní“ přeskočí 2FA pro tuto relaci.
 
 <a id="zapomenute-heslo"></a>
