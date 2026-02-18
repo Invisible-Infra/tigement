@@ -57,6 +57,7 @@ Plánovací workspace vyžaduje registraci. Úvodní video a interaktivní tutor
 - Na mobilu je stránkování fixně dole s tlačítky a rozbalovacím seznamem.
 - Umístění kurzoru v názvu úkolu odpovídá přesnému kliknutí.
 - **Režimy zobrazení**: Vše v jednom (volný canvas) nebo Prostory (dny vlevo, LIST prostory vpravo). Přepínač v postranním panelu.
+  - Naposledy zvolený režim (Vše v jednom nebo Prostory) se na tomto zařízení pamatuje a obnoví se po reloadu stránky.
 - **Zoom**: Pouze desktop – 50 % až 200 %. Rozdělené zobrazení v Prostorech: tažitelný oddělovač mezi dny a LIST panely.
 
 <a id="prostory"></a>

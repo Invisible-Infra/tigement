@@ -50,8 +50,8 @@ function deepEqual(a: any, b: any): boolean {
   return true
 }
 
-// Client-only settings keys that must not affect conflict comparison (e.g. visibility per device)
-const CLIENT_ONLY_SETTINGS_KEYS = ['visibleSpaceIds']
+// Client-only settings keys that must not affect conflict comparison (e.g. visibility/view mode per device)
+const CLIENT_ONLY_SETTINGS_KEYS = ['visibleSpaceIds', 'viewMode']
 
 /** Tables with _shared are local-only; exclude from sync payload */
 function tablesForSync(tables: any[]): any[] {

@@ -57,6 +57,7 @@ The planner workspace requires registration. You can try the onboarding video an
 - Pagination on mobile: fixed bar with Previous/Next and a dropdown to jump.
 - Caret placement fix: click inside task title sets cursor precisely where you click.
 - **View modes**: All-in-one (freeform canvas) or Spaces (days on left, LIST spaces on right). Switch in the sidebar.
+  - Your last selected view (All-in-one or Spaces) is remembered on this device and restored after reload.
 - **Zoom**: Desktop only – 50% to 200%. Split view in Spaces: draggable divider between days and LIST panels.
 
 <a id="spaces"></a>

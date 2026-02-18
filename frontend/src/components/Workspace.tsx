@@ -1400,8 +1400,12 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
       // Single setTables call with merged data
       setTables(migrateDayTableTitles(finalTables, newSettings?.dateFormat || loadSettings()?.dateFormat || 'DD. MM. YYYY'))
       restoreCurrentTableIndex(finalTables.length)
-      // visibleSpaceIds is client-only: never overwrite with remote (remote may have [] which would hide spaces)
-      setSettings(prev => ({ ...newSettings, visibleSpaceIds: prev.visibleSpaceIds ?? newSettings.visibleSpaceIds }))
+      // visibleSpaceIds and viewMode are client-only: never overwrite with remote (remote may have [] or stale view)
+      setSettings(prev => ({
+        ...newSettings,
+        viewMode: prev.viewMode ?? newSettings.viewMode,
+        visibleSpaceIds: prev.visibleSpaceIds ?? newSettings.visibleSpaceIds
+      }))
       setTaskGroups(newTaskGroups || defaultTaskGroups)
       
       // Update notebook state separately
@@ -1616,6 +1620,8 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
   
   const fileInputRef = useRef<HTMLInputElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const spacesDaysScrollRef = useRef<HTMLDivElement>(null)
+  const spacesListsScrollRef = useRef<HTMLDivElement>(null)
 
   // State for spaces view mode
   const [spaces, setSpaces] = useState<Space[]>(() => {
@@ -2449,6 +2455,34 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
     focusTable(tableId)
   }
 
+  const getNewTablePosition = (type: 'day' | 'list') => {
+    const margin = 20
+    const safeZoom = zoom || 1
+    let container: HTMLDivElement | null = null
+
+    if (!isMobile) {
+      if (viewMode === 'spaces') {
+        container = type === 'day'
+          ? spacesDaysScrollRef.current
+          : spacesListsScrollRef.current
+      } else {
+        container = scrollContainerRef.current
+      }
+    }
+
+    if (container) {
+      const scrollLeft = container.scrollLeft || 0
+      const scrollTop = container.scrollTop || 0
+
+      return {
+        x: scrollLeft / safeZoom + margin,
+        y: scrollTop / safeZoom + margin,
+      }
+    }
+
+    return { x: margin, y: margin }
+  }
+
   const addTable = (type: 'day' | 'list') => {
     // Smart date selection for Day tables
     let newDate: Date
@@ -2506,7 +2540,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
       type,
       title: type === 'day' ? formatDate(dateStr!) : 'LIST',
       tasks: allTasks,
-      position: { x: 20 + tables.length * 100, y: 20 + tables.length * 50 }
+      position: getNewTablePosition(type),
     }
 
     const newTable: Table = type === 'day'
@@ -4926,6 +4960,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
           <SplitView
             leftContent={
               <div 
+                ref={spacesDaysScrollRef}
                 className="h-full overflow-auto px-4 pb-8 bg-gray-100 relative"
                 style={{ 
                   transform: `scale(${zoom})`,
@@ -4955,6 +4990,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
                         width: `${table.size?.width ?? 680}px`,
                         minHeight: (table.collapsed ?? false) ? 0 : (table.size?.height ? table.size.height : 400),
                         height: (table.collapsed ?? false) ? 'auto' : (table.size?.height ? table.size.height : 'auto'),
+                        zIndex: isDraggingTable ? 1000 : tableZIndex,
                       }}
                     >
                       <TableComponent
@@ -5063,6 +5099,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
                   />
                 </div>
                 <div 
+                  ref={spacesListsScrollRef}
                   className={`flex-1 overflow-auto bg-gray-100 relative ${isMobile ? 'pb-32' : 'px-4 pb-8'}`}
                   style={{ 
                     transform: `scale(${zoom})`,
@@ -5094,6 +5131,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
                           width: `${table.size?.width ?? 680}px`,
                           minHeight: (table.collapsed ?? false) ? 0 : (table.size?.height ? table.size.height : 400),
                           height: (table.collapsed ?? false) ? 'auto' : (table.size?.height ? table.size.height : 'auto'),
+                          zIndex: isDraggingTable ? 1000 : tableZIndex,
                         }}
                       >
                         <TableComponent
