@@ -277,11 +277,11 @@ export function TableComponent({
           marginBottom: '1rem',
         } : {}),
       }}
-      className="bg-white shadow-lg md:rounded-lg overflow-hidden flex flex-col"
+      className="bg-white shadow-lg md:rounded-lg overflow-hidden flex flex-col border-2 border-gray-200"
     >
       {/* Table Header */}
       <div 
-        className="bg-[#4a6c7a] text-white px-4 py-3 md:rounded-t-lg flex justify-between items-center gap-3"
+        className="bg-primary-header text-white px-4 py-3 md:rounded-t-lg flex justify-between items-center gap-3"
         onMouseDown={canMoveTable && !isMobile ? (e) => handleTableDragStart(e, table.id) : undefined}
         style={{ cursor: canMoveTable && !isMobile ? 'grab' : 'default' }}
       >
@@ -467,7 +467,7 @@ export function TableComponent({
       </div>
 
       {/* Table Controls Row */}
-      <div className={`table-header bg-[#5a7c8a] text-white ${isMobile ? 'px-1 py-1' : 'px-2 py-2'} flex items-center ${isMobile ? 'gap-1' : 'gap-2'} text-xs font-semibold`}>
+      <div className={`table-header bg-primary-header text-white ${isMobile ? 'px-1 py-1' : 'px-2 py-2'} flex items-center ${isMobile ? 'gap-1' : 'gap-2'} text-xs font-semibold`}>
         {/* Select All Checkbox */}
         {!readOnly && (
           <input

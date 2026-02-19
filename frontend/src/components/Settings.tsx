@@ -513,6 +513,14 @@ export function Settings({ onClose, settings, onSettingsChange, isPremium, taskG
               onChange={(e) => setTheme(e.target.value as ThemeName)}
               className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-[#4fc3f7]"
             >
+              <option value="neon-light">Neon Light</option>
+              <option value="neon-dark">Neon Dark</option>
+              <option value="ocean-light">Ocean Light</option>
+              <option value="ocean-dark">Ocean Dark</option>
+              <option value="forest-light">Forest Light</option>
+              <option value="forest-dark">Forest Dark</option>
+              <option value="ember-light">Ember Light</option>
+              <option value="ember-dark">Ember Dark</option>
               <option value="light">Light (Modern)</option>
               <option value="classic">Classic (Retro)</option>
               <option value="dark">Dark</option>

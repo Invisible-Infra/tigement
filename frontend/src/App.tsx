@@ -499,17 +499,17 @@ function AppContent() {
 
   return (
     <div className="h-screen overflow-hidden bg-gray-50 flex flex-col">
-      <nav className={`flex-shrink-0 bg-[#4a6c7a] text-white ${isMobile ? 'p-2' : 'p-4'} md:pr-4 pr-16`}>
+      <nav className={`flex-shrink-0 bg-primary-header text-white ${isMobile ? 'p-2' : 'p-4'} md:pr-4 pr-16`}>
         <div className="flex items-center justify-between max-w-full">
           <div className="logo relative inline-block flex-shrink-0">
-            <div className="relative inline-block bg-[#2d4a56] px-3 py-1" style={{ transform: 'skewX(-12deg)' }}>
+            <div className="relative inline-block bg-primary-dark px-3 py-1" style={{ transform: 'skewX(-12deg)' }}>
               <span 
                 className="font-bold italic inline-block text-white"
                 style={{ fontSize: isMobile ? '14px' : '24px' }}
               >
                 Tig<span className="inline-block" style={{ verticalAlign: '-0.1em', color: isOnline ? '#4fc3f7' : '#ef4444' }} title={isOnline ? undefined : 'Offline – changes saved locally'}>≡</span>ment
               </span>
-              <span className="text-[10px] absolute -bottom-2 right-3 !bg-white text-[#2d4a56] px-1.5 py-0.6 font-medium hidden md:block">{version}</span>
+              <span className="text-[10px] absolute -bottom-2 right-3 !bg-white text-primary-dark px-1.5 py-0.6 font-medium hidden md:block">{version}</span>
             </div>
           </div>
           
