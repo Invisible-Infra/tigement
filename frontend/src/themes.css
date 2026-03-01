@@ -2065,3 +2065,11 @@ body {
   color: var(--color-text) !important;
 }
 
+/* Version tag in header: always dark-on-white so it stays readable in every theme.
+   Higher specificity than .theme-* .bg-primary-header * (2 classes + *) so we win. */
+.bg-primary-header .logo .version-badge,
+.version-badge {
+  background-color: #ffffff !important;
+  color: #1a5f7a !important;
+}
+

@@ -187,7 +187,7 @@ function AppContent() {
       .catch(() => setVersion('alpha')) // Fallback to 'alpha' if fetch fails
   }, [])
 
-  // Handle OAuth callback
+// Handle OAuth callback
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const oauthToken = params.get('oauth_token')
@@ -509,7 +509,7 @@ function AppContent() {
               >
                 Tig<span className="inline-block" style={{ verticalAlign: '-0.1em', color: isOnline ? '#4fc3f7' : '#ef4444' }} title={isOnline ? undefined : 'Offline – changes saved locally'}>≡</span>ment
               </span>
-              <span className="text-[10px] absolute -bottom-2 right-3 !bg-white text-primary-dark px-1.5 py-0.6 font-medium hidden md:block">{version}</span>
+              <span className="version-badge text-[10px] absolute -bottom-2 right-3 px-1.5 py-0.6 font-medium hidden md:block">{version}</span>
             </div>
           </div>
           

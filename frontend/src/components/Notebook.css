@@ -168,8 +168,14 @@
   margin-right: 0.5em;
 }
 
-/* Dark mode support (optional - can be enabled based on theme) */
-.theme-dark .notebook-preview {
+/* Dark mode support for all dark themes (avoid black text on dark background) */
+.theme-dark .notebook-preview,
+.theme-terminal .notebook-preview,
+.theme-spectrum .notebook-preview,
+.theme-neon-dark .notebook-preview,
+.theme-ocean-dark .notebook-preview,
+.theme-forest-dark .notebook-preview,
+.theme-ember-dark .notebook-preview {
   color: #e5e7eb;
 }
 
@@ -178,30 +184,165 @@
 .theme-dark .notebook-preview h3,
 .theme-dark .notebook-preview h4,
 .theme-dark .notebook-preview h5,
-.theme-dark .notebook-preview h6 {
+.theme-dark .notebook-preview h6,
+.theme-terminal .notebook-preview h1,
+.theme-terminal .notebook-preview h2,
+.theme-terminal .notebook-preview h3,
+.theme-terminal .notebook-preview h4,
+.theme-terminal .notebook-preview h5,
+.theme-terminal .notebook-preview h6,
+.theme-spectrum .notebook-preview h1,
+.theme-spectrum .notebook-preview h2,
+.theme-spectrum .notebook-preview h3,
+.theme-spectrum .notebook-preview h4,
+.theme-spectrum .notebook-preview h5,
+.theme-spectrum .notebook-preview h6,
+.theme-neon-dark .notebook-preview h1,
+.theme-neon-dark .notebook-preview h2,
+.theme-neon-dark .notebook-preview h3,
+.theme-neon-dark .notebook-preview h4,
+.theme-neon-dark .notebook-preview h5,
+.theme-neon-dark .notebook-preview h6,
+.theme-ocean-dark .notebook-preview h1,
+.theme-ocean-dark .notebook-preview h2,
+.theme-ocean-dark .notebook-preview h3,
+.theme-ocean-dark .notebook-preview h4,
+.theme-ocean-dark .notebook-preview h5,
+.theme-ocean-dark .notebook-preview h6,
+.theme-forest-dark .notebook-preview h1,
+.theme-forest-dark .notebook-preview h2,
+.theme-forest-dark .notebook-preview h3,
+.theme-forest-dark .notebook-preview h4,
+.theme-forest-dark .notebook-preview h5,
+.theme-forest-dark .notebook-preview h6,
+.theme-ember-dark .notebook-preview h1,
+.theme-ember-dark .notebook-preview h2,
+.theme-ember-dark .notebook-preview h3,
+.theme-ember-dark .notebook-preview h4,
+.theme-ember-dark .notebook-preview h5,
+.theme-ember-dark .notebook-preview h6 {
   color: #f9fafb;
 }
 
-.theme-dark .notebook-preview code {
+.theme-dark .notebook-preview strong,
+.theme-terminal .notebook-preview strong,
+.theme-spectrum .notebook-preview strong,
+.theme-neon-dark .notebook-preview strong,
+.theme-ocean-dark .notebook-preview strong,
+.theme-forest-dark .notebook-preview strong,
+.theme-ember-dark .notebook-preview strong {
+  color: #f9fafb;
+}
+
+.theme-dark .notebook-preview code,
+.theme-terminal .notebook-preview code,
+.theme-spectrum .notebook-preview code,
+.theme-neon-dark .notebook-preview code,
+.theme-ocean-dark .notebook-preview code,
+.theme-forest-dark .notebook-preview code,
+.theme-ember-dark .notebook-preview code {
   background-color: #374151;
   color: #fca5a5;
 }
 
-.theme-dark .notebook-preview table {
+.theme-dark .notebook-preview pre,
+.theme-terminal .notebook-preview pre,
+.theme-spectrum .notebook-preview pre,
+.theme-neon-dark .notebook-preview pre,
+.theme-ocean-dark .notebook-preview pre,
+.theme-forest-dark .notebook-preview pre,
+.theme-ember-dark .notebook-preview pre {
+  background-color: #1e1e1e;
+  border: 1px solid #4b5563;
+}
+
+.theme-dark .notebook-preview pre code,
+.theme-terminal .notebook-preview pre code,
+.theme-spectrum .notebook-preview pre code,
+.theme-neon-dark .notebook-preview pre code,
+.theme-ocean-dark .notebook-preview pre code,
+.theme-forest-dark .notebook-preview pre code,
+.theme-ember-dark .notebook-preview pre code {
+  background-color: transparent;
+  color: #d4d4d4;
+}
+
+.theme-dark .notebook-preview table,
+.theme-terminal .notebook-preview table,
+.theme-spectrum .notebook-preview table,
+.theme-neon-dark .notebook-preview table,
+.theme-ocean-dark .notebook-preview table,
+.theme-forest-dark .notebook-preview table,
+.theme-ember-dark .notebook-preview table {
   border-color: #4b5563;
 }
 
 .theme-dark .notebook-preview table th,
-.theme-dark .notebook-preview table td {
+.theme-dark .notebook-preview table td,
+.theme-terminal .notebook-preview table th,
+.theme-terminal .notebook-preview table td,
+.theme-spectrum .notebook-preview table th,
+.theme-spectrum .notebook-preview table td,
+.theme-neon-dark .notebook-preview table th,
+.theme-neon-dark .notebook-preview table td,
+.theme-ocean-dark .notebook-preview table th,
+.theme-ocean-dark .notebook-preview table td,
+.theme-forest-dark .notebook-preview table th,
+.theme-forest-dark .notebook-preview table td,
+.theme-ember-dark .notebook-preview table th,
+.theme-ember-dark .notebook-preview table td {
   border-color: #4b5563;
+  color: #e5e7eb;
 }
 
-.theme-dark .notebook-preview table thead {
+.theme-dark .notebook-preview table thead,
+.theme-terminal .notebook-preview table thead,
+.theme-spectrum .notebook-preview table thead,
+.theme-neon-dark .notebook-preview table thead,
+.theme-ocean-dark .notebook-preview table thead,
+.theme-forest-dark .notebook-preview table thead,
+.theme-ember-dark .notebook-preview table thead {
   background-color: #374151;
 }
 
-.theme-dark .notebook-preview blockquote {
+.theme-dark .notebook-preview table th,
+.theme-terminal .notebook-preview table th,
+.theme-spectrum .notebook-preview table th,
+.theme-neon-dark .notebook-preview table th,
+.theme-ocean-dark .notebook-preview table th,
+.theme-forest-dark .notebook-preview table th,
+.theme-ember-dark .notebook-preview table th {
+  color: #f9fafb;
+}
+
+.theme-dark .notebook-preview blockquote,
+.theme-terminal .notebook-preview blockquote,
+.theme-spectrum .notebook-preview blockquote,
+.theme-neon-dark .notebook-preview blockquote,
+.theme-ocean-dark .notebook-preview blockquote,
+.theme-forest-dark .notebook-preview blockquote,
+.theme-ember-dark .notebook-preview blockquote {
   border-left-color: #4b5563;
   color: #9ca3af;
+}
+
+.theme-dark .notebook-preview del,
+.theme-terminal .notebook-preview del,
+.theme-spectrum .notebook-preview del,
+.theme-neon-dark .notebook-preview del,
+.theme-ocean-dark .notebook-preview del,
+.theme-forest-dark .notebook-preview del,
+.theme-ember-dark .notebook-preview del {
+  color: #9ca3af;
+}
+
+.theme-dark .notebook-preview hr,
+.theme-terminal .notebook-preview hr,
+.theme-spectrum .notebook-preview hr,
+.theme-neon-dark .notebook-preview hr,
+.theme-ocean-dark .notebook-preview hr,
+.theme-forest-dark .notebook-preview hr,
+.theme-ember-dark .notebook-preview hr {
+  border-top-color: #4b5563;
 }
 
