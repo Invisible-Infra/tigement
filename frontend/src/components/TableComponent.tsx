@@ -841,6 +841,14 @@ export function TableComponent({
                   data-tutorial-target={tutorialTargets?.taskTargets?.[task.id]?.name}
                   value={task.title}
                   onChange={(e) => updateTask(table.id, task.id, 'title', e.target.value)}
+                  onBlur={(e) => {
+                    // Ensure long task names show from the start after editing ends
+                    const el = e.currentTarget
+                    el.scrollLeft = 0
+                    requestAnimationFrame(() => {
+                      el.scrollLeft = 0
+                    })
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault()
