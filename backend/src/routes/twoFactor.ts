@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express'
 import speakeasy from 'speakeasy'
 import QRCode from 'qrcode'
-import bcrypt from 'bcrypt'
+import bcrypt from 'bcryptjs'
 import { query } from '../db'
 import { authMiddleware, AuthRequest } from '../middleware/auth'
 

@@ -7,7 +7,7 @@ import passport from 'passport';
 import { Strategy as GitHubStrategy } from 'passport-github2';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { Strategy as AppleStrategy } from 'passport-apple';
-import { Strategy as TwitterStrategy } from 'passport-twitter';
+import { Strategy as TwitterStrategy } from '@superfaceai/passport-twitter-oauth2';
 import { Strategy as FacebookStrategy } from 'passport-facebook';
 import { Strategy as MicrosoftStrategy } from 'passport-microsoft';
 import { query } from '../db';
@@ -56,12 +56,14 @@ export function configureOAuth() {
   }
 
   // Twitter (X) OAuth
-  if (process.env.TWITTER_CONSUMER_KEY && process.env.TWITTER_CONSUMER_SECRET) {
+  // OAuth 2.0 requires client id/secret; we fall back to legacy env names to avoid hard failure.
+  if ((process.env.TWITTER_CLIENT_ID || process.env.TWITTER_CONSUMER_KEY) && (process.env.TWITTER_CLIENT_SECRET || process.env.TWITTER_CONSUMER_SECRET)) {
     passport.use(new TwitterStrategy({
-      consumerKey: process.env.TWITTER_CONSUMER_KEY,
-      consumerSecret: process.env.TWITTER_CONSUMER_SECRET,
+      clientType: 'confidential',
+      clientID: process.env.TWITTER_CLIENT_ID || process.env.TWITTER_CONSUMER_KEY || '',
+      clientSecret: process.env.TWITTER_CLIENT_SECRET || process.env.TWITTER_CONSUMER_SECRET || '',
       callbackURL: `${BACKEND_URL}/api/auth/oauth/twitter/callback`,
-      includeEmail: true
+      scope: ['users.read']
     }, handleOAuthCallback('twitter')));
   }
 
@@ -90,7 +92,7 @@ export function configureOAuth() {
     github: !!process.env.GITHUB_CLIENT_ID,
     google: !!process.env.GOOGLE_CLIENT_ID,
     apple: !!process.env.APPLE_CLIENT_ID,
-    twitter: !!process.env.TWITTER_CONSUMER_KEY,
+    twitter: !!(process.env.TWITTER_CLIENT_ID || process.env.TWITTER_CONSUMER_KEY),
     facebook: !!process.env.FACEBOOK_APP_ID,
     microsoft: !!process.env.MICROSOFT_CLIENT_ID
   });

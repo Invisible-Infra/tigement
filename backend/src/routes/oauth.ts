@@ -7,7 +7,7 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import passport from 'passport';
 import jwt from 'jsonwebtoken';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import pool, { query } from '../db';
 import { getJwtSecret, getJwtRefreshSecret } from '../env';
