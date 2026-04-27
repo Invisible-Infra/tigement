@@ -46,7 +46,7 @@ The planner workspace requires registration. You can try the onboarding video an
 1. Register and log in (email/password or OAuth: Google, GitHub, Apple, Microsoft, X, Facebook).
 2. Add a Day or LIST table from the right sidebar.
 3. Add tasks; on Day tables, times auto-chain from the table start time.
-4. Use the hamburger on mobile to open the sidebar.
+4. On mobile, tap **More** (⋯) to open the workspace menu.
 
 <a id="workspace-basics"></a>
 ## Workspace Basics
@@ -136,7 +136,7 @@ Tip: If you need a hard start for the first task, set the table start time. Ever
 <a id="table-sharing"></a>
 ## Table Sharing (Premium)
 - E2EE share tables by email. Recipients get View or Edit permission.
-- Share button in table header. Recipients see "Shared with me" in sidebar.
+- Share button in table header. Recipients find shared tables in **More → Tables → Shared with me**.
 - Non-premium recipients can view shared tables and pull updates, but edit requires premium.
 - View-only: open table, no editing. Edit: live-edit in SharedTableEditorModal or add to workspace and push changes.
 - Pull changes: owner and recipient can pull updates. Conflict resolution when multiple recipients edit.

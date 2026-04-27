@@ -46,7 +46,7 @@ Plánovací workspace vyžaduje registraci. Úvodní video a interaktivní tutor
 1. Zaregistrujte se a přihlaste (e-mail/heslo nebo OAuth: Google, GitHub, Apple, Microsoft, X, Facebook).
 2. Přidejte tabulku Den nebo LIST v pravém postranním panelu.
 3. Přidejte úkoly; u Den se časy řetězí od počátečního času tabulky.
-4. Na mobilu otevřete postranní panel tlačítkem (hamburger).
+4. Na mobilu otevřete menu workspace přes **More** (⋯).
 
 <a id="workspace"></a>
 ## Práce ve Workspace
@@ -136,7 +136,7 @@ Tip: Potřebujete pevný začátek? Nastavte čas začátku tabulky; ostatní se
 <a id="sdileni"></a>
 ## Sdílení tabulek (Premium)
 - E2EE sdílení tabulek e-mailem. Příjemci dostanou oprávnění Prohlížet nebo Upravovat.
-- Tlačítko Sdílet v hlavičce tabulky. Příjemci vidí „Sdíleno se mnou“ v postranním panelu.
+- Tlačítko Sdílet v hlavičce tabulky. Příjemci najdou tabulky v **More → Tabulky → Sdíleno se mnou**.
 - Příjemci bez premium mohou prohlížet sdílené tabulky a stahovat aktualizace; k úpravám je potřeba premium.
 - Pouze prohlížení: otevřít tabulku, bez úprav. Úpravy: živá editace v SharedTableEditorModal nebo přidat do workspace a odeslat změny.
 - Stáhnout změny: majitel i příjemce mohou stáhnout aktualizace. Řešení konfliktů při editaci více příjemci.
