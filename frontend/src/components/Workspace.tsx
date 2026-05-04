@@ -5586,7 +5586,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
         return (
           <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50 p-4" 
                onClick={() => setBulkGroupSelectorTable(null)}>
-            <div className="bg-white w-full max-w-md rounded-lg shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-white w-full max-w-md max-h-[90vh] overflow-y-auto overscroll-y-contain rounded-lg shadow-xl" onClick={(e) => e.stopPropagation()}>
               <div className="sticky top-0 bg-white border-b border-gray-200 px-4 py-3 rounded-t-lg flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-gray-800">Assign Group to Selected Tasks</h3>
                 <button 

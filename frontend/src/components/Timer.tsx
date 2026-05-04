@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useLayoutEffect, useCallback } from 'react'
 import { flashFavicon } from '../utils/faviconNotification'
 
 interface Task {
@@ -43,16 +43,25 @@ export function Timer({ onClose, tables, position = { x: window.innerWidth - 350
   }, [])
 
   // Helper function to constrain position within viewport bounds
-  const constrainPosition = (x: number, y: number): { x: number; y: number } => {
+  const constrainPosition = useCallback((x: number, y: number): { x: number; y: number } => {
     const modalWidth = 320 // w-80 = 320px
     const modalHeight = 400 // Approximate modal height
     const padding = 20 // Keep some padding from edges
-    
+
     return {
       x: Math.max(padding, Math.min(x, window.innerWidth - modalWidth - padding)),
       y: Math.max(padding, Math.min(y, window.innerHeight - modalHeight - padding))
     }
-  }
+  }, [])
+
+  // Clamp saved position into the current viewport on mount (resize alone misses first paint on a new viewport size, e.g. mobile after desktop).
+  useLayoutEffect(() => {
+    if (!onPositionChange) return
+    const constrained = constrainPosition(position.x, position.y)
+    if (constrained.x !== position.x || constrained.y !== position.y) {
+      onPositionChange(constrained)
+    }
+  }, [position.x, position.y, onPositionChange, constrainPosition])
 
   // Drag handling
   const handleDragStart = (e: React.MouseEvent) => {
@@ -85,20 +94,24 @@ export function Timer({ onClose, tables, position = { x: window.innerWidth - 350
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
     }
-  }, [isDragging, dragOffset, onPositionChange])
+  }, [isDragging, dragOffset, onPositionChange, constrainPosition])
 
-  // Constrain position on window resize
+  // Constrain position on window resize and device rotation
   useEffect(() => {
-    const handleResize = () => {
+    const handleViewportChange = () => {
       const constrained = constrainPosition(position.x, position.y)
       if (constrained.x !== position.x || constrained.y !== position.y) {
         onPositionChange?.(constrained)
       }
     }
-    
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [position, onPositionChange])
+
+    window.addEventListener('resize', handleViewportChange)
+    window.addEventListener('orientationchange', handleViewportChange)
+    return () => {
+      window.removeEventListener('resize', handleViewportChange)
+      window.removeEventListener('orientationchange', handleViewportChange)
+    }
+  }, [position.x, position.y, onPositionChange, constrainPosition])
 
   // Initialize AudioContext when Timer mounts
   useEffect(() => {
