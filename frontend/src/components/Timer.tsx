@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useCallback } from 'react'
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react'
 import { flashFavicon } from '../utils/faviconNotification'
 
 interface Task {
@@ -33,6 +33,8 @@ export function Timer({ onClose, tables, position = { x: window.innerWidth - 350
   const [audioContext, setAudioContext] = useState<AudioContext | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+  const timerRef = useRef<HTMLDivElement | null>(null)
+  const [modalSize, setModalSize] = useState<{ width: number; height: number }>({ width: 320, height: 400 })
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -42,26 +44,36 @@ export function Timer({ onClose, tables, position = { x: window.innerWidth - 350
     return () => clearInterval(interval)
   }, [])
 
+  // Measure actual rendered size (settings section makes this taller than the old estimate).
+  useLayoutEffect(() => {
+    const el = timerRef.current
+    if (!el) return
+    const next = { width: el.offsetWidth || 320, height: el.offsetHeight || 400 }
+    setModalSize(prev => (prev.width === next.width && prev.height === next.height ? prev : next))
+  }, [soundEnabled, visualEnabled])
+
   // Helper function to constrain position within viewport bounds
   const constrainPosition = useCallback((x: number, y: number): { x: number; y: number } => {
-    const modalWidth = 320 // w-80 = 320px
-    const modalHeight = 400 // Approximate modal height
     const padding = 20 // Keep some padding from edges
 
-    const safeX = Number.isFinite(x) ? x : window.innerWidth - 350
-    const safeY = Number.isFinite(y) ? y : Math.max(padding, window.innerHeight - 420)
+    const vv = window.visualViewport
+    const viewportWidth = vv?.width ?? window.innerWidth
+    const viewportHeight = vv?.height ?? window.innerHeight
+
+    const safeX = Number.isFinite(x) ? x : viewportWidth - 350
+    const safeY = Number.isFinite(y) ? y : Math.max(padding, viewportHeight - 420)
 
     // Mobile has a fixed bottom nav + (sometimes) a pagination bar above it.
     // Reserve extra space so the timer doesn't get clamped under those fixed UI bars.
-    const bottomReserved = window.innerWidth < 768 ? 140 : padding
-    const maxX = window.innerWidth - modalWidth - padding
-    const maxY = window.innerHeight - modalHeight - bottomReserved
+    const bottomReserved = viewportWidth < 768 ? 220 : padding
+    const maxX = viewportWidth - modalSize.width - padding
+    const maxY = viewportHeight - modalSize.height - bottomReserved
 
     return {
       x: Math.max(padding, Math.min(safeX, maxX)),
       y: Math.max(padding, Math.min(safeY, maxY))
     }
-  }, [])
+  }, [modalSize.height, modalSize.width])
 
   // Clamp saved position into the current viewport on mount (resize alone misses first paint on a new viewport size, e.g. mobile after desktop).
   useLayoutEffect(() => {
@@ -344,6 +356,7 @@ export function Timer({ onClose, tables, position = { x: window.innerWidth - 350
 
   return (
     <div 
+      ref={timerRef}
       className="fixed bg-white rounded-lg shadow-2xl w-80 z-50 border-2 border-gray-200"
       style={{ left: `${position.x}px`, top: `${position.y}px` }}
     >
