@@ -48,9 +48,18 @@ export function Timer({ onClose, tables, position = { x: window.innerWidth - 350
     const modalHeight = 400 // Approximate modal height
     const padding = 20 // Keep some padding from edges
 
+    const safeX = Number.isFinite(x) ? x : window.innerWidth - 350
+    const safeY = Number.isFinite(y) ? y : Math.max(padding, window.innerHeight - 420)
+
+    // Mobile has a fixed bottom nav + (sometimes) a pagination bar above it.
+    // Reserve extra space so the timer doesn't get clamped under those fixed UI bars.
+    const bottomReserved = window.innerWidth < 768 ? 140 : padding
+    const maxX = window.innerWidth - modalWidth - padding
+    const maxY = window.innerHeight - modalHeight - bottomReserved
+
     return {
-      x: Math.max(padding, Math.min(x, window.innerWidth - modalWidth - padding)),
-      y: Math.max(padding, Math.min(y, window.innerHeight - modalHeight - padding))
+      x: Math.max(padding, Math.min(safeX, maxX)),
+      y: Math.max(padding, Math.min(safeY, maxY))
     }
   }, [])
 
