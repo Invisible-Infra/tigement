@@ -4,6 +4,7 @@ import QRCode from 'qrcode'
 import bcrypt from 'bcryptjs'
 import { query } from '../db'
 import { authMiddleware, AuthRequest } from '../middleware/auth'
+import { verifyTwoFactorForUser, verifyTotpAgainstSecret } from '../services/twoFactorVerify'
 
 const router = Router()
 
@@ -77,15 +78,7 @@ router.post('/verify', authMiddleware, async (req: AuthRequest, res: Response) =
       return res.status(400).json({ error: '2FA not set up' })
     }
 
-    // Verify token
-    const verified = speakeasy.totp.verify({
-      secret: user.two_factor_secret,
-      encoding: 'base32',
-      token: token,
-      window: 2 // Allow 2 time steps before/after for clock drift
-    })
-
-    if (!verified) {
+    if (!verifyTotpAgainstSecret(user.two_factor_secret, token)) {
       return res.status(400).json({ error: 'Invalid token' })
     }
 
@@ -176,56 +169,21 @@ router.post('/validate', async (req: Request, res: Response) => {
   try {
     const { userId, token } = req.body
 
-    if (!userId || !token) {
+    if (userId == null || userId === '' || !token) {
       return res.status(400).json({ error: 'User ID and token are required' })
     }
 
-    // Get user's secret
-    const result = await query(
-      'SELECT two_factor_secret FROM users WHERE id = $1 AND two_factor_enabled = TRUE',
-      [userId]
-    )
-
-    const user = result.rows[0]
-    if (!user || !user.two_factor_secret) {
+    const result = await verifyTwoFactorForUser(userId, token, { consumeBackup: false })
+    if (result.ok) {
+      return res.json({ valid: true, usedBackupCode: result.usedBackupCode })
+    }
+    if (result.reason === 'not_enabled' || result.reason === 'no_secret') {
       return res.status(400).json({ error: '2FA not enabled for this user' })
     }
-
-    // Check if it's a backup code
-    if (token.length === 8 && /^[A-Z0-9]+$/.test(token)) {
-      const backupCodesResult = await query(
-        'SELECT id, code_hash FROM backup_codes WHERE user_id = $1 AND used = FALSE',
-        [userId]
-      )
-
-      for (const backupCode of backupCodesResult.rows) {
-        const matches = await bcrypt.compare(token, backupCode.code_hash)
-        if (matches) {
-          // Mark code as used
-          await query(
-            'UPDATE backup_codes SET used = TRUE WHERE id = $1',
-            [backupCode.id]
-          )
-          return res.json({ valid: true, usedBackupCode: true })
-        }
-      }
-
+    if (result.reason === 'invalid_backup') {
       return res.status(400).json({ error: 'Invalid backup code' })
     }
-
-    // Verify TOTP token
-    const verified = speakeasy.totp.verify({
-      secret: user.two_factor_secret,
-      encoding: 'base32',
-      token: token,
-      window: 2
-    })
-
-    if (!verified) {
-      return res.status(400).json({ error: 'Invalid token' })
-    }
-
-    res.json({ valid: true })
+    return res.status(400).json({ error: 'Invalid token' })
   } catch (error) {
     console.error('2FA validate error:', error)
     res.status(500).json({ error: 'Failed to validate 2FA token' })

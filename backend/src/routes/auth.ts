@@ -7,6 +7,7 @@ import { query } from '../db';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { getJwtSecret, getJwtRefreshSecret } from '../env';
 import { sendPasswordResetEmail } from '../services/email';
+import { verifyTwoFactorForUser } from '../services/twoFactorVerify';
 
 const router = Router();
 
@@ -201,9 +202,11 @@ router.post('/login', async (req, res) => {
           message: 'Two-factor authentication required'
         });
       }
-      
-      // Validate 2FA token (this will be checked via /api/2fa/validate)
-      // For now, we trust the frontend has validated it
+
+      const twoFa = await verifyTwoFactorForUser(user.id, twoFactorToken);
+      if (!twoFa.ok) {
+        return res.status(401).json({ error: 'Invalid two-factor code' });
+      }
     }
     
     // Generate tokens
