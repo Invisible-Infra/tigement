@@ -81,7 +81,7 @@ Tip: Potřebujete pevný začátek? Nastavte čas začátku tabulky; ostatní se
 ## Automatické plánování & výpočty
 - Řetězení časů: konec úkolu N je začátek úkolu N+1.
 - Změna délky aktualizuje všechny následující časy.
-- Celkový součet: v hlavičce tabulky Den („Time sum“).
+- Celkový součet: v hlavičce tabulek Den a LIST („Time sum“).
 - Vizuální nápověda:
   - Začíná-li název úkolu časem (např. „09:30 Stand‑up“), aplikace ukáže shodu/neshodu s vypočteným začátkem.
   - Neshody zvýrazní, abyste snadno sladili očekávání s plánem.

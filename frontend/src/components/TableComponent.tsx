@@ -358,7 +358,7 @@ export function TableComponent({
         </div>
         
         <div className="flex items-center gap-3">
-          {!isMobile && table.type === 'day' && (
+          {!isMobile && (
             <div className="text-sm whitespace-nowrap">
               Time sum: {getTotalDuration(table)}
             </div>

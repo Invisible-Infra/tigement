@@ -81,7 +81,7 @@ Tip: If you need a hard start for the first task, set the table start time. Ever
 ## Automatic Scheduling & Calculations
 - Chained times: finish of task N becomes start of task N+1.
 - Editing duration updates all following times.
-- Total duration: shown in the Day table header (“Time sum”).
+- Total duration: shown in Day and LIST table headers (“Time sum”).
 - Visual time hints:
   - If a task name starts with a time (e.g., “09:30 Stand‑up”), the app indicates whether it matches the computed start.
   - Mismatch is highlighted so you can reconcile expectations vs reality.

@@ -18,8 +18,8 @@
     "dotenv": "^16.3.1",
     "speakeasy": "^2.0.0",
     "qrcode": "^1.5.3",
-    "axios": "^1.6.2",
-    "nodemailer": "^8.0.2",
+    "axios": "^1.16.0",
+    "nodemailer": "^9.0.3",
     "@octokit/rest": "^20.0.2",
     "passport": "^0.7.0",
     "passport-github2": "^0.1.12",
@@ -37,7 +37,7 @@
   "devDependencies": {
     "@types/express": "^4.17.21",
     "@types/jsonwebtoken": "^9.0.5",
-    "@types/node": "^20.10.5",
+    "@types/node": "^24.0.0",
     "@types/pg": "^8.10.9",
     "@types/cors": "^2.8.17",
     "@types/speakeasy": "^2.0.10",
@@ -56,6 +56,13 @@
   },
   "overrides": {
     "minimatch": "^9.0.5",
-    "xmldom": "0.6.0"
+    "xmldom": "0.6.0",
+    "path-to-regexp": "0.1.13",
+    "qs": "^6.15.3",
+    "picomatch": "^2.3.2",
+    "brace-expansion": "5.0.8",
+    "form-data": "^4.0.6",
+    "follow-redirects": "^1.16.0",
+    "body-parser": "^1.20.6"
   }
 }
