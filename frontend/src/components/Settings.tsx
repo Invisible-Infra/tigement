@@ -1,6 +1,9 @@
 import { useState } from 'react'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useTheme, ThemeName } from '../contexts/ThemeContext'
 import type { ConditionalDefaultRule, Condition, TaskTemplate } from '../utils/conditionalDefaultTasks'
+import { GroupPickerModal } from './GroupPickerModal'
+import { iconMap, getContrastColor } from '../utils/groupIcons'
 
 interface Space {
   id: string
@@ -66,7 +69,7 @@ function RuleForm({
   defaultDuration: number
   defaultStartTime: string
   spaces?: Space[]
-  taskGroups?: { id: string; name: string }[]
+  taskGroups?: TaskGroup[]
   onSave: (r: ConditionalDefaultRule) => void
   onCancel: () => void
 }) {
@@ -83,6 +86,23 @@ function RuleForm({
   const [tasks, setTasks] = useState<TaskTemplate[]>(() =>
     rule?.tasks?.length ? rule.tasks : [{ title: '', duration: defaultDuration, startTime: undefined, group: undefined, notebook: undefined, selected: false }]
   )
+  const [groupPickerIndex, setGroupPickerIndex] = useState<number | null>(null)
+  const [dragFromIndex, setDragFromIndex] = useState<number | null>(null)
+  const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null)
+
+  const moveTask = (from: number, to: number) => {
+    if (from === to || from < 0 || to < 0 || from >= tasks.length || to >= tasks.length) return
+    const next = [...tasks]
+    const [item] = next.splice(from, 1)
+    next.splice(to, 0, item)
+    setTasks(next)
+  }
+
+  const updateTask = (i: number, upd: Partial<TaskTemplate>) => {
+    const next = [...tasks]
+    next[i] = { ...next[i], ...upd }
+    setTasks(next)
+  }
 
   const addCondition = (kind: 'preset' | 'expression') => {
     if (kind === 'preset') {
@@ -359,64 +379,146 @@ function RuleForm({
 
       <div>
         <label className="block text-xs font-medium text-gray-700 mb-1">Tasks to add</label>
-        {tasks.map((t, i) => (
-          <div key={i} className="flex flex-wrap gap-2 mb-2 p-2 bg-white rounded border border-gray-200">
-            <input
-              type="text"
-              value={t.title}
-              onChange={(e) => { const next = [...tasks]; next[i] = { ...next[i], title: e.target.value }; setTasks(next) }}
-              placeholder="Task title"
-              className="flex-1 min-w-[120px] px-2 py-1.5 border border-gray-300 rounded text-sm"
-            />
-            <input
-              type="number"
-              value={t.duration ?? defaultDuration}
-              onChange={(e) => { const next = [...tasks]; next[i] = { ...next[i], duration: Number(e.target.value) || defaultDuration }; setTasks(next) }}
-              min={1}
-              className="w-16 px-2 py-1.5 border border-gray-300 rounded text-sm"
-              title="Duration (min)"
-            />
-            {tableType === 'day' && i === 0 && (
-              <input
-                type="text"
-                value={t.startTime ?? defaultStartTime}
-                onChange={(e) => { const next = [...tasks]; next[i] = { ...next[i], startTime: e.target.value || defaultStartTime }; setTasks(next) }}
-                placeholder="HH:MM"
-                className="w-16 px-2 py-1.5 border border-gray-300 rounded text-sm"
-                title="Start time (first task only)"
-              />
-            )}
-            <select
-              value={t.group ?? ''}
-              onChange={(e) => { const next = [...tasks]; next[i] = { ...next[i], group: e.target.value || undefined }; setTasks(next) }}
-              className="px-2 py-1.5 border border-gray-300 rounded text-sm min-w-[100px]"
-              title="Task group"
-            >
-              <option value="">— Group</option>
-              {taskGroups.map(g => (
-                <option key={g.id} value={g.id}>{g.name}</option>
-              ))}
-            </select>
-            <input
-              type="text"
-              value={t.notebook ?? ''}
-              onChange={(e) => { const next = [...tasks]; next[i] = { ...next[i], notebook: e.target.value || undefined }; setTasks(next) }}
-              placeholder="Note..."
-              className="flex-1 min-w-[80px] px-2 py-1.5 border border-gray-300 rounded text-sm"
-              title="Task note"
-            />
-            <label className="flex items-center gap-1 px-2 py-1.5 text-sm cursor-pointer" title="Pre-select task">
-              <input
-                type="checkbox"
-                checked={t.selected ?? false}
-                onChange={(e) => { const next = [...tasks]; next[i] = { ...next[i], selected: e.target.checked }; setTasks(next) }}
-                className="rounded"
-              />
-              <span className="text-gray-600">Sel.</span>
-            </label>
-            <button type="button" onClick={() => setTasks(tasks.filter((_, j) => j !== i))} className="px-2 py-1 text-red-600 hover:bg-red-50 rounded text-sm">×</button>
+        {tasks.map((t, i) => {
+          const group = taskGroups.find(g => g.id === t.group)
+          const groupColor = group?.color
+          const titleBg = groupColor || undefined
+          const titleFg = groupColor ? getContrastColor(groupColor) : undefined
+          return (
+            <div key={i}>
+              {dropTargetIndex === i && dragFromIndex !== null && dragFromIndex !== i && (
+                <div className="min-h-[1.5rem] flex items-center justify-center mx-1 my-0.5 rounded border-2 border-dashed border-blue-400 bg-blue-50/50">
+                  <span className="text-blue-500 text-xs">Drop here</span>
+                </div>
+              )}
+              <div
+                className="flex flex-wrap items-center gap-1.5 mb-2 p-2 bg-white rounded border border-gray-200"
+                onDragOver={(e) => {
+                  e.preventDefault()
+                  if (dragFromIndex !== null && dragFromIndex !== i) setDropTargetIndex(i)
+                }}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  if (dragFromIndex !== null) {
+                    moveTask(dragFromIndex, i)
+                  }
+                  setDragFromIndex(null)
+                  setDropTargetIndex(null)
+                }}
+              >
+                <div
+                  draggable
+                  onDragStart={() => setDragFromIndex(i)}
+                  onDragEnd={() => { setDragFromIndex(null); setDropTargetIndex(null) }}
+                  className="flex items-center justify-center px-1 cursor-grab active:cursor-grabbing flex-shrink-0 text-gray-500 hover:text-gray-900 select-none"
+                  title="Drag to reorder"
+                >
+                  ⋮⋮
+                </div>
+                <div className="flex flex-col flex-shrink-0">
+                  <button
+                    type="button"
+                    disabled={i === 0}
+                    onClick={() => moveTask(i, i - 1)}
+                    className="px-1 text-xs text-gray-500 hover:text-gray-800 disabled:opacity-30 leading-none"
+                    title="Move up"
+                  >
+                    ▲
+                  </button>
+                  <button
+                    type="button"
+                    disabled={i === tasks.length - 1}
+                    onClick={() => moveTask(i, i + 1)}
+                    className="px-1 text-xs text-gray-500 hover:text-gray-800 disabled:opacity-30 leading-none"
+                    title="Move down"
+                  >
+                    ▼
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setGroupPickerIndex(i)}
+                  className="flex-shrink-0 px-1.5 py-1.5 rounded hover:opacity-80 transition"
+                  style={groupColor ? { backgroundColor: groupColor } : undefined}
+                  title={group ? `Group: ${group.name}` : 'Set group'}
+                >
+                  {group?.icon && iconMap[group.icon] ? (
+                    <FontAwesomeIcon
+                      icon={iconMap[group.icon]}
+                      style={{ color: getContrastColor(groupColor) }}
+                    />
+                  ) : (
+                    <span className="text-gray-400 text-sm">●</span>
+                  )}
+                </button>
+                <input
+                  type="text"
+                  value={t.title}
+                  onChange={(e) => updateTask(i, { title: e.target.value })}
+                  placeholder="Task title"
+                  className="flex-1 min-w-[120px] px-2 py-1.5 border border-gray-300 rounded text-sm"
+                  style={titleBg ? { backgroundColor: titleBg, color: titleFg } : undefined}
+                />
+                <input
+                  type="number"
+                  value={t.duration ?? defaultDuration}
+                  onChange={(e) => updateTask(i, { duration: Number(e.target.value) || defaultDuration })}
+                  min={1}
+                  className="w-16 px-2 py-1.5 border border-gray-300 rounded text-sm"
+                  title="Duration (min)"
+                />
+                {tableType === 'day' && i === 0 && (
+                  <input
+                    type="text"
+                    value={t.startTime ?? defaultStartTime}
+                    onChange={(e) => updateTask(i, { startTime: e.target.value || defaultStartTime })}
+                    placeholder="HH:MM"
+                    className="w-16 px-2 py-1.5 border border-gray-300 rounded text-sm"
+                    title="Start time (first task only)"
+                  />
+                )}
+                <input
+                  type="text"
+                  value={t.notebook ?? ''}
+                  onChange={(e) => updateTask(i, { notebook: e.target.value || undefined })}
+                  placeholder="Note..."
+                  className="flex-1 min-w-[80px] px-2 py-1.5 border border-gray-300 rounded text-sm"
+                  title="Task note"
+                />
+                <label className="flex items-center gap-1 px-2 py-1.5 text-sm cursor-pointer" title="Pre-select task">
+                  <input
+                    type="checkbox"
+                    checked={t.selected ?? false}
+                    onChange={(e) => updateTask(i, { selected: e.target.checked })}
+                    className="rounded"
+                  />
+                  <span className="text-gray-600">Sel.</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setTasks(tasks.filter((_, j) => j !== i))}
+                  className="px-2 py-1 text-red-600 hover:bg-red-50 rounded text-sm"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+          )
+        })}
+        {dropTargetIndex === tasks.length && dragFromIndex !== null && (
+          <div
+            className="min-h-[1.5rem] flex items-center justify-center mx-1 my-0.5 rounded border-2 border-dashed border-blue-400 bg-blue-50/50"
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault()
+              if (dragFromIndex !== null) moveTask(dragFromIndex, tasks.length - 1)
+              setDragFromIndex(null)
+              setDropTargetIndex(null)
+            }}
+          >
+            <span className="text-blue-500 text-xs">Drop here</span>
           </div>
-        ))}
+        )}
         <button
           type="button"
           onClick={() => setTasks([...tasks, { title: '', duration: defaultDuration, startTime: undefined, group: undefined, notebook: undefined, selected: false }])}
@@ -424,6 +526,17 @@ function RuleForm({
         >
           + Add task
         </button>
+        {groupPickerIndex !== null && (
+          <GroupPickerModal
+            groups={taskGroups}
+            selectedId={tasks[groupPickerIndex]?.group}
+            onSelect={(groupId) => {
+              updateTask(groupPickerIndex, { group: groupId })
+              setGroupPickerIndex(null)
+            }}
+            onClose={() => setGroupPickerIndex(null)}
+          />
+        )}
       </div>
       <div className="flex gap-2 pt-2">
         <button type="button" onClick={handleSave} className="px-3 py-1.5 bg-[#4fc3f7] text-white rounded text-sm hover:bg-[#3ba3d7]">Save rule</button>
