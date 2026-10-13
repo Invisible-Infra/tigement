@@ -7,10 +7,6 @@ import { api, VersionConflictError } from './api'
 import { encryptWorkspace, decryptWorkspace } from './encryption'
 import { encryptionKeyManager } from './encryptionKey'
 import { getSyncClientId } from './syncClientId'
-<<<<<<< HEAD
-import { normalizeTableType } from './storage'
-import { normalizeDeadline } from './deadline'
-=======
 import {
   normalizeTableType,
   loadTables,
@@ -27,7 +23,7 @@ import {
   saveArchivedTables,
   getStorageKey,
 } from './storage'
->>>>>>> origin/beta
+import { normalizeDeadline } from './deadline'
 
 interface ConflictData {
   local: { tables: any[]; settings: any; archivedTables?: any[] }
