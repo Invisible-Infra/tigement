@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { api } from '../../utils/api'
-import { loadTables, loadNotebooks, stashAnonDataSnapshot } from '../../utils/storage'
 import { OAuthButtons } from './OAuthButtons'
 
 interface LoginFormProps {
@@ -32,18 +31,6 @@ export function LoginForm({ onClose, onSwitchToRegister, onSwitchToForgotPasswor
     setLoading(true)
 
     try {
-      // Stash anonymous local data BEFORE any login/sync can change storage
-      try {
-        const anonTables = loadTables()
-        const anonNotebooks = loadNotebooks()
-        if ((anonTables && anonTables.length) || (anonNotebooks && ((anonNotebooks.workspace?.trim()?.length || 0) > 0 || Object.keys(anonNotebooks.tasks || {}).length > 0))) {
-          stashAnonDataSnapshot('pre_login', anonTables, anonNotebooks)
-          // Set flag to prevent auto-reload so merge dialog can be shown
-          sessionStorage.setItem('tigement_has_merge_data', 'true')
-          console.log('🔒 Merge data detected - auto-reload will be skipped')
-        }
-      } catch {}
-
       if (requires2FA && userId) {
         // Validate 2FA token
         const validation = await api.validate2FA(userId, twoFactorToken)

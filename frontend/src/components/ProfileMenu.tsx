@@ -5,7 +5,7 @@ import { encryptionKeyManager } from '../utils/encryptionKey'
 import { TwoFactorSetup } from './TwoFactorSetup'
 import { syncManager } from '../utils/syncManager'
 import { exportBackup, downloadBackup, validateBackup, importBackup } from '../utils/backup'
-import { loadTables } from '../utils/storage'
+import { loadTables, getStorageKey } from '../utils/storage'
 import { formatDateWithSettings } from '../utils/dateFormat'
 import { ReferralCouponsPanel } from './ReferralCouponsPanel'
 import { TokenManagement } from './TokenManagement'
@@ -474,7 +474,7 @@ export function ProfileMenu({ onClose, showDecryptionWarning }: ProfileMenuProps
       await new Promise(resolve => setTimeout(resolve, 0))
       
       // Set flag for Workspace to reset its cache
-      localStorage.setItem('tigement_ical_just_enabled', 'true')
+      localStorage.setItem(getStorageKey('tigement_ical_just_enabled'), 'true')
       
       // Trigger initial sync with current tables
       let syncSuccess = false
@@ -489,7 +489,7 @@ export function ProfileMenu({ onClose, showDecryptionWarning }: ProfileMenuProps
         
         if (dayTables.length > 0) {
           const syncTime = Date.now()
-          localStorage.setItem('tigement_last_ical_sync', syncTime.toString())
+          localStorage.setItem(getStorageKey('tigement_last_ical_sync'), syncTime.toString())
           console.log('🔄 Starting calendar sync...')
           await api.syncCalendar(dayTables)
           console.log('✅ Initial calendar sync completed')
@@ -543,8 +543,8 @@ export function ProfileMenu({ onClose, showDecryptionWarning }: ProfileMenuProps
       setIcalUrl(null)
       
       // Clear any pending enable flags and sync timestamps
-      localStorage.removeItem('tigement_ical_just_enabled')
-      localStorage.removeItem('tigement_last_ical_sync')
+      localStorage.removeItem(getStorageKey('tigement_ical_just_enabled'))
+      localStorage.removeItem(getStorageKey('tigement_last_ical_sync'))
       
       setIcalLoading(false)
       

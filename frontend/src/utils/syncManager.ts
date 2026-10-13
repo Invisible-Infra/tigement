@@ -7,8 +7,27 @@ import { api, VersionConflictError } from './api'
 import { encryptWorkspace, decryptWorkspace } from './encryption'
 import { encryptionKeyManager } from './encryptionKey'
 import { getSyncClientId } from './syncClientId'
+<<<<<<< HEAD
 import { normalizeTableType } from './storage'
 import { normalizeDeadline } from './deadline'
+=======
+import {
+  normalizeTableType,
+  loadTables,
+  saveTables,
+  loadSettings,
+  saveSettings,
+  loadTaskGroups,
+  saveTaskGroups,
+  loadNotebooks,
+  saveNotebooks,
+  loadDiaryEntries,
+  saveDiaryEntries,
+  loadArchivedTables,
+  saveArchivedTables,
+  getStorageKey,
+} from './storage'
+>>>>>>> origin/beta
 
 interface ConflictData {
   local: { tables: any[]; settings: any; archivedTables?: any[] }
@@ -928,12 +947,12 @@ class SyncManager {
             // Only update local version after successful push
             this.updateLocalVersion(targetVersion)
             // Restore shared tables in localStorage (mergedData excludes them for sync)
-            const localTables = JSON.parse(localStorage.getItem('tigement_tables') || '[]')
+            const localTables = loadTables() || []
             const tablesToSave = mergeSharedTables(mergedData.tables, localTables)
-            localStorage.setItem('tigement_tables', JSON.stringify(tablesToSave))
-            localStorage.setItem('tigement_settings', JSON.stringify(mergedData.settings))
+            saveTables(tablesToSave)
+            saveSettings(mergedData.settings)
             if (mergedData.taskGroups) {
-              localStorage.setItem('tigement_task_groups', JSON.stringify(mergedData.taskGroups))
+              saveTaskGroups(mergedData.taskGroups)
             }
             
             // Update React state via callback instead of reloading
@@ -1093,46 +1112,34 @@ class SyncManager {
 
     console.log('📥 Applying remote workspace data...')
     const decryptedData = await decryptWorkspace(remoteWorkspace.data, encryptionKey)
-    const localTables = (() => {
-      try {
-        const s = localStorage.getItem('tigement_tables')
-        return s ? JSON.parse(s) : []
-      } catch { return [] }
-    })()
+    const localTables = loadTables() || []
     const tablesToSave = mergeSharedTables(normalizeRemoteTables(decryptedData.tables || []), localTables)
     // Save to local storage (merge remote with local shared tables)
-    localStorage.setItem('tigement_tables', JSON.stringify(tablesToSave))
+    saveTables(tablesToSave)
     // Preserve client-only settings (e.g. visibleSpaceIds) when applying remote
-    const currentSettings = (() => {
-      try {
-        const s = localStorage.getItem('tigement_settings')
-        return s ? JSON.parse(s) : {}
-      } catch {
-        return {}
-      }
-    })()
+    const currentSettings = loadSettings() || {}
     const mergedSettings = { ...(decryptedData.settings || {}) }
     for (const k of CLIENT_ONLY_SETTINGS_KEYS) {
       if (currentSettings[k] !== undefined && currentSettings[k] !== null) {
         mergedSettings[k] = currentSettings[k]
       }
     }
-    localStorage.setItem('tigement_settings', JSON.stringify(mergedSettings))
+    saveSettings(mergedSettings)
     if (decryptedData.taskGroups) {
-      localStorage.setItem('tigement_task_groups', JSON.stringify(decryptedData.taskGroups))
+      saveTaskGroups(decryptedData.taskGroups)
     }
     if (decryptedData.notebooks) {
-      localStorage.setItem('tigement_notebooks', JSON.stringify(decryptedData.notebooks))
+      saveNotebooks(decryptedData.notebooks)
       console.log('📓 Restored notebooks from workspace')
     }
     if (decryptedData.diaries) {
-      localStorage.setItem('tigement_diary_entries', JSON.stringify(decryptedData.diaries))
+      saveDiaryEntries(decryptedData.diaries)
       console.log('📔 Restored', Object.keys(decryptedData.diaries).length, 'diary entries from workspace')
     }
     let normalizedArchives: any[] = []
     if (decryptedData.archivedTables) {
       normalizedArchives = normalizeArchivedTables(decryptedData.archivedTables)
-      localStorage.setItem('tigement_archived_tables', JSON.stringify(normalizedArchives))
+      saveArchivedTables(normalizedArchives)
       console.log('🗄️ Restored', normalizedArchives.length, 'archived tables from workspace')
     }
     
@@ -1204,35 +1211,23 @@ class SyncManager {
 
     // Save to local storage (merge remote with local shared tables)
     console.log('💾 Saving to localStorage...')
-    const localTables = (() => {
-      try {
-        const s = localStorage.getItem('tigement_tables')
-        return s ? JSON.parse(s) : []
-      } catch { return [] }
-    })()
+    const localTables = loadTables() || []
     const tablesToSave = mergeSharedTables(normalizeRemoteTables(decryptedData.tables || []), localTables)
-    localStorage.setItem('tigement_tables', JSON.stringify(tablesToSave))
+    saveTables(tablesToSave)
     // Preserve client-only settings (e.g. visibleSpaceIds) when applying remote
-    const currentSettings = (() => {
-      try {
-        const s = localStorage.getItem('tigement_settings')
-        return s ? JSON.parse(s) : {}
-      } catch {
-        return {}
-      }
-    })()
+    const currentSettings = loadSettings() || {}
     const mergedSettings = { ...(decryptedData.settings || {}) }
     for (const k of CLIENT_ONLY_SETTINGS_KEYS) {
       if (currentSettings[k] !== undefined && currentSettings[k] !== null) {
         mergedSettings[k] = currentSettings[k]
       }
     }
-    localStorage.setItem('tigement_settings', JSON.stringify(mergedSettings))
+    saveSettings(mergedSettings)
     
     // Handle AI config sync
     if (decryptedData.aiConfig) {
       console.log('🤖 Syncing AI config from server')
-      localStorage.setItem('tigement_ai_config', decryptedData.aiConfig)
+      localStorage.setItem(getStorageKey('tigement_ai_config'), decryptedData.aiConfig)
     } else {
       console.log('🤖 No AI config in remote data (backward compatibility)')
     }
@@ -1242,14 +1237,14 @@ class SyncManager {
     // - If server data doesn't have taskGroups property at all, keep local ones
     if ('taskGroups' in decryptedData) {
       if (decryptedData.taskGroups && decryptedData.taskGroups.length > 0) {
-        localStorage.setItem('tigement_task_groups', JSON.stringify(decryptedData.taskGroups))
+        saveTaskGroups(decryptedData.taskGroups)
       } else {
         // Server has empty taskGroups - this might be data corruption
         console.warn('⚠️ Server has empty taskGroups - this may indicate data loss. Keeping local taskGroups if they exist.')
-        const localGroups = localStorage.getItem('tigement_task_groups')
-        if (!localGroups || localGroups === '[]') {
+        const localGroups = loadTaskGroups()
+        if (!localGroups || localGroups.length === 0) {
           // Both server and local are empty - remove the key to trigger default fallback
-          localStorage.removeItem('tigement_task_groups')
+          localStorage.removeItem(getStorageKey('tigement_task_groups'))
         }
         // Otherwise keep local ones
       }
@@ -1257,17 +1252,17 @@ class SyncManager {
     
     // Save notebooks, diaries, and archived tables
     if (decryptedData.notebooks) {
-      localStorage.setItem('tigement_notebooks', JSON.stringify(decryptedData.notebooks))
+      saveNotebooks(decryptedData.notebooks)
       console.log('📓 Restored notebooks from workspace')
     }
     if (decryptedData.diaries) {
-      localStorage.setItem('tigement_diary_entries', JSON.stringify(decryptedData.diaries))
+      saveDiaryEntries(decryptedData.diaries)
       console.log('📔 Restored', Object.keys(decryptedData.diaries).length, 'diary entries from workspace')
     }
     let normalizedArchives: any[] = []
     if (decryptedData.archivedTables) {
       normalizedArchives = normalizeArchivedTables(decryptedData.archivedTables)
-      localStorage.setItem('tigement_archived_tables', JSON.stringify(normalizedArchives))
+      saveArchivedTables(normalizedArchives)
       console.log('🗄️ Restored', normalizedArchives.length, 'archived tables from workspace')
     }
 
@@ -1301,19 +1296,19 @@ class SyncManager {
    */
   private getLocalWorkspace(): any | null {
     console.log('🔍 Checking localStorage for workspace data...')
-    const tables = localStorage.getItem('tigement_tables')
-    const settings = localStorage.getItem('tigement_settings')
-    const taskGroups = localStorage.getItem('tigement_task_groups')
-    const notebooks = localStorage.getItem('tigement_notebooks')
-    const diaries = localStorage.getItem('tigement_diary_entries')
-    const archives = localStorage.getItem('tigement_archived_tables')
-    const aiConfig = localStorage.getItem('tigement_ai_config')
-    console.log('📦 localStorage.tigement_tables:', tables ? `${tables.length} chars` : 'NULL')
-    console.log('⚙️ localStorage.tigement_settings:', settings ? `${settings.length} chars` : 'NULL')
-    console.log('📁 localStorage.tigement_task_groups:', taskGroups ? `${taskGroups.length} chars` : 'NULL')
-    console.log('📓 localStorage.tigement_notebooks:', notebooks ? `${notebooks.length} chars` : 'NULL')
-    console.log('📔 localStorage.tigement_diary_entries:', diaries ? `${diaries.length} chars` : 'NULL')
-    console.log('🗄️ localStorage.tigement_archived_tables:', archives ? `${archives.length} chars` : 'NULL')
+    const tables = loadTables()
+    const settings = loadSettings()
+    const taskGroups = loadTaskGroups()
+    const notebooks = loadNotebooks()
+    const diaries = loadDiaryEntries()
+    const archives = loadArchivedTables()
+    const aiConfig = typeof localStorage !== 'undefined' ? localStorage.getItem(getStorageKey('tigement_ai_config')) : null
+    console.log('📦 localStorage.tigement_tables:', tables ? `${JSON.stringify(tables).length} chars` : 'NULL')
+    console.log('⚙️ localStorage.tigement_settings:', settings ? `${JSON.stringify(settings).length} chars` : 'NULL')
+    console.log('📁 localStorage.tigement_task_groups:', taskGroups ? `${JSON.stringify(taskGroups).length} chars` : 'NULL')
+    console.log('📓 localStorage.tigement_notebooks:', notebooks ? `${JSON.stringify(notebooks).length} chars` : 'NULL')
+    console.log('📔 localStorage.tigement_diary_entries:', diaries ? `${JSON.stringify(diaries).length} chars` : 'NULL')
+    console.log('🗄️ localStorage.tigement_archived_tables:', archives ? `${JSON.stringify(archives).length} chars` : 'NULL')
     console.log('🤖 localStorage.tigement_ai_config:', aiConfig ? `${aiConfig.length} chars` : 'NULL')
 
     if (!tables) {
@@ -1322,15 +1317,16 @@ class SyncManager {
     }
 
     const parsed = {
-      tables: JSON.parse(tables),
-      settings: settings ? JSON.parse(settings) : {},
-      taskGroups: taskGroups ? JSON.parse(taskGroups) : [],
-      notebooks: notebooks ? JSON.parse(notebooks) : { workspace: '', tasks: {} },
-      diaries: diaries ? JSON.parse(diaries) : {},
-      archivedTables: archives ? JSON.parse(archives) : [],
+      tables,
+      settings: settings || {},
+      taskGroups: taskGroups || [],
+      notebooks: notebooks || { workspace: '', tasks: {} },
+      diaries: diaries || {},
+      archivedTables: archives === null ? undefined : archives,
       aiConfig: aiConfig || null // AI config is already encrypted, store as-is
     }
-    console.log('✅ Parsed workspace data:', parsed.tables.length, 'tables', parsed.taskGroups?.length || 0, 'task groups', Object.keys(parsed.diaries).length, 'diary entries', parsed.archivedTables.length, 'archived tables', parsed.aiConfig ? 'AI config present' : 'no AI config')
+    const archivedCount = Array.isArray(parsed.archivedTables) ? parsed.archivedTables.length : 0
+    console.log('✅ Parsed workspace data:', parsed.tables.length, 'tables', parsed.taskGroups?.length || 0, 'task groups', Object.keys(parsed.diaries).length, 'diary entries', archivedCount, 'archived tables', parsed.aiConfig ? 'AI config present' : 'no AI config')
     return parsed
   }
 

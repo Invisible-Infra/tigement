@@ -9,6 +9,52 @@ const STORAGE_KEYS = {
   STASH_PREFIX: 'tigement_stash_' // used to stash anon data after merge
 }
 
+/** Current user id for storage keying; null = anonymous. Set by AuthContext on login/logout. */
+let storageUserId: number | null = null
+
+export function setStorageUserId(userId: number | null): void {
+  storageUserId = userId
+}
+
+export function getStorageSuffix(): string {
+  return storageUserId === null ? '_anon' : `_${storageUserId}`
+}
+
+export function getStorageKey(baseKey: string): string {
+  return baseKey + getStorageSuffix()
+}
+
+/**
+ * One-time migration helper: when moving from legacy unsuffixed keys
+ * to per-user suffixed keys, copy data from the old key into the
+ * current user's scoped key if the scoped key is still empty.
+ */
+export function migrateLegacyStorageForCurrentUser(): void {
+  if (typeof localStorage === 'undefined') return
+  if (storageUserId === null) return
+
+  const migrateKey = (baseKey: string) => {
+    const scopedKey = getStorageKey(baseKey)
+    const scoped = localStorage.getItem(scopedKey)
+    if (scoped && scoped.length > 0) return
+    const legacy = localStorage.getItem(baseKey)
+    if (legacy && legacy.length > 0) {
+      localStorage.setItem(scopedKey, legacy)
+    }
+  }
+
+  try {
+    migrateKey(STORAGE_KEYS.TABLES)
+    migrateKey(STORAGE_KEYS.SETTINGS)
+    migrateKey(STORAGE_KEYS.TASK_GROUPS)
+    migrateKey(STORAGE_KEYS.NOTEBOOKS)
+    migrateKey(STORAGE_KEYS.ARCHIVED_TABLES)
+    migrateKey(STORAGE_KEYS.DIARY_ENTRIES)
+  } catch (e) {
+    console.warn('Failed to migrate legacy storage for current user', e)
+  }
+}
+
 import type { ConditionalDefaultRule } from './conditionalDefaultTasks'
 
 export interface StorageSettings {
@@ -32,7 +78,7 @@ export function normalizeTableType(type: string): 'day' | 'list' {
 
 export function saveTables(tables: any[]): void {
   try {
-    localStorage.setItem(STORAGE_KEYS.TABLES, JSON.stringify(tables))
+    localStorage.setItem(getStorageKey(STORAGE_KEYS.TABLES), JSON.stringify(tables))
   } catch (error) {
     console.error('Failed to save tables:', error)
   }
@@ -40,7 +86,7 @@ export function saveTables(tables: any[]): void {
 
 export function loadTables(): any[] | null {
   try {
-    const data = localStorage.getItem(STORAGE_KEYS.TABLES)
+    const data = localStorage.getItem(getStorageKey(STORAGE_KEYS.TABLES))
     const parsed = data ? JSON.parse(data) : null
     if (parsed && Array.isArray(parsed)) {
       return parsed.map((t: any) => t && typeof t === 'object' ? { ...t, type: normalizeTableType(t.type) } : t)
@@ -54,7 +100,7 @@ export function loadTables(): any[] | null {
 
 export function saveSettings(settings: StorageSettings): void {
   try {
-    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings))
+    localStorage.setItem(getStorageKey(STORAGE_KEYS.SETTINGS), JSON.stringify(settings))
   } catch (error) {
     console.error('Failed to save settings:', error)
   }
@@ -62,7 +108,7 @@ export function saveSettings(settings: StorageSettings): void {
 
 export function loadSettings(): StorageSettings | null {
   try {
-    const data = localStorage.getItem(STORAGE_KEYS.SETTINGS)
+    const data = localStorage.getItem(getStorageKey(STORAGE_KEYS.SETTINGS))
     return data ? JSON.parse(data) : null
   } catch (error) {
     console.error('Failed to load settings:', error)
@@ -72,7 +118,7 @@ export function loadSettings(): StorageSettings | null {
 
 export function saveTaskGroups(groups: any[]): void {
   try {
-    localStorage.setItem(STORAGE_KEYS.TASK_GROUPS, JSON.stringify(groups))
+    localStorage.setItem(getStorageKey(STORAGE_KEYS.TASK_GROUPS), JSON.stringify(groups))
   } catch (error) {
     console.error('Failed to save task groups:', error)
   }
@@ -80,7 +126,7 @@ export function saveTaskGroups(groups: any[]): void {
 
 export function loadTaskGroups(): any[] | null {
   try {
-    const data = localStorage.getItem(STORAGE_KEYS.TASK_GROUPS)
+    const data = localStorage.getItem(getStorageKey(STORAGE_KEYS.TASK_GROUPS))
     if (!data) return null
     
     const parsed = JSON.parse(data)
@@ -100,7 +146,7 @@ export function loadTaskGroups(): any[] | null {
 
 export function saveNotebooks(notebooks: { workspace: string; tasks: Record<string, string> }): void {
   try {
-    localStorage.setItem(STORAGE_KEYS.NOTEBOOKS, JSON.stringify(notebooks))
+    localStorage.setItem(getStorageKey(STORAGE_KEYS.NOTEBOOKS), JSON.stringify(notebooks))
   } catch (error) {
     console.error('Failed to save notebooks:', error)
   }
@@ -108,7 +154,7 @@ export function saveNotebooks(notebooks: { workspace: string; tasks: Record<stri
 
 export function loadNotebooks(): { workspace: string; tasks: Record<string, string> } | null {
   try {
-    const data = localStorage.getItem(STORAGE_KEYS.NOTEBOOKS)
+    const data = localStorage.getItem(getStorageKey(STORAGE_KEYS.NOTEBOOKS))
     if (!data) return null
     
     const parsed = JSON.parse(data)
@@ -149,7 +195,7 @@ export function loadNotebooks(): { workspace: string; tasks: Record<string, stri
 
 export function saveArchivedTables(archives: any[]): void {
   try {
-    localStorage.setItem(STORAGE_KEYS.ARCHIVED_TABLES, JSON.stringify(archives))
+    localStorage.setItem(getStorageKey(STORAGE_KEYS.ARCHIVED_TABLES), JSON.stringify(archives))
   } catch (error) {
     console.error('Failed to save archived tables:', error)
   }
@@ -157,7 +203,7 @@ export function saveArchivedTables(archives: any[]): void {
 
 export function loadArchivedTables(): any[] | null {
   try {
-    const data = localStorage.getItem(STORAGE_KEYS.ARCHIVED_TABLES)
+    const data = localStorage.getItem(getStorageKey(STORAGE_KEYS.ARCHIVED_TABLES))
     const parsed = data ? JSON.parse(data) : null
     if (parsed && Array.isArray(parsed)) {
       return parsed.map((a: any) => {
@@ -178,7 +224,7 @@ export function loadArchivedTables(): any[] | null {
 
 export function saveDiaryEntries(entries: Record<string, string>): void {
   try {
-    localStorage.setItem(STORAGE_KEYS.DIARY_ENTRIES, JSON.stringify(entries))
+    localStorage.setItem(getStorageKey(STORAGE_KEYS.DIARY_ENTRIES), JSON.stringify(entries))
   } catch (error) {
     console.error('Failed to save diary entries:', error)
   }
@@ -186,7 +232,7 @@ export function saveDiaryEntries(entries: Record<string, string>): void {
 
 export function loadDiaryEntries(): Record<string, string> | null {
   try {
-    const data = localStorage.getItem(STORAGE_KEYS.DIARY_ENTRIES)
+    const data = localStorage.getItem(getStorageKey(STORAGE_KEYS.DIARY_ENTRIES))
     return data ? JSON.parse(data) : null
   } catch (error) {
     console.error('Failed to load diary entries:', error)
@@ -196,12 +242,12 @@ export function loadDiaryEntries(): Record<string, string> | null {
 
 export function clearAllData(): void {
   try {
-    localStorage.removeItem(STORAGE_KEYS.TABLES)
-    localStorage.removeItem(STORAGE_KEYS.SETTINGS)
-    localStorage.removeItem(STORAGE_KEYS.TASK_GROUPS)
-    localStorage.removeItem(STORAGE_KEYS.NOTEBOOKS)
-    localStorage.removeItem(STORAGE_KEYS.ARCHIVED_TABLES)
-    localStorage.removeItem(STORAGE_KEYS.DIARY_ENTRIES)
+    localStorage.removeItem(getStorageKey(STORAGE_KEYS.TABLES))
+    localStorage.removeItem(getStorageKey(STORAGE_KEYS.SETTINGS))
+    localStorage.removeItem(getStorageKey(STORAGE_KEYS.TASK_GROUPS))
+    localStorage.removeItem(getStorageKey(STORAGE_KEYS.NOTEBOOKS))
+    localStorage.removeItem(getStorageKey(STORAGE_KEYS.ARCHIVED_TABLES))
+    localStorage.removeItem(getStorageKey(STORAGE_KEYS.DIARY_ENTRIES))
   } catch (error) {
     console.error('Failed to clear data:', error)
   }
@@ -253,8 +299,8 @@ export function clearStashedAnonData(label: string): void {
 
 export function clearAnonLocalData(): void {
   try {
-    localStorage.removeItem(STORAGE_KEYS.TABLES)
-    localStorage.removeItem(STORAGE_KEYS.NOTEBOOKS)
+    localStorage.removeItem(getStorageKey(STORAGE_KEYS.TABLES))
+    localStorage.removeItem(getStorageKey(STORAGE_KEYS.NOTEBOOKS))
   } catch (e) {
     console.warn('Failed to clear anon local data', e)
   }

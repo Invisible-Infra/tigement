@@ -5,6 +5,7 @@
 
 import { encryptWorkspace, decryptWorkspace } from './encryption';
 import { encryptionKeyManager } from './encryptionKey';
+import { getStorageKey } from './storage';
 import { AIConfig } from './aiProviders';
 
 const AI_CONFIG_STORAGE_KEY = 'tigement_ai_config';
@@ -34,7 +35,7 @@ export const aiConfigManager = {
 
     try {
       const encrypted = await encryptWorkspace(config, encryptionKey);
-      localStorage.setItem(AI_CONFIG_STORAGE_KEY, encrypted);
+      localStorage.setItem(getStorageKey(AI_CONFIG_STORAGE_KEY), encrypted);
     } catch (error) {
       console.error('Failed to save AI config:', error);
       throw new Error('Failed to save AI configuration');
@@ -51,7 +52,7 @@ export const aiConfigManager = {
     }
 
     try {
-      const encrypted = localStorage.getItem(AI_CONFIG_STORAGE_KEY);
+      const encrypted = localStorage.getItem(getStorageKey(AI_CONFIG_STORAGE_KEY));
       if (!encrypted) {
         return null;
       }
@@ -68,8 +69,8 @@ export const aiConfigManager = {
    * Clear AI configuration
    */
   clearConfig(): void {
-    localStorage.removeItem(AI_CONFIG_STORAGE_KEY);
-    localStorage.removeItem(AI_HISTORY_STORAGE_KEY);
+    localStorage.removeItem(getStorageKey(AI_CONFIG_STORAGE_KEY));
+    localStorage.removeItem(getStorageKey(AI_HISTORY_STORAGE_KEY));
   },
 
   /**
@@ -97,7 +98,7 @@ export const aiConfigManager = {
       const trimmedHistory = history.slice(-50);
 
       const encrypted = await encryptWorkspace(trimmedHistory, encryptionKey);
-      localStorage.setItem(AI_HISTORY_STORAGE_KEY, encrypted);
+      localStorage.setItem(getStorageKey(AI_HISTORY_STORAGE_KEY), encrypted);
     } catch (error) {
       console.error('Failed to save AI action:', error);
     }
@@ -113,7 +114,7 @@ export const aiConfigManager = {
     }
 
     try {
-      const encrypted = localStorage.getItem(AI_HISTORY_STORAGE_KEY);
+      const encrypted = localStorage.getItem(getStorageKey(AI_HISTORY_STORAGE_KEY));
       if (!encrypted) {
         return [];
       }
@@ -130,7 +131,7 @@ export const aiConfigManager = {
    * Clear AI history
    */
   clearHistory(): void {
-    localStorage.removeItem(AI_HISTORY_STORAGE_KEY);
+    localStorage.removeItem(getStorageKey(AI_HISTORY_STORAGE_KEY));
   },
 
   /**
@@ -160,6 +161,6 @@ export const aiConfigManager = {
     }
 
     const encrypted = await encryptWorkspace(history, encryptionKey);
-    localStorage.setItem(AI_HISTORY_STORAGE_KEY, encrypted);
+    localStorage.setItem(getStorageKey(AI_HISTORY_STORAGE_KEY), encrypted);
   }
 };

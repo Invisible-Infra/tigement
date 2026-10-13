@@ -194,17 +194,12 @@ export async function importBackup(backupData: BackupData): Promise<void> {
     error(`⚠️ MISMATCH: Saved ${tablesWithDefaults.length} but found ${verifyTables?.length || 0} in localStorage!`)
   }
   
-  // Double-check by reading raw localStorage
-  const rawTables = localStorage.getItem('tigement_tables')
+  // Double-check by reading from storage (keyed)
+  const rawTables = loadTables()
   if (rawTables) {
-    try {
-      const parsed = JSON.parse(rawTables)
-      log(`✅ Raw localStorage check: ${Array.isArray(parsed) ? parsed.length : 'not array'} items`)
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        log(`✅ First table in raw data: id=${parsed[0].id}, title=${parsed[0].title || '(no title)'}`)
-      }
-    } catch (e) {
-      error(`⚠️ Failed to parse raw localStorage: ${e}`)
+    log(`✅ Raw localStorage check: ${rawTables.length} items`)
+    if (rawTables.length > 0) {
+      log(`✅ First table in raw data: id=${rawTables[0].id}, title=${rawTables[0].title || '(no title)'}`)
     }
   } else {
     error('⚠️ Raw localStorage is NULL after save!')

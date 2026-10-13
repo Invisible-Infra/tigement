@@ -20,7 +20,7 @@ import { BottomNav } from './BottomNav'
 import { AIPanel } from './AIPanel'
 import { splitDeadline } from '../utils/deadline'
 import { exportToCSV, downloadCSV, importFromCSV } from '../utils/csvUtils'
-import { saveTables, loadTables, saveSettings, loadSettings, saveTaskGroups, loadTaskGroups, saveNotebooks, loadNotebooks, saveArchivedTables, loadArchivedTables, saveDiaryEntries, loadDiaryEntries } from '../utils/storage'
+import { saveTables, loadTables, saveSettings, loadSettings, saveTaskGroups, loadTaskGroups, saveNotebooks, loadNotebooks, saveArchivedTables, loadArchivedTables, saveDiaryEntries, loadDiaryEntries, getStorageKey } from '../utils/storage'
 import { evaluateRules } from '../utils/conditionalDefaultTasks'
 import { normalizeDate, formatDateWithWeekday, formatDateWithSettings, isLegacyDayTitle } from '../utils/dateFormat'
 import { useAuth } from '../contexts/AuthContext'
@@ -216,14 +216,14 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
   // Ensure sharing keys exist for logged-in users (needed for both sharing and receiving)
   useEffect(() => {
     if (!user) return
-    const stored = localStorage.getItem('tigement_sharing_private_key')
+    const stored = localStorage.getItem(getStorageKey('tigement_sharing_private_key'))
     if (stored) return
     ;(async () => {
       try {
         const { generateKeyPair } = await import('../utils/sharingCrypto')
         const { publicKeyBase64, privateKeyBase64 } = await generateKeyPair()
-        localStorage.setItem('tigement_sharing_private_key', privateKeyBase64)
-        localStorage.setItem('tigement_sharing_public_key', publicKeyBase64)
+        localStorage.setItem(getStorageKey('tigement_sharing_private_key'), privateKeyBase64)
+        localStorage.setItem(getStorageKey('tigement_sharing_public_key'), publicKeyBase64)
         api.setSharingPublicKey(publicKeyBase64).catch(() => {})
       } catch {
         // Sharing keys generation failed (e.g. SES restricts crypto); user can retry when sharing
@@ -379,7 +379,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
   const [audioContext, setAudioContext] = useState<AudioContext | null>(null)
   const [lastNotifiedTaskId, setLastNotifiedTaskId] = useState<string | null>(null)
   const [soundNotificationsEnabled, setSoundNotificationsEnabled] = useState(() => {
-    const saved = localStorage.getItem('tigement_sound_notifications_enabled')
+    const saved = localStorage.getItem(getStorageKey('tigement_sound_notifications_enabled'))
     return saved !== null ? JSON.parse(saved) : true // Default: enabled
   })
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default')
@@ -401,7 +401,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
   const [showSettings, setShowSettings] = useState(false)
   const [showTimer, setShowTimer] = useState(() => {
     try {
-      const v = localStorage.getItem('tigement_show_timer')
+      const v = localStorage.getItem(getStorageKey('tigement_show_timer'))
       if (v !== null) return v === 'true'
       const s = loadSettings()
       return s?.showTimerOnStartup ?? true
@@ -409,7 +409,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
   })
   const [timerPosition, setTimerPosition] = useState(() => {
     try {
-      const saved = localStorage.getItem('tigement_timer_position')
+      const saved = localStorage.getItem(getStorageKey('tigement_timer_position'))
       if (saved) {
         return JSON.parse(saved)
       }
@@ -424,7 +424,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
   const [showAIPanel, setShowAIPanel] = useState(false)
   const [aiChatPosition, setAiChatPosition] = useState<{ x: number; y: number }>(() => {
     try {
-      const saved = localStorage.getItem('tigement_ai_chat_position')
+      const saved = localStorage.getItem(getStorageKey('tigement_ai_chat_position'))
       if (saved) {
         const p = JSON.parse(saved)
         if (typeof p?.x === 'number' && typeof p?.y === 'number') return p
@@ -450,7 +450,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
   const [currentTableIndex, setCurrentTableIndex] = useState(() => {
     // Load saved page index from localStorage (mobile pagination)
     try {
-      const saved = localStorage.getItem('tigement_current_page_index')
+      const saved = localStorage.getItem(getStorageKey('tigement_current_page_index'))
       return saved ? parseInt(saved) : 0
     } catch {
       return 0
@@ -464,7 +464,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
   // Restore last opened tab (mobile) whenever tables are loaded from storage or sync
   const restoreCurrentTableIndex = useCallback((newTablesLength: number) => {
     try {
-      const saved = localStorage.getItem('tigement_current_page_index')
+      const saved = localStorage.getItem(getStorageKey('tigement_current_page_index'))
       if (saved === null) return
       const idx = parseInt(saved, 10)
       if (!isNaN(idx) && idx >= 0 && idx < newTablesLength) {
@@ -477,7 +477,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
   const [expandedMenus, setExpandedMenus] = useState<Set<string>>(() => new Set(['workspace']))
   const [pullPreviewEnabled, setPullPreviewEnabled] = useState(() => {
     try {
-      const v = localStorage.getItem('tigement_share_pull_preview_enabled')
+      const v = localStorage.getItem(getStorageKey('tigement_share_pull_preview_enabled'))
       return v === 'true'
     } catch { return true }
   })
@@ -530,7 +530,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
   const [shareModalTable, setShareModalTable] = useState<Table | null>(null)
   const [showSharedWithMeMenu, setShowSharedWithMeMenu] = useState(false)
   const [archivedSortOrder, setArchivedSortOrder] = useState<'newest' | 'oldest'>(() => {
-    const saved = localStorage.getItem('tigement_archived_sort_order')
+    const saved = localStorage.getItem(getStorageKey('tigement_archived_sort_order'))
     return (saved === 'oldest' || saved === 'newest') ? saved : 'newest'
   })
   const [showManual, setShowManual] = useState(false)
@@ -549,7 +549,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
   const [diaryListPosition, setDiaryListPosition] = useState({ x: 100, y: 100 })
   const [notebookAnimation, setNotebookAnimation] = useState<{ from: { x: number; y: number }; to: { x: number; y: number }; taskId: string } | null>(null)
   const [pinnedItems, setPinnedItems] = useState<string[]>(() => {
-    const saved = localStorage.getItem('tigement_pinned_items')
+    const saved = localStorage.getItem(getStorageKey('tigement_pinned_items'))
     if (!saved) return [] // placeholder; useEffect will fetch admin default
     const items = JSON.parse(saved)
     return Array.isArray(items) ? items.filter((id: string) => id !== 'ai-history') : []
@@ -578,7 +578,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
 
   // Fetch default pinned items when user has no saved preference
   useEffect(() => {
-    if (localStorage.getItem('tigement_pinned_items')) return
+    if (localStorage.getItem(getStorageKey('tigement_pinned_items'))) return
     api.getDefaultPinnedItems()
       .then((items) => {
         const filtered = items.filter((id: string) => id !== 'ai-history')
@@ -591,13 +591,13 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
 
   // Sync pinnedItems to localStorage
   useEffect(() => {
-    localStorage.setItem('tigement_pinned_items', JSON.stringify(pinnedItems))
+    localStorage.setItem(getStorageKey('tigement_pinned_items'), JSON.stringify(pinnedItems))
   }, [pinnedItems])
 
   // Persist AI chat position
   useEffect(() => {
     try {
-      localStorage.setItem('tigement_ai_chat_position', JSON.stringify(aiChatPosition))
+      localStorage.setItem(getStorageKey('tigement_ai_chat_position'), JSON.stringify(aiChatPosition))
     } catch (e) {
       console.warn('Failed to save AI chat position', e)
     }
@@ -977,18 +977,10 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
       } else {
         console.error('❌ ERROR: No tables found in localStorage after restore event!')
         // Try to check what's actually in localStorage
-        const rawData = localStorage.getItem('tigement_tables')
-        console.error('❌ Raw localStorage data:', rawData ? `${rawData.length} chars` : 'NULL')
-        if (rawData) {
-          try {
-            const parsed = JSON.parse(rawData)
-            console.error('❌ Parsed data:', Array.isArray(parsed) ? `${parsed.length} items` : typeof parsed)
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              console.error('❌ First item:', parsed[0])
-            }
-          } catch (e) {
-            console.error('❌ Failed to parse localStorage data:', e)
-          }
+        const rawData = loadTables()
+        console.error('❌ Raw localStorage data:', rawData ? `${rawData.length} items` : 'NULL')
+        if (rawData && rawData.length > 0) {
+          console.error('❌ First item:', rawData[0])
         }
       }
     }
@@ -1018,23 +1010,14 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
         console.log(`✅ Loaded ${savedTables.length} tables from restore flag check`)
       } else {
         console.error('❌ No tables found even with restore flag set!')
-        const rawData = localStorage.getItem('tigement_tables')
-        console.error('❌ Raw localStorage:', rawData ? `${rawData.length} chars` : 'NULL')
-        if (rawData && rawData.length > 2) { // More than just "[]"
-          try {
-            const parsed = JSON.parse(rawData)
-            console.error('❌ Parsed data:', Array.isArray(parsed) ? `${parsed.length} items` : typeof parsed)
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              console.error('❌ First item:', parsed[0])
-              // Try to load it anyway if it exists
-              setTables(migrateDayTableTitles(parsed, loadSettings()?.dateFormat || 'DD. MM. YYYY'))
-              hasLoadedTables.current = true
-              restoreCurrentTableIndex(parsed.length)
-              console.log(`✅ Loaded ${parsed.length} tables from parsed data`)
-            }
-          } catch (e) {
-            console.error('❌ Failed to parse localStorage data:', e)
-          }
+        const rawData = loadTables()
+        console.error('❌ Raw localStorage:', rawData ? `${rawData.length} items` : 'NULL')
+        if (rawData && rawData.length > 0) {
+          console.error('❌ First item:', rawData[0])
+          setTables(migrateDayTableTitles(rawData, loadSettings()?.dateFormat || 'DD. MM. YYYY'))
+          hasLoadedTables.current = true
+          restoreCurrentTableIndex(rawData.length)
+          console.log(`✅ Loaded ${rawData.length} tables from raw data`)
         }
       }
       }
@@ -1132,7 +1115,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
   useEffect(() => {
     if (isMobile) {
       try {
-        localStorage.setItem('tigement_current_page_index', currentTableIndex.toString())
+        localStorage.setItem(getStorageKey('tigement_current_page_index'), currentTableIndex.toString())
         console.log(`📱 Saved current page index: ${currentTableIndex}`)
       } catch (error) {
         console.error('Failed to save page index:', error)
@@ -1404,7 +1387,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
   // Persist timer visibility when it changes
   useEffect(() => {
     try {
-      localStorage.setItem('tigement_show_timer', String(showTimer))
+      localStorage.setItem(getStorageKey('tigement_show_timer'), String(showTimer))
     } catch (_) {}
   }, [showTimer])
 
@@ -1797,7 +1780,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
 
   useEffect(() => {
     try {
-      localStorage.setItem('tigement_share_pull_preview_enabled', String(pullPreviewEnabled))
+      localStorage.setItem(getStorageKey('tigement_share_pull_preview_enabled'), String(pullPreviewEnabled))
     } catch {}
   }, [pullPreviewEnabled])
 
@@ -2030,15 +2013,15 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
     }
 
     // Check if iCal was just enabled (reset cache)
-    const justEnabled = localStorage.getItem('tigement_ical_just_enabled')
+    const justEnabled = localStorage.getItem(getStorageKey('tigement_ical_just_enabled'))
     if (justEnabled === 'true') {
-      localStorage.removeItem('tigement_ical_just_enabled')
+      localStorage.removeItem(getStorageKey('tigement_ical_just_enabled'))
       icalEnabledCache.current = null // Reset cache to allow retry
       console.log('🔄 iCal was just enabled, resetting sync cache')
     }
 
     // Load last sync time from localStorage (shared across components)
-    const storedLastSync = localStorage.getItem('tigement_last_ical_sync')
+    const storedLastSync = localStorage.getItem(getStorageKey('tigement_last_ical_sync'))
     if (storedLastSync && lastIcalSyncTime.current === 0) {
       lastIcalSyncTime.current = parseInt(storedLastSync, 10)
     }
@@ -2061,7 +2044,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
     // Debounce: only sync after user stops editing for 3 seconds
     const timeoutId = setTimeout(async () => {
       // Re-read localStorage to pick up syncs from ProfileMenu or other tabs
-      const storedLastSync = localStorage.getItem('tigement_last_ical_sync')
+      const storedLastSync = localStorage.getItem(getStorageKey('tigement_last_ical_sync'))
       if (storedLastSync) {
         const stored = parseInt(storedLastSync, 10)
         if (stored > lastIcalSyncTime.current) {
@@ -2089,7 +2072,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
           console.log('📅 Syncing calendar events to iCal feed...')
           const syncTime = Date.now()
           lastIcalSyncTime.current = syncTime
-          localStorage.setItem('tigement_last_ical_sync', syncTime.toString())
+          localStorage.setItem(getStorageKey('tigement_last_ical_sync'), syncTime.toString())
           icalSyncInFlight.current = true
           try {
             await api.syncCalendar(dayTables)
@@ -2128,7 +2111,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
   // Save timer position
   useEffect(() => {
     try {
-      localStorage.setItem('tigement_timer_position', JSON.stringify(timerPosition))
+      localStorage.setItem(getStorageKey('tigement_timer_position'), JSON.stringify(timerPosition))
     } catch (error) {
       console.error('Failed to save timer position:', error)
     }
@@ -5500,7 +5483,7 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
                   onClick={() => {
                     const next = archivedSortOrder === 'newest' ? 'oldest' : 'newest'
                     setArchivedSortOrder(next)
-                    localStorage.setItem('tigement_archived_sort_order', next)
+                    localStorage.setItem(getStorageKey('tigement_archived_sort_order'), next)
                   }}
                   className="text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-gray-700"
                   title={archivedSortOrder === 'newest' ? 'Show oldest first' : 'Show newest first'}

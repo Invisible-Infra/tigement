@@ -1,10 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { Workspace } from './components/Workspace'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
-import { loadTables, loadNotebooks, saveTables, saveNotebooks, hasShownAnonMergePrompt, setShownAnonMergePrompt, stashAnonDataSnapshot, loadStashedAnonData, clearStashedAnonData } from './utils/storage'
-import { detectNonEmptyLocalData, planMerge, applyMerge, type MergeWorkspace } from './utils/mergeLocalData'
+import { saveTables, saveNotebooks, saveDiaryEntries, saveArchivedTables, clearStashedAnonData } from './utils/storage'
 import { syncManager } from './utils/syncManager'
-import { MergeLocalDataDialog } from './components/MergeLocalDataDialog'
 import { MigrationDialog } from './components/MigrationDialog'
 import { exportBackup, downloadBackup } from './utils/backup'
 import { api } from './utils/api'
@@ -43,10 +41,6 @@ function AppContent() {
   const [showPremium, setShowPremium] = useState(false)
   const [showProfile, setShowProfile] = useState(false)
   const [resetToken, setResetToken] = useState<string | null>(null)
-  const [showMergeDialog, setShowMergeDialog] = useState(false)
-  const [detectedLocal, setDetectedLocal] = useState<any>(null)
-  const [serverSnapshot, setServerSnapshot] = useState<MergeWorkspace | null>(null)
-  const mergeDialogShownRef = useRef(false)
   const [version, setVersion] = useState<string>('alpha')
   const [oauthPassphraseDialog, setOauthPassphraseDialog] = useState<{ token: string; isNew: boolean } | null>(null)
   const [oauthKeyChoice, setOauthKeyChoice] = useState<{ token: string; provider: string; hasPassphrase: boolean } | null>(null)
@@ -246,138 +240,19 @@ function AppContent() {
     }
   }, [])
 
-  // Reset merge dialog ref when logging out
+  // One-time cleanup of legacy anonymous → login merge state
   useEffect(() => {
-    if (!isAuthenticated) {
-      mergeDialogShownRef.current = false
-    }
-  }, [isAuthenticated])
-
-  // After login, detect anonymous local data and offer to merge
-  useEffect(() => {
-    if (!isAuthenticated) return
-    // Only show once per login session
-    if (mergeDialogShownRef.current) return
-    
-    const loadServerDataAndShowMerge = async () => {
-      // Prefer pre-login stashed snapshot if present (guarantees we didn't miss anon data)
-      const stashed = loadStashedAnonData('pre_login')
-      // Only prompt automatically when a pre-login stash exists
-      if (!stashed) {
-        // Clear the flag if there's no stash
-        sessionStorage.removeItem('tigement_has_merge_data')
-        return
-      }
-      
-      // ONLY use stashed data, never fall back to current localStorage
-      // (current localStorage may have been contaminated by cloud sync)
-      const anonTables = stashed.tables
-      const anonNotebooks = stashed.notebooks
-      
-      const detected = detectNonEmptyLocalData(anonTables, anonNotebooks)
-      const hasItems =
-        detected.nonEmptyTables.length > 0 ||
-        !!detected.nonEmptyNotebooks.workspace ||
-        Object.keys(detected.nonEmptyNotebooks.tasks || {}).length > 0
-      if (!hasItems) {
-        // Clear stash and flag if no items to merge
-        try { clearStashedAnonData('pre_login') } catch {}
-        sessionStorage.removeItem('tigement_has_merge_data')
-        return
-      }
-      
-      // Fetch ACTUAL server workspace data to preserve user's existing tables
-      let serverData: MergeWorkspace = {
-        tables: [],
-        notebooks: { workspace: '', tasks: {} }
-      }
-      
-      try {
-        const remoteWorkspace = await api.getWorkspace()
-        if (remoteWorkspace && remoteWorkspace.data) {
-          const encryptionKey = encryptionKeyManager.getKey()
-          if (encryptionKey) {
-            const decryptedData = await decryptWorkspace(remoteWorkspace.data, encryptionKey)
-            serverData = {
-              tables: decryptedData.tables || [],
-              notebooks: {
-                workspace: decryptedData.workspace_notebook || '',
-                tasks: decryptedData.task_notebooks || {}
-              }
-            }
-            console.log('📦 Loaded server data for merge:', {
-              serverTables: serverData.tables.length,
-              localTables: detected.nonEmptyTables.length
-            })
-          }
-        }
-      } catch (error) {
-        console.error('❌ Failed to load server workspace for merge:', error)
-        // Continue with empty serverData if fetch fails
-      }
-      
-      // Keep snapshots for merge action
-      setServerSnapshot(serverData)
-      setDetectedLocal(detected)
-      setShowMergeDialog(true)
-      mergeDialogShownRef.current = true
-      // Don't clear stash here - wait until user interacts
-    }
-    
-    loadServerDataAndShowMerge()
-  }, [isAuthenticated])
-
-  const handleMergeConfirm = async () => {
-    if (!serverSnapshot || !detectedLocal) {
-      setShowMergeDialog(false)
-      setShownAnonMergePrompt()
-      return
-    }
-    // Stash anon snapshot for troubleshooting
     try {
-      stashAnonDataSnapshot('pre_merge', loadTables(), loadNotebooks())
-    } catch {}
-    const plan = planMerge(detectedLocal, serverSnapshot)
-    const { merged } = applyMerge(serverSnapshot, plan)
-    saveTables(merged.tables)
-    saveNotebooks({ workspace: merged.notebooks?.workspace || '', tasks: merged.notebooks?.tasks || {} })
-    setShowMergeDialog(false)
-    setShownAnonMergePrompt()
-    // Clear stash after merge
-    try { clearStashedAnonData('pre_login') } catch {}
-    
-    // Force push merged data to cloud before reloading (don't do smart sync)
-    if (isPremium) {
-      try {
-        console.log('🔄 Force pushing merged data to cloud...')
-        await syncManager.forcePush()
-        console.log('✅ Merged data pushed to cloud')
-      } catch (error) {
-        console.error('❌ Failed to push merged data:', error)
-      }
+      clearStashedAnonData('pre_login')
+    } catch {
+      // ignore
     }
-    
-    // Reload page to show merged data in UI
-    window.location.reload()
-  }
-
-  const handleMergeSkip = async () => {
-    setShowMergeDialog(false)
-    setShownAnonMergePrompt()
-    // Clear stash after user interaction
-    try { clearStashedAnonData('pre_login') } catch {}
-    
-    // Pull cloud data to replace local data
-    if (isPremium) {
-      try {
-        console.log('🔄 Skipped merge - pulling cloud data instead')
-        await syncNow()
-        window.location.reload()
-      } catch (error) {
-        console.error('❌ Failed to pull cloud data after skip:', error)
-      }
+    try {
+      sessionStorage.removeItem('tigement_has_merge_data')
+    } catch {
+      // ignore
     }
-  }
+  }, [])
 
   const handleDownloadBackup = async () => {
     try {
@@ -399,13 +274,13 @@ function AppContent() {
               notebooksStructure.tasks[key.replace('task-', '')] = content
             }
           }
-          localStorage.setItem('tigement_notebooks', JSON.stringify(notebooksStructure))
+          saveNotebooks(notebooksStructure)
         }
         if (Object.keys(plaintextData.diaries).length > 0) {
-          localStorage.setItem('tigement_diary_entries', JSON.stringify(plaintextData.diaries))
+          saveDiaryEntries(plaintextData.diaries)
         }
         if (plaintextData.archives.length > 0) {
-          localStorage.setItem('tigement_archived_tables', JSON.stringify(plaintextData.archives))
+          saveArchivedTables(plaintextData.archives)
         }
         console.log('✅ Plaintext data loaded into localStorage for backup')
       }
@@ -452,18 +327,18 @@ function AppContent() {
           }
         }
         
-        localStorage.setItem('tigement_notebooks', JSON.stringify(notebooksStructure))
+        saveNotebooks(notebooksStructure)
         console.log('📓 Saved notebooks:', { 
           hasWorkspace: !!notebooksStructure.workspace,
           taskCount: Object.keys(notebooksStructure.tasks).length 
         })
       }
       if (Object.keys(plaintextData.diaries).length > 0) {
-        localStorage.setItem('tigement_diary_entries', JSON.stringify(plaintextData.diaries))
+        saveDiaryEntries(plaintextData.diaries)
         console.log('📔 Saved', Object.keys(plaintextData.diaries).length, 'diary entries')
       }
       if (plaintextData.archives.length > 0) {
-        localStorage.setItem('tigement_archived_tables', JSON.stringify(plaintextData.archives))
+        saveArchivedTables(plaintextData.archives)
         console.log('🗄️ Saved', plaintextData.archives.length, 'archived tables')
       }
       console.log('✅ Step 2 complete - Data saved to localStorage')
@@ -715,13 +590,6 @@ function AppContent() {
           showDecryptionWarning={decryptionFailure.hasFailure}
         />
       )}
-
-      <MergeLocalDataDialog
-        open={showMergeDialog}
-        local={detectedLocal}
-        onMerge={handleMergeConfirm}
-        onSkip={handleMergeSkip}
-      />
 
       {/* Migration Dialog for encrypting plaintext data */}
       {showMigrationDialog && (

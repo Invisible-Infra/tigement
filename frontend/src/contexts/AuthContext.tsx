@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { api, User, NetworkError } from '../utils/api'
 import { syncManager, DecryptionFailureError } from '../utils/syncManager'
-import { clearAllData } from '../utils/storage'
+import { clearAllData, setStorageUserId, getStorageKey, loadSettings, migrateLegacyStorageForCurrentUser } from '../utils/storage'
 import { encryptionKeyManager } from '../utils/encryptionKey'
 
 type SecurityTier = 'unauthenticated' | 'non_premium' | 'premium'
@@ -124,7 +124,7 @@ function applyPremiumCleanup() {
 
   try {
     PREMIUM_DATA_KEYS.forEach((key) => {
-      localStorage.removeItem(key)
+      localStorage.removeItem(getStorageKey(key))
     })
   } catch {
     // ignore
@@ -171,6 +171,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('🚨 Authentication failure detected!', { tier })
 
       applySecurityTierCleanup(tier)
+      setStorageUserId(null)
 
       setAuthError('Your session has expired. Please log in again to continue.')
       setUser(null)
@@ -217,6 +218,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 const parsed = JSON.parse(cached) as User
                 if (parsed && typeof parsed.id === 'number' && parsed.email) {
                   console.log('📴 Offline: using cached user immediately (navigator.onLine=false)')
+                  setStorageUserId(parsed.id)
+                  migrateLegacyStorageForCurrentUser()
                   setUser(parsed)
                 }
               }
@@ -232,6 +235,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 const parsed = JSON.parse(cached) as User
                 if (parsed && typeof parsed.id === 'number' && parsed.email) {
                   console.log('📴 Offline: using cached user (reachability check failed)')
+                  setStorageUserId(parsed.id)
+                  migrateLegacyStorageForCurrentUser()
                   setUser(parsed)
                 }
               }
@@ -242,6 +247,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           try {
             const currentUser = await api.getCurrentUser()
             console.log('👤 Current user loaded:', { id: currentUser.id, email: currentUser.email, username: currentUser.username, profile_picture_url: currentUser.profile_picture_url })
+            setStorageUserId(currentUser.id)
+            migrateLegacyStorageForCurrentUser()
             setUser(currentUser)
             try {
               localStorage.setItem(CACHED_USER_KEY, JSON.stringify(currentUser))
@@ -404,9 +411,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user])
 
   const login = async (email: string, password: string, twoFactorToken?: string, trustDevice?: boolean) => {
-    // Get session duration from settings
-    const settingsStr = localStorage.getItem('tigement_settings')
-    const sessionDays = settingsStr ? JSON.parse(settingsStr).sessionDuration || 7 : 7
+    // Get session duration from settings (anon key when not yet logged in)
+    const settings = loadSettings()
+    const sessionDays = settings?.sessionDuration ?? 7
     
     // Get existing device token from localStorage
     const existingDeviceToken = localStorage.getItem('tigement_device_token')
@@ -426,7 +433,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     
     setUser(response.user)
-    
+    setStorageUserId(response.user.id)
+    migrateLegacyStorageForCurrentUser()
+
     // Only set password for encryption if NOT using a custom key
     if (!encryptionKeyManager.isUsingCustomKey()) {
       console.log('🔑 Using login password for encryption')
@@ -489,13 +498,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const register = async (email: string, password: string) => {
-    // Get session duration from settings  
-    const settingsStr = localStorage.getItem('tigement_settings')
-    const sessionDays = settingsStr ? JSON.parse(settingsStr).sessionDuration || 7 : 7
+    // Get session duration from settings (anon key when not yet logged in)
+    const settings = loadSettings()
+    const sessionDays = settings?.sessionDuration ?? 7
     
     const response = await api.register(email, password, sessionDays)
     setUser(response.user)
-    
+    setStorageUserId(response.user.id)
+    migrateLegacyStorageForCurrentUser()
+
     // Only set password for encryption if NOT using a custom key
     if (!encryptionKeyManager.isUsingCustomKey()) {
       console.log('🔑 Using login password for encryption')
@@ -530,6 +541,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     // Apply tier-based cleanup
     applySecurityTierCleanup(tier)
+    setStorageUserId(null)
 
     // Clear user state and cached user
     setUser(null)

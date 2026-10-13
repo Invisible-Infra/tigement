@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { formatDateDisplay, isValidDateFormat } from '../utils/dateFormat'
+import { getStorageKey } from '../utils/storage'
 import { DateInput } from './DateInput'
 
 interface DiaryEntry {
@@ -36,7 +37,7 @@ export function DiaryList({
   })
   const listRef = useRef<HTMLDivElement>(null)
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>(() => {
-    const saved = localStorage.getItem('tigement_diary_sort_order')
+    const saved = localStorage.getItem(getStorageKey('tigement_diary_sort_order'))
     return (saved === 'oldest' || saved === 'newest') ? saved : 'newest'
   })
 
@@ -139,7 +140,7 @@ export function DiaryList({
               e.stopPropagation()
               const next = sortOrder === 'newest' ? 'oldest' : 'newest'
               setSortOrder(next)
-              localStorage.setItem('tigement_diary_sort_order', next)
+              localStorage.setItem(getStorageKey('tigement_diary_sort_order'), next)
             }}
             className="text-xs px-2 py-0.5 rounded bg-white/20 hover:bg-white/30"
             title={sortOrder === 'newest' ? 'Show oldest first' : 'Show newest first'}
