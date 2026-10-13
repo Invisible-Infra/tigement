@@ -6,6 +6,20 @@ export default defineConfig({
   build: {
     target: 'es2022',
   },
+  // esbuild 0.27.7+ treats Safari 14 as lacking destructuring and then errors,
+  // because it cannot lower that syntax. Vite 6's default target still includes Safari 14.
+  esbuild: {
+    supported: {
+      destructuring: true,
+    },
+  },
+  optimizeDeps: {
+    esbuildOptions: {
+      supported: {
+        destructuring: true,
+      },
+    },
+  },
   server: {
     host: '0.0.0.0',
     port: 8081,

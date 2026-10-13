@@ -9,6 +9,7 @@ Vítejte v Tigementu – pracovním prostoru pro plánování času a úkolů. T
 - [Práce ve Workspace](#workspace)
 - [Prostory (Spaces)](#prostory)
 - [Plánovací workflow (Den)](#workflow)
+- [Termíny (tabulky LIST)](#terminy)
 - [Automatické plánování & výpočty](#automat)
 - [Mobilní UX](#mobilni-ux)
 - [Skupiny úkolů](#skupiny)
@@ -77,6 +78,14 @@ Plánovací workspace vyžaduje registraci. Úvodní video a interaktivní tutor
 
 Tip: Potřebujete pevný začátek? Nastavte čas začátku tabulky; ostatní se dopočítá podle délek.
 
+<a id="terminy"></a>
+## Termíny (tabulky LIST)
+- Každý úkol v tabulce LIST může mít volitelný termín: datum a případně čas. Obojí je na začátku prázdné.
+- Datum lze zadat bez času. Čas lze zadat jen po zadání data. Obojí smažete tlačítkem ×.
+- Řádek zežloutne, když do termínu zbývá nejvýše 24 hodin, a zčervená, když termín už uplynul. Termín pouze s datem platí celý tento kalendářní den a je po termínu až následující den.
+- Termín je nejzazší čas, do kdy má být úkol hotový. Nemění délku úkolu ani denní rozvrh. Úkoly bez termínu vypadají a chovají se jako dřív.
+- Tabulky Den sloupec termínu neukazují. Při přesunu úkolu termín na úkolu zůstane.
+
 <a id="automat"></a>
 ## Automatické plánování & výpočty
 - Řetězení časů: konec úkolu N je začátek úkolu N+1.
@@ -124,7 +133,7 @@ Tip: Potřebujete pevný začátek? Nastavte čas začátku tabulky; ostatní se
 <a id="export"></a>
 ## Export
 - CSV Export/Import v postranním panelu.
-- Markdown „Export Review“ u každé tabulky – vygeneruje `YYMMDD-nazev.md` se seznamem úkolů, časy a součtem.
+- Markdown „Export Review“ u každé tabulky – vygeneruje `YYMMDD-nazev.md` se seznamem úkolů, časy, termínem (pokud je nastaven) a součtem.
 
 <a id="platby"></a>
 ## Platby & Premium

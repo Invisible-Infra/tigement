@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import fs from 'fs';
 import path from 'path';
 import session from 'express-session';
 import passport from 'passport';
@@ -105,9 +106,13 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Version endpoint
+// Version endpoint. Reads backend/package.json (works from src/ via ts-node and from dist/).
+const appVersion = JSON.parse(
+  fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')
+).version as string;
+
 app.get('/api/version', (req, res) => {
-  res.json({ version: process.env.VERSION || 'alpha' });
+  res.json({ version: appVersion });
 });
 
 // Routes

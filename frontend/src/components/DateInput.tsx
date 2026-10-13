@@ -18,9 +18,11 @@ export function DateInput({ value, onChange, className = '', placeholder, id, sh
 
   // Update display value when prop changes (but not while user is typing)
   useEffect(() => {
-    if (!isFocused && value) {
-      const formatted = formatDateWithSettings(value)
-      setDisplayValue(formatted)
+    if (isFocused) return
+    if (value) {
+      setDisplayValue(formatDateWithSettings(value))
+    } else {
+      setDisplayValue('')
     }
   }, [value, isFocused])
 

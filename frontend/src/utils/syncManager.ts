@@ -8,6 +8,7 @@ import { encryptWorkspace, decryptWorkspace } from './encryption'
 import { encryptionKeyManager } from './encryptionKey'
 import { getSyncClientId } from './syncClientId'
 import { normalizeTableType } from './storage'
+import { normalizeDeadline } from './deadline'
 
 interface ConflictData {
   local: { tables: any[]; settings: any; archivedTables?: any[] }
@@ -110,6 +111,8 @@ function normalizeWorkspaceData(data: any, excludeShared = false): any {
             selected: !!task.selected
           }
           if (task.group != null && task.group !== '') taskNorm.group = task.group
+          const deadline = normalizeDeadline(task.deadline)
+          if (deadline) taskNorm.deadline = deadline
           return taskNorm
         }).sort((a: any, b: any) => a.id.localeCompare(b.id))
       }
@@ -141,6 +144,10 @@ function isOnlyEmptyRemoteVsNonEmptyLocal(normLocal: any, normRemote: any): bool
     for (const [tid, localTask] of localTasks) {
       const remoteTask = remoteTasks.get(tid)
       if (!remoteTask) return false
+      if (Number(localTask.duration) !== Number(remoteTask.duration)) return false
+      if (!!localTask.selected !== !!remoteTask.selected) return false
+      if ((localTask.group || '') !== (remoteTask.group || '')) return false
+      if ((localTask.deadline || '') !== (remoteTask.deadline || '')) return false
       const rTitle = (remoteTask.title ?? '').toString().trim()
       const lTitle = (localTask.title ?? '').toString().trim()
       if (rTitle === lTitle) continue

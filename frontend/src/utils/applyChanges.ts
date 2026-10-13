@@ -6,6 +6,7 @@
 import { AIChange } from './aiAssistant';
 import { formatDateWithWeekday } from './dateFormat';
 import { evaluateRules } from './conditionalDefaultTasks';
+import { normalizeDeadline } from './deadline';
 
 export interface ApplyResult {
   success: boolean;
@@ -292,8 +293,13 @@ function applyUpdateTask(workspace: any, change: AIChange) {
   const task = table.tasks.find((t: any) => t.id === change.task_id);
   if (!task) throw new Error(`Task not found: ${change.task_id}`);
 
-  // Apply updates
-  Object.assign(task, change.updates);
+  const updates = { ...(change.updates || {}) };
+  if ('deadline' in updates) {
+    const normalized = normalizeDeadline(updates.deadline);
+    if (normalized === null) delete updates.deadline;
+    else updates.deadline = normalized;
+  }
+  Object.assign(task, updates);
 }
 
 function applyCreateTask(workspace: any, change: AIChange) {
@@ -302,12 +308,18 @@ function applyCreateTask(workspace: any, change: AIChange) {
 
   // Insert at position
   const position = change.position || 'end';
+  const task = { ...(change.task || {}) };
+  if ('deadline' in task) {
+    const normalized = normalizeDeadline(task.deadline);
+    if (normalized) task.deadline = normalized;
+    else delete task.deadline;
+  }
   if (position === 'end') {
-    table.tasks.push(change.task);
+    table.tasks.push(task);
   } else if (position === 'start') {
-    table.tasks.unshift(change.task);
+    table.tasks.unshift(task);
   } else if (typeof position === 'number') {
-    table.tasks.splice(position, 0, change.task);
+    table.tasks.splice(position, 0, task);
   } else {
     throw new Error(`Invalid position: ${position}`);
   }

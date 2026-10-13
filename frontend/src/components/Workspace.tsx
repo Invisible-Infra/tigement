@@ -18,6 +18,7 @@ import { ShareTableModal } from './ShareTableModal'
 import { SharedWithMeSection } from './SharedWithMeSection'
 import { BottomNav } from './BottomNav'
 import { AIPanel } from './AIPanel'
+import { splitDeadline } from '../utils/deadline'
 import { exportToCSV, downloadCSV, importFromCSV } from '../utils/csvUtils'
 import { saveTables, loadTables, saveSettings, loadSettings, saveTaskGroups, loadTaskGroups, saveNotebooks, loadNotebooks, saveArchivedTables, loadArchivedTables, saveDiaryEntries, loadDiaryEntries } from '../utils/storage'
 import { evaluateRules } from '../utils/conditionalDefaultTasks'
@@ -44,6 +45,7 @@ interface Task {
   selected: boolean
   group?: string // task group identifier (default: "general")
   notebook?: string // notebook content for this task
+  deadline?: string // YYYY-MM-DD or YYYY-MM-DDTHH:mm, local wall time; empty when unset
 }
 
 interface SharedTableMeta {
@@ -1628,6 +1630,11 @@ export function Workspace({ onShowPremium, onShowOnboarding, onStartTutorial, on
         if (typeof task.duration === 'number' && task.duration > 0) {
           bullet += ` (${formatDuration(task.duration)})`
           totalMinutes += task.duration
+        }
+        const deadlineParts = splitDeadline(task.deadline)
+        if (deadlineParts.date) {
+          bullet += ` — deadline ${deadlineParts.date}`
+          if (deadlineParts.time) bullet += ` ${deadlineParts.time}`
         }
         lines.push(bullet)
       })

@@ -1,3 +1,5 @@
+import { normalizeDeadline } from './deadline'
+
 interface Task {
   id: string
   title: string
@@ -5,6 +7,7 @@ interface Task {
   selected: boolean
   group?: string
   notebook?: string
+  deadline?: string
 }
 
 interface Table {
@@ -33,7 +36,7 @@ export function exportToCSV(tables: Table[]): string {
   const rows: string[][] = []
   
   // Header
-  rows.push(['Table ID', 'Table Title', 'Table Type', 'Date', 'Start Time', 'Task ID', 'Task Title', 'Task Group', 'Duration (min)'])
+  rows.push(['Table ID', 'Table Title', 'Table Type', 'Date', 'Start Time', 'Task ID', 'Task Title', 'Task Group', 'Duration (min)', 'Deadline'])
   
   // Data rows
   tables.forEach(table => {
@@ -44,6 +47,7 @@ export function exportToCSV(tables: Table[]): string {
         table.type,
         table.date || '',
         table.startTime || '',
+        '',
         '',
         '',
         '',
@@ -60,7 +64,8 @@ export function exportToCSV(tables: Table[]): string {
           task.id,
           task.title,
           task.group || 'general',
-          task.duration.toString()
+          task.duration.toString(),
+          task.deadline || ''
         ])
       })
     }
@@ -86,7 +91,7 @@ export function exportFilteredToCSV(
   const rows: string[][] = []
   
   // Header
-  rows.push(['Table ID', 'Table Title', 'Table Type', 'Date', 'Start Time', 'Task ID', 'Task Title', 'Task Group', 'Duration (min)', 'Source'])
+  rows.push(['Table ID', 'Table Title', 'Table Type', 'Date', 'Start Time', 'Task ID', 'Task Title', 'Task Group', 'Duration (min)', 'Source', 'Deadline'])
   
   // Process active tables
   tables.forEach(table => {
@@ -116,7 +121,8 @@ export function exportFilteredToCSV(
           task.title,
           task.group || 'general',
           task.duration.toString(),
-          'Active'
+          'Active',
+          task.deadline || ''
         ])
       })
     }
@@ -155,7 +161,8 @@ export function exportFilteredToCSV(
             task.title,
             task.group || 'general',
             task.duration.toString(),
-            'Archived'
+            'Archived',
+            task.deadline || ''
           ])
         })
       }
@@ -190,7 +197,8 @@ export function importFromCSV(csv: string): Table[] {
   const lines = csv.split('\n').filter(line => line.trim())
   if (lines.length < 2) return []
   
-  // Skip header
+  const header = parseCSVLine(lines[0])
+  const deadlineIndex = header.findIndex(cell => cell.trim() === 'Deadline')
   const dataLines = lines.slice(1)
   
   const tablesMap = new Map<string, Table>()
@@ -215,11 +223,13 @@ export function importFromCSV(csv: string): Table[] {
     
     if (taskId && taskTitle) {
       const table = tablesMap.get(tableId)!
+      const deadline = deadlineIndex >= 0 ? normalizeDeadline(cells[deadlineIndex] || '') : ''
       table.tasks.push({
         id: taskId,
         title: taskTitle,
         duration: duration ? parseInt(duration) : 30,
-        selected: false
+        selected: false,
+        ...(deadline ? { deadline } : {})
       })
     }
   })

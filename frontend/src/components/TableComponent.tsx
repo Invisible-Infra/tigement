@@ -4,6 +4,16 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faBookOpen, faMinus, faXmark } from '@fortawesome/free-solid-svg-icons'
 import { isLegacyDayTitle, formatDateWithSettings } from '../utils/dateFormat'
 import { getUniqueTaskTitles } from '../utils/taskSuggestions'
+import { DateInput } from './DateInput'
+import { TimePicker } from './TimePicker'
+import {
+  composeDeadline,
+  deadlineBackgroundHex,
+  deadlineRowClass,
+  deadlineStatus,
+  deadlineTextColor,
+  splitDeadline,
+} from '../utils/deadline'
 
 interface Task {
   id: string
@@ -12,6 +22,7 @@ interface Task {
   selected: boolean
   group?: string
   notebook?: string
+  deadline?: string
 }
 
 interface Table {
@@ -245,6 +256,7 @@ export function TableComponent({
   pushSuccessTableId = null,
 }: TableComponentProps) {
   const canMoveTable = !readOnly || allowTableLayout
+  const [deadlineTimeTaskId, setDeadlineTimeTaskId] = useState<string | null>(null)
   const [spaceDropdownOpen, setSpaceDropdownOpen] = useState(false)
   const spaceDropdownTriggerRef = useRef<HTMLButtonElement>(null)
   const [spaceDropdownRect, setSpaceDropdownRect] = useState<DOMRect | null>(null)
@@ -491,6 +503,14 @@ export function TableComponent({
         <span className="text-center w-6 flex-shrink-0">Group</span>
         <span className="flex-1 px-2 min-w-0">Job</span>
         <span className="text-center w-6 flex-shrink-0">Notes</span>
+        {table.type === 'list' && (
+          <span
+            className="text-center flex-shrink-0"
+            style={{ width: isMobile ? '8.25rem' : '13.5rem' }}
+          >
+            Deadline
+          </span>
+        )}
         <span className="text-center" style={{ width: isMobile ? '2.5rem' : '5rem' }}>Duration</span>
         {/* Add/Duplicate/Delete buttons column */}
         {!readOnly && !isMobile && <span className="text-right" style={{ width: '68px' }}>Add|Dup|Del</span>}
@@ -537,6 +557,9 @@ export function TableComponent({
           const isPast = taskTimes && isTaskInPast(table, taskTimes.end)
           const isCurrent = taskTimes && isTaskCurrent(table, taskTimes.start, taskTimes.end)
           const timeMatchStatus = taskTimes && table.type === 'day' ? getTaskTimeMatchStatus(task.title, taskTimes.start) : null
+          const deadlineState = table.type === 'list' ? deadlineStatus(task.deadline, new Date()) : 'none'
+          const deadlineClass = deadlineRowClass(deadlineState)
+          const deadlineInk = deadlineTextColor(deadlineState)
           
           return (
             <div key={task.id} className="relative">
@@ -579,7 +602,7 @@ export function TableComponent({
                 data-table-id={table.id}
                 data-task-index={index}
                 style={isMobile && touchDragStart?.taskId === task.id ? { touchAction: 'none' } : undefined}
-                className={`group flex items-center ${isMobile ? 'gap-0.5 px-1 min-w-0' : 'gap-2 px-2'} py-1 border-b hover:bg-gray-50 transition-all ${task.selected ? 'bg-blue-50' : ''} ${isDragging ? 'opacity-60 border-2 border-dashed !border-[#4fc3f7]' : 'border-gray-200'} ${isPast ? 'bg-gray-100' : timeMatchStatus === 'match' ? 'bg-green-200 text-green-900' : timeMatchStatus === 'mismatch' ? 'bg-red-200 text-red-900' : ''} ${isCurrent ? 'font-bold' : ''} ${highlightedTask === task.id ? 'task-highlight-pulse' : ''}`}
+                className={`group flex items-center ${isMobile ? 'gap-0.5 px-1 min-w-0' : 'gap-2 px-2'} py-1 border-b hover:bg-gray-50 transition-all ${deadlineClass ? deadlineClass : task.selected ? 'bg-blue-50' : ''} ${isDragging ? 'opacity-60 border-2 border-dashed !border-[#4fc3f7]' : 'border-gray-200'} ${isPast ? 'bg-gray-100' : timeMatchStatus === 'match' ? 'bg-green-200 text-green-900' : timeMatchStatus === 'mismatch' ? 'bg-red-200 text-red-900' : ''} ${isCurrent ? 'font-bold' : ''} ${highlightedTask === task.id ? 'task-highlight-pulse' : ''}`}
               >
               {/* Checkbox */}
               {readOnly ? (
@@ -749,10 +772,13 @@ export function TableComponent({
                 // Compute row background from known state (priority: match/mismatch > group color > selected > past > white)
                 // Group color takes priority over selected/past since it's the most visible background
                 let rowBgHex: string
+                const deadlineHex = deadlineBackgroundHex(deadlineState)
                 if (timeMatchStatus === 'match') {
                   rowBgHex = '#bbf7d0' // green-200
                 } else if (timeMatchStatus === 'mismatch') {
                   rowBgHex = '#fecaca' // red-200
+                } else if (deadlineHex) {
+                  rowBgHex = deadlineHex
                 } else if (group?.color && !task.selected) {
                   // Group color background (unless selected overrides it)
                   rowBgHex = group.color
@@ -943,12 +969,97 @@ export function TableComponent({
                 </button>
               )}
 
+              {table.type === 'list' && (() => {
+                const parts = splitDeadline(task.deadline)
+                const writeDeadline = (date: string, time: string) => {
+                  const next = composeDeadline(date, time)
+                  if (next === null) return
+                  updateTask(table.id, task.id, 'deadline', next)
+                }
+                const timeLabel = parts.time ? formatTime(parts.time) : ''
+                return (
+                  <div className="flex items-center gap-0.5 flex-shrink-0" title="Deadline">
+                    {readOnly ? (
+                      <span
+                        className="text-xs text-center"
+                        style={{ color: deadlineInk || 'var(--color-text)', minWidth: isMobile ? '4.5rem' : '6.5rem' }}
+                      >
+                        {parts.date ? formatDateWithSettings(parts.date, settings?.dateFormat) : ''}
+                        {timeLabel ? ` ${timeLabel}` : ''}
+                      </span>
+                    ) : (
+                      <>
+                        <DateInput
+                          value={parts.date}
+                          onChange={(date) => writeDeadline(date, date ? parts.time : '')}
+                          showCalendarButton={!isMobile}
+                          placeholder="Date"
+                          className={`${isMobile ? 'w-16' : 'w-24'} px-1 py-0.5 border border-gray-300 rounded text-xs bg-transparent text-center`}
+                        />
+                        {settings.useTimePickers ? (
+                          <button
+                            type="button"
+                            disabled={!parts.date}
+                            onClick={() => parts.date && setDeadlineTimeTaskId(task.id)}
+                            className="px-1 py-0.5 border border-gray-300 rounded text-xs text-center bg-transparent disabled:opacity-40 disabled:cursor-not-allowed"
+                            style={{ color: deadlineInk || 'var(--color-text)', width: isMobile ? '2.75rem' : '4.25rem' }}
+                            title={parts.date ? 'Deadline time' : 'Set a date before a time'}
+                          >
+                            {timeLabel || 'Time'}
+                          </button>
+                        ) : (
+                          <input
+                            type="text"
+                            disabled={!parts.date}
+                            defaultValue={timeLabel}
+                            key={`${task.id}-deadline-time-${parts.time}-${settings.timeFormat}`}
+                            onBlur={(e) => {
+                              if (!parts.date) return
+                              const raw = e.target.value.trim()
+                              if (!raw) {
+                                writeDeadline(parts.date, '')
+                                e.target.value = ''
+                                return
+                              }
+                              const time24 = parseTime(raw)
+                              const next = composeDeadline(parts.date, time24)
+                              if (!next || !next.includes('T')) {
+                                e.target.value = timeLabel
+                                return
+                              }
+                              updateTask(table.id, task.id, 'deadline', next)
+                              e.target.value = formatTime(splitDeadline(next).time)
+                            }}
+                            className="px-1 py-0.5 border border-gray-300 rounded text-xs text-center bg-transparent disabled:opacity-40"
+                            style={{ color: deadlineInk || 'var(--color-text)', width: isMobile ? '2.75rem' : '4.25rem' }}
+                            placeholder="Time"
+                            title={parts.date ? 'Deadline time' : 'Set a date before a time'}
+                          />
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => parts.date && updateTask(table.id, task.id, 'deadline', '')}
+                          className={`w-5 text-sm leading-none ${parts.date ? 'hover:opacity-70' : 'invisible'}`}
+                          style={{ color: deadlineInk || 'var(--color-text)' }}
+                          title={parts.date ? 'Clear deadline' : undefined}
+                          tabIndex={parts.date ? 0 : -1}
+                        >
+                          ×
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )
+              })()}
+
               {/* Duration */}
               {(() => {
                 // Duration is on row background, not task name background
                 // Only compute contrast for match/mismatch/selected (which change row background)
                 const durationColor = timeMatchStatus === 'match' ? 'rgb(20, 83, 45)'
                   : timeMatchStatus === 'mismatch' ? 'rgb(127, 29, 29)'
+                  : deadlineInk
+                  ? deadlineInk
                   : task.selected ? getContrastColor('#dbeafe')
                   : 'var(--color-text)' // Use theme color for normal rows
                 
@@ -1182,6 +1293,22 @@ export function TableComponent({
         )}
       </div>
       )}
+      {deadlineTimeTaskId && (() => {
+        const task = table.tasks.find((item) => item.id === deadlineTimeTaskId)
+        const parts = task ? splitDeadline(task.deadline) : { date: '', time: '' }
+        if (!task || !parts.date) return null
+        return (
+          <TimePicker
+            value={parts.time || '12:00'}
+            timeFormat={settings.timeFormat === 12 ? 12 : 24}
+            onChange={(time) => {
+              const next = composeDeadline(parts.date, time)
+              if (next) updateTask(table.id, task.id, 'deadline', next)
+            }}
+            onClose={() => setDeadlineTimeTaskId(null)}
+          />
+        )
+      })()}
     </div>
   )
 }

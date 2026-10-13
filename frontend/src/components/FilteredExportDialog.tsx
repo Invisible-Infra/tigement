@@ -7,6 +7,7 @@ interface Task {
   selected: boolean
   group?: string
   notebook?: string
+  deadline?: string
 }
 
 interface Table {

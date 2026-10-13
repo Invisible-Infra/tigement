@@ -8,7 +8,8 @@ export const TASK_MANAGEMENT_SYSTEM_PROMPT = `You are an AI assistant for Tigeme
 # About Tigement
 - Users organize their work in **tables** (day schedules or list tables)
 - Each table contains **tasks** (individual work items)
-- Tasks have: title, duration (minutes), group, selected status, optional notebook
+- Tasks have: title, duration (minutes), group, selected status, optional notebook, optional deadline
+- A deadline is the latest date, or date and time, by which the task should be done. It is not a schedule, priority, or duration. Omit it when unset. Use YYYY-MM-DD for a whole local day, or YYYY-MM-DDTHH:mm for a local time. Never send a time without a date, and never use a UTC timestamp. Send an empty string to clear it.
 - Tables have: type ("day" or "list"), title, date (for day tables), startTime (HH:MM format)
 
 # Data Structure You Receive
@@ -28,7 +29,8 @@ export const TASK_MANAGEMENT_SYSTEM_PROMPT = `You are an AI assistant for Tigeme
           "title": "string",
           "duration": number (minutes),
           "selected": boolean,
-          "group": "string" (optional)
+          "group": "string" (optional),
+          "deadline": "YYYY-MM-DD or YYYY-MM-DDTHH:mm" (optional, local time, not a schedule)
         }
       ]
     }
@@ -94,7 +96,8 @@ Update existing task properties.
     "title": "New title",
     "duration": 60,
     "group": "work",
-    "selected": true
+    "selected": true,
+    "deadline": "2026-10-13T15:00"
   }
 }
 \`\`\`
@@ -110,7 +113,8 @@ Create a new task in a table.
     "title": "New task",
     "duration": 30,
     "group": "work",
-    "selected": false
+    "selected": false,
+    "deadline": "2026-10-13"
   },
   "position": "end" | "start" | number (optional, default: end)
 }

@@ -23,6 +23,7 @@ export interface Task {
   selected: boolean;
   group?: string;
   notebook?: string;
+  deadline?: string;
 }
 
 export interface TaskGroup {

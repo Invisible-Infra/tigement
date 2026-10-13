@@ -19,6 +19,7 @@ export interface MergeTask {
   selected?: boolean
   group?: string
   notebook?: string
+  deadline?: string
 }
 
 export interface MergeTable {

@@ -87,8 +87,8 @@ export function SyncConflictDialog({ conflictData, onResolve, onCancel }: SyncCo
         added.push(remoteTask)
       } else {
         // Compare relevant fields
-        const localStr = JSON.stringify({ title: localTask.title, duration: localTask.duration })
-        const remoteStr = JSON.stringify({ title: remoteTask.title, duration: remoteTask.duration })
+        const localStr = JSON.stringify({ title: localTask.title, duration: localTask.duration, deadline: localTask.deadline || '' })
+        const remoteStr = JSON.stringify({ title: remoteTask.title, duration: remoteTask.duration, deadline: remoteTask.deadline || '' })
         if (localStr !== remoteStr) {
           modified.push({ local: localTask, remote: remoteTask })
         }
@@ -157,7 +157,12 @@ export function SyncConflictDialog({ conflictData, onResolve, onCancel }: SyncCo
                         )}
                         {diff.modified.length > 0 && (
                           <div className="text-orange-600 text-xs mt-1">
-                            <strong>~ Modified:</strong> {diff.modified.map((m: any) => `"${m.local.title}" → "${m.remote.title}"`).join(', ')}
+                            <strong>~ Modified:</strong> {diff.modified.map((m: any) => {
+                              const deadlineNote = (m.local.deadline || '') !== (m.remote.deadline || '')
+                                ? ` (deadline ${m.local.deadline || 'none'} → ${m.remote.deadline || 'none'})`
+                                : ''
+                              return `"${m.local.title}" → "${m.remote.title}"${deadlineNote}`
+                            }).join(', ')}
                           </div>
                         )}
                       </div>

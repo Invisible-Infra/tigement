@@ -9,6 +9,7 @@ Welcome to Tigement – a time and task management workspace. This manual walks 
 - [Workspace Basics](#workspace-basics)
 - [Spaces (Tab Groups)](#spaces)
 - [Planning Workflow (Day tables)](#planning-workflow)
+- [Deadlines (LIST tables)](#deadlines)
 - [Automatic Scheduling & Calculations](#automatic)
 - [Mobile UX](#mobile-ux)
 - [Task Groups](#task-groups)
@@ -77,6 +78,14 @@ The planner workspace requires registration. You can try the onboarding video an
 
 Tip: If you need a hard start for the first task, set the table start time. Everything else will follow from durations.
 
+<a id="deadlines"></a>
+## Deadlines (LIST tables)
+- Each task on a LIST table can have an optional deadline: a date, and optionally a time. Both start empty.
+- You can set a date without a time. A time can be entered only after a date. Clear both with ×.
+- The row turns yellow when the deadline is within 24 hours, and red after it has passed. A date without a time stays valid for that whole calendar day and becomes overdue on the next day.
+- A deadline is the latest time the task should be finished. It does not change the task duration or the day schedule. Tasks without a deadline look and behave as before.
+- Day tables do not show the deadline column. Moving a task keeps the deadline on the task.
+
 <a id="automatic"></a>
 ## Automatic Scheduling & Calculations
 - Chained times: finish of task N becomes start of task N+1.
@@ -124,7 +133,7 @@ Tip: If you need a hard start for the first task, set the table start time. Ever
 <a id="export"></a>
 ## Export
 - CSV Export/Import in sidebar.
-- Markdown “Export Review” on each table – generates `YYMMDD-title.md` with bullet list of tasks, times, and total.
+- Markdown “Export Review” on each table – generates `YYMMDD-title.md` with bullet list of tasks, times, deadlines when set, and total.
 
 <a id="payments"></a>
 ## Payments & Premium

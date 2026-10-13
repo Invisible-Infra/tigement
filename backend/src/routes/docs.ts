@@ -21,7 +21,7 @@ try {
       openapi: '3.0.0',
       info: {
         title: 'Tigement API',
-        version: '1.0.0',
+        version: '1.1.0',
         description: 'API documentation not available. OpenAPI spec file not found.'
       },
       paths: {}
@@ -33,7 +33,7 @@ try {
     openapi: '3.0.0',
     info: {
       title: 'Tigement API',
-      version: '1.0.0',
+      version: '1.1.0',
       description: 'Error loading API documentation.'
     },
     paths: {}
