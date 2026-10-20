@@ -1,0 +1,34 @@
+name: Frontend sync safety
+
+on:
+  pull_request:
+    paths:
+      - 'frontend/src/utils/syncManager.ts'
+      - 'frontend/scripts/sync-conflict.test.mjs'
+      - 'frontend/package.json'
+      - 'frontend/package-lock.json'
+      - '.github/workflows/sync-safety.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - name: Prevent stale ciphertext overwrite regressions
+        run: node --test frontend/scripts/sync-conflict.test.mjs
+      - name: Install frontend dependencies
+        run: npm ci --no-audit --no-fund
+        working-directory: frontend
+      - name: Build frontend
+        run: npm run build
+        working-directory: frontend
