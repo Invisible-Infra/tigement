@@ -645,16 +645,9 @@ class SyncManager {
     }
 
     let syncSucceeded = false
-    // Re-read local version from storage so we pick up updates from applyRemoteWorkspace or other tabs
-    const savedVersion = localStorage.getItem(this.VERSION_STORAGE_KEY)
-    if (savedVersion !== null) {
-      const v = parseInt(savedVersion, 10)
-      if (!isNaN(v) && v !== this.localVersion) {
-        this.localVersion = v
-        console.log('📌 Refreshed local version from storage:', this.localVersion)
-      }
-    }
-
+    // Do not adopt a version written by another tab without also adopting its
+    // workspace snapshot. This instance's version advances only after its own
+    // successful push or after applyRemoteWorkspace/pull.
     // Clear any pending debounce timer to prevent race conditions
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer)
@@ -924,13 +917,9 @@ class SyncManager {
             }
           }
         } else {
-          // No conflict handler, default to pulling remote (safe)
-          console.log('⚠️ No conflict handler, pulling remote (safe)')
-          await this.pull()
-          syncSucceeded = true
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('tigement:sync-complete', { detail: { success: true } }))
-          }
+          // Never silently discard unsaved local changes because a conflict
+          // dialog is unavailable. Keep both copies until explicit resolution.
+          throw new Error('Workspace conflict: resolve local and remote changes before syncing.')
         }
       } else if (remoteIsNewer) {
         // Remote is newer, but we have NO local changes - just pull
