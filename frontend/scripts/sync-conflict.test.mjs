@@ -36,3 +36,16 @@ test('unavailable newer remote workspace fails closed rather than overwriting it
   assert.match(remote, /throw new Error\(/)
   assert.doesNotMatch(remote, /saveWorkspace/)
 })
+
+test('another tab cannot advance this instance version without its workspace', () => {
+  const handler = between('async sync(isRetry:', 'const localData = this.getLocalWorkspace()')
+  assert.doesNotMatch(handler, /localStorage\.getItem\(this\.VERSION_STORAGE_KEY\)/)
+  assert.match(handler, /this\.isSyncing = true/)
+})
+
+test('missing conflict handler does not silently discard pending local edits', () => {
+  const conflict = between('if (remoteIsNewer && hasLocalChanges)', '} else if (remoteIsNewer) {')
+  const noHandler = conflict.slice(conflict.lastIndexOf('} else {'))
+  assert.match(noHandler, /throw new Error\('Workspace conflict/)
+  assert.doesNotMatch(noHandler, /await this\.pull\(\)/)
+})
