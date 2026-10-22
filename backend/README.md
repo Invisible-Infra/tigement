@@ -229,6 +229,10 @@ server {
     listen 443 ssl http2;
     server_name api.yourdomain.com;
 
+    # E2EE workspaces are submitted as complete encrypted blobs.
+    # Must be >= the backend's 20 MB upload limit for the workspace endpoint.
+    client_max_body_size 20m;
+
     location / {
         proxy_pass http://localhost:3000;
         proxy_http_version 1.1;
