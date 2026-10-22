@@ -69,7 +69,10 @@ app.use((req, res, next) => {
     // Skip JSON parsing for webhooks - they need raw body for signature verification
     next();
   } else {
-    express.json({ limit: '10mb' })(req, res, next);
+    // The encrypted workspace is uploaded as one base64 JSON value.
+    // Scope the larger limit to this endpoint; keep other API calls at 10 MB.
+    const workspaceWrite = req.path === '/api/v1/workspace' && req.method === 'POST';
+    express.json({ limit: workspaceWrite ? '20mb' : '10mb' })(req, res, next);
   }
 });
 
